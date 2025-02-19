@@ -249,7 +249,7 @@ float emissiveIntensity( bool useAdaptive, bool adaptiveLimits, vec4 luminancePa
 			l = clamp( l, luminanceParams[3], luminanceParams[2] );
 	}
 
-	return sqrt( l * 0.01 ) * lightingControls.z;
+	return sqrt( l * 0.01 ) * glowScale;
 }
 
 float LightingFuncGGX_REF( float NdotH, float NdotL, float NdotV, float roughness )
@@ -328,17 +328,17 @@ float getBlenderMask(int n)
 
 vec2 parallaxMapping( int n, vec3 V, vec2 offset )
 {
-	if ( renderOptions2.x < 0.0005 )
+	if ( sfParallaxScale < 0.0005 )
 		return offset;	// disabled
 
 	// determine optimal height of each layer
-	float	layerHeight = 1.0 / mix( float(renderOptions1.w), 8.0, abs(V.z) );
+	float	layerHeight = 1.0 / mix( float(sfParallaxMaxSteps), 8.0, abs(V.z) );
 
 	// current height of the layer
 	float	curLayerHeight = 1.0;
-	vec2	dtex = renderOptions2.x * V.xy / max( abs(V.z), 0.02 );
+	vec2	dtex = sfParallaxScale * V.xy / max( abs(V.z), 0.02 );
 	// current texture coordinates
-	vec2	currentTextureCoords = offset + ( dtex * renderOptions2.y );
+	vec2	currentTextureCoords = offset + ( dtex * sfParallaxOffset );
 	// shift of texture coordinates for each layer
 	dtex *= layerHeight;
 
@@ -690,7 +690,7 @@ void main()
 			color.rgb += transmissive * lightSourceAmbient.rgb * 0.08;
 	}
 
-	color.rgb = tonemap( color.rgb * lightingControls.y, lightingControls.x );
+	color.rgb = tonemap( color.rgb * brightnessScale, toneMapScale );
 
 	fragColor = color;
 }

@@ -7,6 +7,8 @@ checkgroup begin or
 	check NiTexturingProperty
 	check BSShaderPPLightingProperty
 	check BSShaderNoLightingProperty
+	check Lighting30ShaderProperty
+	check TallGrassShaderProperty
 checkgroup end
 
 shaders ob_default.vert ob_default.frag

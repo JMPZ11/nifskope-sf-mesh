@@ -486,7 +486,7 @@ void NifSkope::initMenu()
 
 	updateRecentFileActions();
 	updateRecentArchiveActions();
-	//updateRecentArchiveFileActions();
+	updateRecentArchiveFileActions();
 
 	// Lighting Menu
 	auto mLight = lightingWidget();
@@ -1031,6 +1031,13 @@ void NifSkope::restoreUi()
 
 	auto isPersp = settings.value( "GLView/Perspective", true ).toBool();
 	ui->aViewPerspective->setChecked( isPersp );
+	int viewDir = settings.value( "Settings/Render/General/Camera/Startup Direction", 1 ).toInt();
+	if ( viewDir == 0 )
+		ui->aViewLeft->setChecked( true );
+	else if ( viewDir == 1 )
+		ui->aViewFront->setChecked( true );
+	else if ( viewDir == 2 )
+		ui->aViewTop->setChecked( true );
 
 	ogl->setProjection( isPersp );
 
@@ -1360,7 +1367,7 @@ void NifSkope::contextMenu( const QPoint & pos )
 		idx = header->indexAt( pos );
 		p = header->mapToGlobal( pos );
 	} else if ( sender() == graphicsView ) {
-		idx = ogl->indexAt( pos );
+		idx = ogl->indexAt( pos, ogl->contextMenuShiftModifier );
 		p = graphicsView->mapToGlobal( pos );
 	} else {
 		return;

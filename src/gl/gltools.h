@@ -36,7 +36,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data/niftypes.h"
 #include "filebuf.hpp"
 
-#include <QOpenGLContext>
 #include <QPair>
 
 
@@ -131,15 +130,6 @@ public:
 	float radius = 0;
 	Vector3 tcenter;
 	int bone = 0;
-};
-
-class BoneWeightsUNorm : public BoneData
-{
-public:
-	BoneWeightsUNorm() {}
-	BoneWeightsUNorm(QVector<QPair<quint16, quint16>> weights, int v);
-
-	QVector<BoneWeightUNORM16> weightsUNORM;
 };
 
 //! A skin partition

@@ -1184,6 +1184,8 @@ public:
 	//! Writes a transform back to a NIF index
 	void writeBack( NifModel * nif, const QModelIndex & transform ) const;
 
+	Transform inverted() const;
+
 	//! Times operator
 	friend Transform operator*( const Transform & t1, const Transform & t2 );
 

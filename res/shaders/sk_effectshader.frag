@@ -1,5 +1,7 @@
 #version 410 core
 
+#include "uniforms.glsl"
+
 uniform sampler2D BaseMap;
 uniform sampler2D GreyscaleMap;
 
@@ -106,5 +108,5 @@ void main()
 			discard;
 	}
 
-	fragColor = vec4( color.rgb * glowMult, color.a );
+	fragColor = vec4( color.rgb * ( glowMult * sqrt(brightnessScale) ), color.a );
 }

@@ -121,7 +121,7 @@ BoundSphere Particles::bounds() const
 
 void Particles::drawShapes( NodeList * secondPass )
 {
-	if ( isHidden() || ( scene->selecting && !scene->isSelModeObject() ) || !scene->renderer || !scene->nifModel
+	if ( isHidden() || scene->selecting > (unsigned char) Scene::SelObject || !scene->renderer || !scene->nifModel
 		|| verts.isEmpty() || active < 1 ) {
 		return;
 	}

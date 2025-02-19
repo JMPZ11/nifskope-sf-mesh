@@ -124,14 +124,14 @@
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="QSlider" name="sldDeclination">
+       <widget class="QSlider" name="sldEnvMapRotation">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
        </widget>
       </item>
       <item row="4" column="1">
-       <widget class="QSlider" name="sldPlanarAngle">
+       <widget class="QSlider" name="sldGlowScale">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
         </property>
@@ -230,7 +230,7 @@
        </widget>
       </item>
       <item row="3" column="0">
-       <widget class="QPushButton" name="btnDeclination">
+       <widget class="QPushButton" name="btnEnvMapRotation">
         <property name="maximumSize">
          <size>
           <width>24</width>
@@ -242,7 +242,7 @@
         </property>
         <property name="icon">
          <iconset resource="../../../res/nifskope.qrc">
-          <normaloff>:/btn/lightVertical</normaloff>:/btn/lightVertical</iconset>
+          <normaloff>:/btn/lightHorizontal</normaloff>:/btn/lightHorizontal</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -256,7 +256,7 @@
        </widget>
       </item>
       <item row="4" column="0">
-       <widget class="QPushButton" name="btnPlanarAngle">
+       <widget class="QPushButton" name="btnGlowScale">
         <property name="maximumSize">
          <size>
           <width>24</width>
@@ -268,7 +268,7 @@
         </property>
         <property name="icon">
          <iconset resource="../../../res/nifskope.qrc">
-          <normaloff>:/btn/lightHorizontal</normaloff>:/btn/lightHorizontal</iconset>
+          <normaloff>:/btn/glow</normaloff>:/btn/glow</iconset>
         </property>
         <property name="iconSize">
          <size>

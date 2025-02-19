@@ -3,26 +3,26 @@
 ###############################
 
 *msvc* {
-    TEMPLATE = vcapp
+	TEMPLATE = vcapp
 } else {
-    TEMPLATE = app
+	TEMPLATE = app
 }
 
 TARGET   = NifSkope
 
 macx: {
-    QMAKE_CC = clang
-    QMAKE_CXX = clang++
+	QMAKE_CC = clang
+	QMAKE_CXX = clang++
 
-    ICON = res/nifskope.icns
+	ICON = res/nifskope.icns
 }
 
-QT += xml opengl network widgets openglwidgets core5compat
+QT += xml opengl network widgets openglwidgets
 
-# Require Qt 6.2 or higher
+# Require Qt 6.4 or higher
 contains(QT_VERSION, ^6\\.[0-1]\\..*) {
 	message("Cannot build NifSkope with Qt version $${QT_VERSION}")
-	error("Minimum required version is Qt 6.2")
+	error("Minimum required version is Qt 6.4")
 }
 
 # C++ Standard Support

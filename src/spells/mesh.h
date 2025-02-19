@@ -40,11 +40,11 @@ public:
 	{
 		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
 			return true;
-		return nif->blockInherits( index, "BSTriShape" ) && nif->getIndex( index, "Vertex Data" ).isValid();
+		return nif->blockInherits( index, "BSTriShape" );
 	}
 
-	static void calculateSFBoneBounds(
-		NifModel * nif, const QPersistentModelIndex & iBoneList, int numBones, const MeshFile & meshFile );
+	static bool calculateBoneBounds(
+		NifModel * nif, const QPersistentModelIndex & iBlock, const MeshFile * meshFile = nullptr );
 	static QModelIndex cast_Starfield( NifModel * nif, const QModelIndex & index );
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final;

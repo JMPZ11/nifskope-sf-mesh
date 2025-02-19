@@ -470,6 +470,7 @@ public:
 			edit->add( new NifMatrix4Edit( nif, iTransform ) );
 		}
 
+		edit->setWindowModality( Qt::WindowModality::NonModal );
 		edit->show();
 		return index;
 	}

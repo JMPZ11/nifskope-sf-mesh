@@ -175,21 +175,13 @@ void MeshFile::update( const void * data, size_t size )
 	quint32 numWeights;
 	in >> numWeights;
 	if ( numWeights > 0 && numWeightsPerVertex > 0 ) {
-		weights.resize(numWeights / numWeightsPerVertex);
+		weights.resize( numWeights );
 	}
-	for ( int i = 0; i < weights.count(); i++ ) {
-		QVector<QPair<quint16, quint16>> weightsUNORM;
-		for ( quint32 j = 0; j < 8; j++ ) {
-			if ( j < numWeightsPerVertex ) {
-				quint16 b, w;
-				in >> b;
-				in >> w;
-				weightsUNORM.append({ b, w });
-			} else {
-				weightsUNORM.append({0, 0});
-			}
-		}
-		weights[i] = BoneWeightsUNorm(weightsUNORM, i);
+	for ( qsizetype i = 0; i < weights.size(); i++ ) {
+		std::uint16_t	b, w;
+		in >> b;
+		in >> w;
+		weights[i] = ( std::uint32_t(b) << 16 ) | w;
 	}
 
 	if ( magic ) {
@@ -328,25 +320,16 @@ void MeshFile::update( const NifModel * nif, const QModelIndex & index )
 	if ( !weightsItem )
 		numWeights = 0;
 	if ( numWeights > 0 && numWeightsPerVertex > 0 ) {
-		weights.resize(numWeights / numWeightsPerVertex);
+		weights.resize( numWeights );
 	}
-	int	k = 0;
-	for ( int i = 0; i < weights.count(); i++ ) {
-		QVector<QPair<quint16, quint16>> weightsUNORM;
-		for ( quint32 j = 0; j < 8; j++ ) {
-			quint16	b = 0;
-			quint16	w = 0;
-			if ( j < numWeightsPerVertex ) {
-				auto	weightItem = weightsItem->child( k );
-				if ( weightItem ) {
-					b = nif->get<quint16>( weightItem->child( 0 ) );
-					w = nif->get<quint16>( weightItem->child( 1 ) );
-				}
-				k++;
-			}
-			weightsUNORM.append({ b, w });
+	for ( qsizetype i = 0; i < weights.size(); i++ ) {
+		quint16	b = 0;
+		quint16	w = 0;
+		if ( auto weightItem = weightsItem->child( int(i) ); weightItem ) {
+			b = nif->get<quint16>( weightItem->child( 0 ) );
+			w = nif->get<quint16>( weightItem->child( 1 ) );
 		}
-		weights[i] = BoneWeightsUNorm(weightsUNORM, i);
+		weights[i] = ( std::uint32_t(b) << 16 ) | w;
 	}
 
 	quint32	numLODs = 0;

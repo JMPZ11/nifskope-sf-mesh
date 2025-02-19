@@ -9,6 +9,8 @@ struct Texture {
 	int textureUnit;
 };
 
+#include "uniforms.glsl"
+
 uniform sampler2D textureUnits[10];
 uniform Texture textures[10];
 
@@ -32,10 +34,9 @@ in vec3 ViewDir;
 
 in vec2 texCoords[9];
 
-in vec4 A;
+flat in vec4 A;
 in vec4 C;
-in vec4 D;
-in float glowScale;
+flat in vec4 D;
 
 in vec3 N;
 
@@ -62,8 +63,6 @@ void main()
 
 	vec3 normal = normalize( N );
 
-	vec3 R = reflect( -L, normal );
-	vec3 H = normalize( L + E );
 	float NdotL = max( dot(normal, L), 0.0 );
 
 	if ( ( vertexColorFlags & 0x28 ) == 0x28 ) {
@@ -80,7 +79,7 @@ void main()
 	vec3 emissive = frontMaterialEmission.rgb * frontMaterialEmission.a;
 	if ( ( vertexColorFlags & 0x10 ) != 0 )
 		emissive = C.rgb * C.a;
-	color.rgb += emissive * glowScale;
+	color.rgb += emissive * glowScaleSRGB;
 
 	color.a *= alpha;
 
@@ -120,17 +119,20 @@ void main()
 	}
 	if ( textures[4].textureUnit > 0 ) {
 		// glow
-		color.rgb += getTexture( 4 ).rgb * glowScale;
+		color.rgb += getTexture( 4 ).rgb * glowScaleSRGB;
 	}
 
 	// Specular
+#if 0
 	if ( NdotL > 0.0 ) {
+		vec3 H = normalize( L + E );
 		float NdotH = dot( normal, H );
 		if ( NdotH > 0.0 ) {
 			vec3 spec = frontMaterialSpecular.rgb * pow( NdotH, frontMaterialShininess );
 			color.rgb += spec * frontMaterialSpecular.a;
 		}
 	}
+#endif
 
 	if ( alphaTestFunc > 0 ) {
 		if ( color.a < alphaThreshold && alphaTestFunc != 1 && alphaTestFunc != 3 && alphaTestFunc != 5 )

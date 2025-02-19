@@ -295,21 +295,21 @@ static void writeShape( const NifModel * nif, const QModelIndex & iShape, QTextS
 			//matn = nif->get<QString>( iProp, "Name" );
 		} else if ( nif->isNiBlock( iProp, "NiTexturingProperty" ) ) {
 			QModelIndex iBase = nif->getBlockIndex( nif->getLink( nif->getIndex( iProp, "Base Texture" ), "Source" ), "NiSourceTexture" );
-			map_Kd = TexCache::find( nif->get<QString>( iBase, "File Name" ) );
+			map_Kd = TexCache::find( nif->get<QString>( iBase, "File Name" ), nif );
 
 			QModelIndex iDark = nif->getBlockIndex( nif->getLink( nif->getIndex( iProp, "Decal Texture 1" ), "Source" ), "NiSourceTexture" );
-			decal = TexCache::find( nif->get<QString>( iDark, "File Name" ) );
+			decal = TexCache::find( nif->get<QString>( iDark, "File Name" ), nif );
 
 			QModelIndex iBump = nif->getBlockIndex( nif->getLink( nif->getIndex( iProp, "Bump Map Texture" ), "Source" ), "NiSourceTexture" );
-			bump = TexCache::find( nif->get<QString>( iBump, "File Name" ) );
+			bump = TexCache::find( nif->get<QString>( iBump, "File Name" ), nif );
 		} else if ( nif->isNiBlock( iProp, "NiTextureProperty" ) ) {
 			QModelIndex iSource = nif->getBlockIndex( nif->getLink( iProp, "Image" ), "NiImage" );
-			map_Kd = TexCache::find( nif->get<QString>( iSource, "File Name" ) );
+			map_Kd = TexCache::find( nif->get<QString>( iSource, "File Name" ), nif );
 		} else if ( ( nif->blockInherits( iProp, "NiSkinInstance" ) ) || ( nif->isNiBlock( iProp, "BSSkin::Instance" ) ) ) {
 			// Append shape name to skinned mesh warning list
 			expSknMeshWarnings.append( name );
 		} else if ( nif->isNiBlock( iProp, { "BSShaderNoLightingProperty", "SkyShaderProperty", "TileShaderProperty" } ) ) {
-			map_Kd = TexCache::find( nif->get<QString>( iProp, "File Name" ) );
+			map_Kd = TexCache::find( nif->get<QString>( iProp, "File Name" ), nif );
 		} else if ( nif->isNiBlock( iProp, "BSEffectShaderProperty" ) ) {
 			QModelIndex	iMaterial;
 			if ( nif->getBSVersion() >= 151 )
@@ -318,21 +318,21 @@ static void writeShape( const NifModel * nif, const QModelIndex & iShape, QTextS
 				iProp = iMaterial;
 			else if ( nif->getBSVersion() >= 151 )
 				iProp = nif->getIndex( iProp, "Shader Property Data" );
-			map_Kd = TexCache::find( nif->get<QString>( iProp, "Source Texture" ) );
+			map_Kd = TexCache::find( nif->get<QString>( iProp, "Source Texture" ), nif );
 		} else if ( nif->isNiBlock( iProp, { "BSShaderPPLightingProperty", "Lighting30ShaderProperty", "BSLightingShaderProperty" } ) ) {
 			QModelIndex	iMaterial;
 			if ( nif->getBSVersion() >= 151 )
 				iMaterial = nif->getIndex( iProp, "Material" );
 			if ( iMaterial.isValid() ) {
 				iProp = iMaterial;
-				map_Kd = TexCache::find( nif->get<QString>( iProp, "Texture 0" ) );
-				map_Kn = TexCache::find( nif->get<QString>( iProp, "Texture 1" ) );
+				map_Kd = TexCache::find( nif->get<QString>( iProp, "Texture 0" ), nif );
+				map_Kn = TexCache::find( nif->get<QString>( iProp, "Texture 1" ), nif );
 			} else {
 				if ( nif->getBSVersion() >= 151 && nif->isNiBlock( iProp, "BSLightingShaderProperty" ) )
 					iProp = nif->getIndex( iProp, "Shader Property Data" );
 				QModelIndex iArray = nif->getIndex( nif->getBlockIndex( nif->getLink( iProp, "Texture Set" ) ), "Textures" );
-				map_Kd = TexCache::find( nif->get<QString>( nif->getIndex( iArray, 0, 0 ) ) );
-				map_Kn = TexCache::find( nif->get<QString>( nif->getIndex( iArray, 1, 0 ) ) );
+				map_Kd = TexCache::find( nif->get<QString>( nif->getIndex( iArray, 0, 0 ) ), nif );
+				map_Kn = TexCache::find( nif->get<QString>( nif->getIndex( iArray, 1, 0 ) ), nif );
 			}
 
 			auto iSpec = nif->getIndex( iProp, "Specular Color" );

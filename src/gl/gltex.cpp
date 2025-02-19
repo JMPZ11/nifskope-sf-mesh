@@ -568,23 +568,28 @@ bool TexCache::Tex::ImageInfo::savePixelData( TexCache & t, NifModel * nif, QMod
 {
 	// gltexloaders function goes here
 	//qDebug() << "TexCache::Tex:savePixelData: Packing" << iSource << "from file" << filepath << "to" << iData;
-	return t.texSaveNIF( nif, filepath, iData );
+	try {
+		return t.texSaveNIF( nif, filepath, iData );
+	} catch ( QString & e ) {
+		qCWarning( nsIo ) << e;
+	}
+	return false;
 }
 
 bool TexCache::loadSettings( QSettings & settings )
 {
 	int	tmp = settings.value( "Settings/Render/General/Ibl Cube Map Resolution", 2 ).toInt();
-	tmp = 128 << std::min< int >( std::max< int >( tmp, 0 ), 4 );
+	tmp = 128 << std::clamp< int >( tmp, 0, 4 );
 	bool	r = ( tmp != pbrCubeMapResolution );
 	pbrCubeMapResolution = tmp;
 
 	tmp = settings.value( "Settings/Render/General/Ibl Importance Sample Cnt", 2 ).toInt();
-	tmp = 64 << std::min< int >( std::max< int >( tmp, 0 ), 6 );
+	tmp = 64 << std::clamp< int >( tmp, 0, 6 );
 	r = r | ( tmp != pbrImportanceSamples );
 	pbrImportanceSamples = tmp;
 
 	tmp = settings.value( "Settings/Render/General/Hdr Tone Map", 8 ).toInt();
-	tmp = std::min< int >( std::max< int >( tmp, 0 ), 16 );
+	tmp = std::clamp< int >( tmp, 0, 16 );
 	r = r | ( tmp != hdrToneMapLevel );
 	hdrToneMapLevel = tmp;
 

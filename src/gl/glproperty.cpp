@@ -42,45 +42,67 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "glview.h"
 #include "renderer.h"
 
-#include <QOpenGLContext>
-
 
 //! @file glproperty.cpp Encapsulation of NiProperty blocks defined in nif.xml
 
+static const std::pair< const std::string_view, int >	niPropertyBlockNames[17] = {
+	{ "BSEffectShaderProperty", 11 },
+	{ "BSLightingShaderProperty", 9 },
+	{ "BSShaderLightingProperty", 10 },
+	{ "BSShaderNoLightingProperty", 11 },
+	{ "BSShaderPPLightingProperty", 10 },
+	{ "BSWaterShaderProperty", 12 },
+	{ "Lighting30ShaderProperty", 10 },
+	{ "NiAlphaProperty", 0 },
+	{ "NiMaterialProperty", 4 },
+	{ "NiSpecularProperty", 5 },
+	{ "NiStencilProperty", 8 },
+	{ "NiTextureProperty", 3 },
+	{ "NiTexturingProperty", 2 },
+	{ "NiVertexColorProperty", 7 },
+	{ "NiWireframeProperty", 6 },
+	{ "NiZBufferProperty", 1 },
+	{ "TallGrassShaderProperty", 10 }
+};
+
 Property * Property::create( Scene * scene, const NifModel * nif, const QModelIndex & index )
 {
-	Property * property = 0;
+	Property * property = nullptr;
 
-	if ( nif->isNiBlock( index, "NiAlphaProperty" ) ) {
-		property = new AlphaProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiZBufferProperty" ) ) {
-		property = new ZBufferProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiTexturingProperty" ) ) {
-		property = new TexturingProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiTextureProperty" ) ) {
-		property = new TextureProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiMaterialProperty" ) ) {
-		property = new MaterialProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiSpecularProperty" ) ) {
-		property = new SpecularProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiWireframeProperty" ) ) {
-		property = new WireframeProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiVertexColorProperty" ) ) {
-		property = new VertexColorProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "NiStencilProperty" ) ) {
-		property = new StencilProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "BSLightingShaderProperty" ) ) {
-		property = new BSLightingShaderProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "BSShaderLightingProperty" ) ) {
-		property = new BSShaderLightingProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "BSEffectShaderProperty" ) ) {
-		property = new BSEffectShaderProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "BSWaterShaderProperty" ) ) {
-		property = new BSWaterShaderProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "BSShaderNoLightingProperty" ) ) {
-		property = new BSEffectShaderProperty( scene, index );
-	} else if ( nif->isNiBlock( index, "BSShaderPPLightingProperty" ) ) {
-		property = new BSShaderLightingProperty( scene, index );
+	if ( auto blockItem = nif->getItem( index ); blockItem && nif->isNiBlock( blockItem ) ) {
+		constexpr size_t	n = sizeof( niPropertyBlockNames ) / sizeof( niPropertyBlockNames[0] );
+		const QString &	blockName = blockItem->name();
+		size_t	i0 = 0;
+		size_t	i2 = n;
+		int	i = -1;
+		while ( i2 > i0 ) {
+			size_t	i1 = ( i0 + i2 ) >> 1;
+			const auto &	p = niPropertyBlockNames[i1];
+			int	d = blockName.compare( QLatin1StringView( p.first.data(), qsizetype( p.first.length() ) ) );
+			if ( !d ) {
+				i = p.second;
+				break;
+			}
+			if ( d < 0 )
+				i2 = i1;
+			else
+				i0 = i1 + 1;
+		}
+		switch ( i ) {
+		case 0:   property = new AlphaProperty( scene, index );             break;
+		case 1:   property = new ZBufferProperty( scene, index );           break;
+		case 2:   property = new TexturingProperty( scene, index );         break;
+		case 3:   property = new TextureProperty( scene, index );           break;
+		case 4:   property = new MaterialProperty( scene, index );          break;
+		case 5:   property = new SpecularProperty( scene, index );          break;
+		case 6:   property = new WireframeProperty( scene, index );         break;
+		case 7:   property = new VertexColorProperty( scene, index );       break;
+		case 8:   property = new StencilProperty( scene, index );           break;
+		case 9:   property = new BSLightingShaderProperty( scene, index );  break;
+		case 10:  property = new BSShaderLightingProperty( scene, index );  break;
+		case 11:  property = new BSEffectShaderProperty( scene, index );    break;
+		case 12:  property = new BSWaterShaderProperty( scene, index );     break;
+		}
 	} else if ( index.isValid() ) {
 #ifndef QT_NO_DEBUG
 		NifItem * item = static_cast<NifItem *>( index.internalPointer() );
@@ -244,7 +266,7 @@ void AlphaProperty::glProperty( AlphaProperty * p, NifSkopeOpenGLContext::Progra
 {
 	if ( p && p->alphaBlend && p->scene->hasOption(Scene::DoBlending) ) {
 		glEnable( GL_BLEND );
-		glBlendFunc( p->alphaSrc, p->alphaDst );
+		prog->f->glBlendFuncSeparate( p->alphaSrc, p->alphaDst, GL_ONE, p->alphaDst );
 	} else {
 		glDisable( GL_BLEND );
 	}
@@ -812,12 +834,15 @@ void BSShaderLightingProperty::updateImpl( const NifModel * nif, const QModelInd
 			flags2 = ShaderFlags::SF2( nif->get<quint32>( iSPData, "Shader Flags 2" ) );
 			hasVertexColors = bool( flags2 & ShaderFlags::SLSF2_Vertex_Colors );
 			hasVertexAlpha = bool( flags1 & ShaderFlags::SLSF1_Vertex_Alpha );
-			depthTest = bool( flags1 & ShaderFlags::SLSF1_ZBuffer_Test );
-			depthWrite = bool( flags2 & ShaderFlags::SLSF2_ZBuffer_Write );
 			isDoubleSided = bool( flags2 & ShaderFlags::SLSF2_Double_Sided );
-			clampMode = TexClampMode( nif->get<quint32>( iSPData, "Texture Clamp Mode" ) );
+			if ( nif->isNiBlock( iSPData, "TallGrassShaderProperty" ) )
+				isVertexAlphaAnimation = true;
+			else
+				clampMode = TexClampMode( nif->get<quint32>( iSPData, "Texture Clamp Mode" ) );
 			environmentReflection = nif->get<float>( iSPData, "Environment Map Scale" );
 			if ( typeid( *this ) == typeid( BSEffectShaderProperty ) ) {
+				depthTest = bool( flags1 & ShaderFlags::SLSF1_ZBuffer_Test );
+				depthWrite = bool( flags2 & ShaderFlags::SLSF2_ZBuffer_Write );
 				BSEffectShaderProperty *	esp = static_cast< BSEffectShaderProperty * >( this );
 				esp->falloff.startAngle = nif->get<float>( iSPData, "Falloff Start Angle" );
 				esp->falloff.stopAngle = nif->get<float>( iSPData, "Falloff Stop Angle" );
@@ -836,7 +861,7 @@ void BSShaderLightingProperty::resetParams()
 
 	uvScale.reset();
 	uvOffset.reset();
-	clampMode = CLAMP_S_CLAMP_T;
+	clampMode = WRAP_S_WRAP_T;
 	environmentReflection = 0.0f;
 
 	hasVertexColors = false;

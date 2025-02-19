@@ -643,7 +643,7 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 
 QModelIndex Mesh::vertexAt( int idx ) const
 {
-	auto nif = NifModel::fromIndex( iBlock );
+	auto nif = scene->nifModel;
 	if ( !nif )
 		return QModelIndex();
 
@@ -653,9 +653,47 @@ QModelIndex Mesh::vertexAt( int idx ) const
 	return iVertex;
 }
 
-bool compareTriangles( const QPair<int, float> & tri1, const QPair<int, float> & tri2 )
+QModelIndex Mesh::triangleAt( int idx ) const
 {
-	return ( tri1.second < tri2.second );
+	auto nif = scene->nifModel;
+	if ( nif && iData.isValid() && idx >= 0 && idx < triangles.size() ) {
+		// TODO: implement support for skin partitions
+		if ( !tristripOffsets.isEmpty() ) {
+			for ( qsizetype i = 0; i < tristripOffsets.size(); i++ ) {
+				qsizetype	j = idx - tristripOffsets.at( i ).first;
+				if ( j >= 0 && j < tristripOffsets.at( i ).second ) {
+					auto	iPoints = nif->getIndex( iData, "Points" );
+					if ( !( iPoints.isValid() && nif->isArray( iPoints ) && i < nif->rowCount( iPoints ) ) )
+						break;
+					iPoints = nif->getIndex( iPoints, int(i) );
+					if ( !( iPoints.isValid() && nif->isArray( iPoints ) ) )
+						break;
+					const Triangle &	t = triangles.at( idx );
+					int	n = nif->rowCount( iPoints );
+					quint16	v0 = 0;
+					quint16	v1 = 0;
+					for ( int k = 0; k < n; k++ ) {
+						QModelIndex	iPoint = nif->getIndex( iPoints, k );
+						if ( !iPoint.isValid() )
+							continue;
+						quint16	v2 = nif->get<quint16>( iPoint );
+						if ( k >= 2 ) {
+							if ( v0 == t.v1() && ( !(k & 1) ? v1 : v2 ) == t.v2() && ( !(k & 1) ? v2 : v1 ) == t.v3() )
+								return iPoint;
+						}
+						v0 = v1;
+						v1 = v2;
+					}
+					break;
+				}
+			}
+		} else {
+			auto iTriangleData = nif->getIndex( iData, "Triangles" );
+			if ( iTriangleData.isValid() && nif->isArray( iTriangleData ) )
+				return nif->getIndex( iTriangleData, idx );
+		}
+	}
+	return QModelIndex();
 }
 
 void Mesh::transformShapes()
@@ -706,14 +744,15 @@ void Mesh::drawShapes( NodeList * secondPass )
 
 	glDisable( GL_FRAMEBUFFER_SRGB );
 
-	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+	int	selectionFlags = scene->selecting;
+	if ( ( selectionFlags & int(Scene::SelVertex) ) && drawInSecondPass ) [[unlikely]] {
 		drawVerts();
 		return;
 	}
 
 	// TODO: Option to hide Refraction and other post effects
 
-	//if ( !scene->selecting ) {
+	//if ( !selectionFlags ) {
 	//	qDebug() << viewTrans().translation;
 		//qDebug() << Vector3( nif->get<Vector4>( iBlock, "Translation" ) );
 	//}
@@ -728,17 +767,14 @@ void Mesh::drawShapes( NodeList * secondPass )
 	else
 		glPolygonOffset( 1.0f, 2.0f );
 
-	if ( !scene->selecting ) [[likely]] {
+	if ( !selectionFlags ) [[likely]] {
 		// TODO: Hotspot.  See about optimizing this.
 		shader = context->setupProgram( this, shader );
 
-	} else {
-		auto	prog = context->useProgram( "selection.prog" );
-		if ( prog ) {
-			setUniforms( prog );
-			prog->uni1i( "selectionFlags", 0x0001 );
-			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
-		}
+	} else if ( auto prog = context->useProgram( "selection.prog" ); prog ) {
+		setUniforms( prog );
+		prog->uni1i( "selectionFlags", selectionFlags & 5 );
+		prog->uni1i( "selectionParam", ( !( selectionFlags & int(Scene::SelVertex) ) ? nodeId : -1 ) );
 	}
 
 	if ( isDoubleSided ) {
@@ -756,6 +792,9 @@ void Mesh::drawShapes( NodeList * secondPass )
 	}
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
+
+	if ( selectionFlags & int( Scene::SelVertex ) ) [[unlikely]]
+		drawVerts();
 }
 
 void Mesh::drawVerts() const
@@ -788,10 +827,10 @@ void Mesh::drawSelection() const
 	auto idx = scene->currentIndex;
 	auto blk = scene->currentBlock;
 
-	if ( blk != iBlock && blk != iData && blk != iSkinPart && blk != iSkinData
-		&& ( !iTangentData.isValid() || blk != iTangentData ) && !scene->isSelModeVertex() )
-	{
-		return;
+	if ( !blk.isValid()
+		|| !( blk == iBlock || blk == iData || blk == iSkinPart || blk == iSkinData || blk == iTangentData ) ) {
+		if ( !scene->isSelModeVertex() )
+			return;
 	}
 
 	auto	context = scene->renderer;

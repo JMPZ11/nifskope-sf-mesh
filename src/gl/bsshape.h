@@ -28,6 +28,7 @@ public:
 
 	void drawVerts() const;
 	QModelIndex vertexAt( int ) const override;
+	QModelIndex triangleAt( int ) const override;
 	void updateLodLevel() override;
 
 protected:

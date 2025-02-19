@@ -537,16 +537,16 @@ bool UVController::update( const NifModel * nif, const QModelIndex & index )
 }
 
 
-float random( float r )
+static float random( float r )
 {
-	return r * rand() / RAND_MAX;
+	return r * ( float(std::rand()) / float(RAND_MAX) );
 }
 
-Vector3 random( Vector3 v )
+static Vector3 random( Vector3 v )
 {
-	v[0] *= random( 1.0 );
-	v[1] *= random( 1.0 );
-	v[2] *= random( 1.0 );
+	v[0] *= random( 1.0f );
+	v[1] *= random( 1.0f );
+	v[2] *= random( 1.0f );
 	return v;
 }
 

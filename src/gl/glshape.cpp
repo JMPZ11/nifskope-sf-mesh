@@ -100,16 +100,15 @@ void Shape::updateBoneTransforms()
 
 	boundSphere = BoundSphere();
 
-	Transform	wtInv = worldTrans();
-	wtInv.rotation = wtInv.rotation.inverted();
-	wtInv.scale = 1.0f / wtInv.scale;
-	wtInv.translation = ( wtInv.rotation * wtInv.translation ) * wtInv.scale * -1.0f;
+	Transform	wtInv = worldTrans().inverted();
 
 	for ( qsizetype i = 0; i < numBones; i++ ) {
 		const BoneData &	bw = boneData.at( i );
 		Transform	t;
 		Node * bone = root ? root->findChild( bw.bone ) : nullptr;
-		if ( bone )
+		if ( !bone )
+			t = bw.trans.inverted();
+		else
 			t = wtInv * bone->worldTrans();
 		boundSphere |= BoundSphere( t * bw.center, t.scale * bw.radius );
 		t = t * bw.trans;
@@ -339,6 +338,40 @@ void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
 	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( n * 3 ), GL_UNSIGNED_SHORT, (void *) ( i * 6 ) );
 }
 
+void Shape::drawWeights( int vertexSelected ) const
+{
+	auto	context = scene->renderer;
+	if ( !context || scene->selecting )
+		return;
+	auto	prog = context->useProgram( "selection.prog" );
+	if ( !prog )
+		return;
+
+	setUniforms( prog );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ) );
+	prog->uni1i( "selectionFlags", 0x08 );
+	prog->uni1i( "selectionParam", -1 );
+
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( triangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
+
+	if ( vertexSelected >= 0 && vertexSelected < verts.size() ) {
+		glEnable( GL_POLYGON_OFFSET_POINT );
+		glPolygonOffset( 0.0f, -100.0f );
+
+		float	pointSize = GLView::Settings::vertexPointSizeSelected + 0.5f;
+		glPointSize( pointSize );
+		int	selectionFlags = ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 ) | 0x0002;
+		prog->uni4f( "highlightColor", scene->highlightColor );
+		prog->uni1i( "selectionFlags", selectionFlags );
+		prog->uni1i( "selectionParam", vertexSelected );
+		context->fn->glDrawArrays( GL_POINTS, GLint( vertexSelected ), 1 );
+
+		glDisable( GL_POLYGON_OFFSET_POINT );
+	}
+
+	prog->uni1i( "selectionFlags", 0 );
+}
+
 void Shape::drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const
 {
 	scene->setGLColor( color );
@@ -405,14 +438,15 @@ void Shape::boneSphere( const NifModel * nif, const QModelIndex & index ) const
 {
 	Node * root = findParent( 0 );
 	Node * bone = root ? root->findChild( bones.value( index.row() ) ) : nullptr;
-	if ( !bone )
-		return;
 
 	auto bSphere = BoundSphere( nif, index );
 	if ( bSphere.radius > 0.0 ) {
 		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
 		scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
-		scene->loadModelViewMatrix( scene->view.toMatrix4() * bone->worldTrans() );
+		if ( !bone )
+			scene->loadModelViewMatrix( viewTrans() * Transform( nif, index ).inverted() );
+		else
+			scene->loadModelViewMatrix( scene->view.toMatrix4() * bone->worldTrans() );
 		scene->drawSphereSimple( bSphere.center, bSphere.radius, 36 );
 	}
 }

@@ -241,7 +241,7 @@
  * xxHash prototypes and implementation
  */
 
-#if defined (__cplusplus)
+#if defined(__cplusplus) && !defined(XXH_NO_EXTERNC_GUARD)
 extern "C" {
 #endif
 
@@ -1363,7 +1363,7 @@ XXH_PUBLIC_API XXH_errorcode XXH3_64bits_update (XXH_NOESCAPE XXH3_state_t* stat
  *
  * @see @ref streaming_example "Streaming Example"
  */
-XXH_PUBLIC_API XXH_PUREF XXH64_hash_t  XXH3_64bits_digest (XXH_NOESCAPE const XXH3_state_t* statePtr);
+XXH_PUBLIC_API XXH_PUREF XXH64_hash_t XXH3_64bits_digest (XXH_NOESCAPE const XXH3_state_t* statePtr);
 #endif /* !XXH_NO_STREAM */
 
 /* note : canonical representation of XXH3 is the same as XXH64
@@ -1728,6 +1728,7 @@ struct XXH64_state_s {
 #endif
 
 /*!
+ * @internal
  * @brief The size of the internal XXH3 buffer.
  *
  * This is the optimal update size for incremental hashing.
@@ -1737,10 +1738,11 @@ struct XXH64_state_s {
 #define XXH3_INTERNALBUFFER_SIZE 256
 
 /*!
- * @internal
- * @brief Default size of the secret buffer (and @ref XXH3_kSecret).
+ * @def XXH3_SECRET_DEFAULT_SIZE
+ * @brief Default Secret's size
  *
- * This is the size used in @ref XXH3_kSecret and the seeded functions.
+ * This is the size of internal XXH3_kSecret
+ * and is needed by XXH3_generateSecret_fromSeed().
  *
  * Not to be confused with @ref XXH3_SECRET_SIZE_MIN.
  */
@@ -1770,7 +1772,7 @@ struct XXH64_state_s {
  */
 struct XXH3_state_s {
    XXH_ALIGN_MEMBER(64, XXH64_hash_t acc[8]);
-       /*!< The 8 accumulators. See @ref XXH32_state_s::v and @ref XXH64_state_s::v */
+       /*!< The 8 accumulators. See @ref XXH32_state_s::acc and @ref XXH64_state_s::acc */
    XXH_ALIGN_MEMBER(64, unsigned char customSecret[XXH3_SECRET_DEFAULT_SIZE]);
        /*!< Used to store a custom secret generated from a seed. */
    XXH_ALIGN_MEMBER(64, unsigned char buffer[XXH3_INTERNALBUFFER_SIZE]);
@@ -1987,7 +1989,7 @@ XXH3_64bits_withSecretandSeed(XXH_NOESCAPE const void* data, size_t len,
 /*!
  * @brief Calculates 128-bit seeded variant of XXH3 hash of @p data.
  *
- * @param data       The memory segment to be hashed, at least @p len bytes in size.
+ * @param input      The memory segment to be hashed, at least @p len bytes in size.
  * @param length     The length of @p data, in bytes.
  * @param secret     The secret used to alter hash result predictably.
  * @param secretSize The length of @p secret, in bytes (must be >= XXH3_SECRET_SIZE_MIN)
@@ -2392,16 +2394,35 @@ static void XXH_free(void* p) { free(p); }
 
 #endif  /* XXH_NO_STDLIB */
 
-#include <string.h>
-
+#ifndef XXH_memcpy
 /*!
  * @internal
- * @brief Modify this function to use a different routine than memcpy().
+ * @brief XXH_memcpy() macro can be redirected at compile time
  */
-static void* XXH_memcpy(void* dest, const void* src, size_t size)
-{
-    return memcpy(dest,src,size);
-}
+#  include <string.h>
+#  define XXH_memcpy memcpy
+#endif
+
+#ifndef XXH_memset
+/*!
+ * @internal
+ * @brief XXH_memset() macro can be redirected at compile time
+ */
+#  include <string.h>
+#  define XXH_memset memset
+#endif
+
+#ifndef XXH_memcmp
+/*!
+ * @internal
+ * @brief XXH_memcmp() macro can be redirected at compile time
+ * Note: only needed by XXH128.
+ */
+#  include <string.h>
+#  define XXH_memcmp memcmp
+#endif
+
+
 
 #include <limits.h>   /* ULLONG_MAX */
 
@@ -3222,7 +3243,7 @@ XXH_PUBLIC_API void XXH32_copyState(XXH32_state_t* dstState, const XXH32_state_t
 XXH_PUBLIC_API XXH_errorcode XXH32_reset(XXH32_state_t* statePtr, XXH32_hash_t seed)
 {
     XXH_ASSERT(statePtr != NULL);
-    memset(statePtr, 0, sizeof(*statePtr));
+    XXH_memset(statePtr, 0, sizeof(*statePtr));
     XXH32_initAccs(statePtr->acc, seed);
     return XXH_OK;
 }
@@ -3719,7 +3740,7 @@ XXH_PUBLIC_API void XXH64_copyState(XXH_NOESCAPE XXH64_state_t* dstState, const 
 XXH_PUBLIC_API XXH_errorcode XXH64_reset(XXH_NOESCAPE XXH64_state_t* statePtr, XXH64_hash_t seed)
 {
     XXH_ASSERT(statePtr != NULL);
-    memset(statePtr, 0, sizeof(*statePtr));
+    XXH_memset(statePtr, 0, sizeof(*statePtr));
     XXH64_initAccs(statePtr->acc, seed);
     return XXH_OK;
 }
@@ -3950,8 +3971,8 @@ XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(XXH_NOESCAPE const XXH64_can
  * @ingroup tuning
  * @brief Overrides the vectorization implementation chosen for XXH3.
  *
- * Can be defined to 0 to disable SIMD or any of the values mentioned in
- * @ref XXH_VECTOR_TYPE.
+ * Can be defined to 0 to disable SIMD,
+ * or any other authorized value of @ref XXH_VECTOR.
  *
  * If this is not defined, it uses predefined macros to determine the best
  * implementation.
@@ -3989,7 +4010,7 @@ XXH_PUBLIC_API XXH64_hash_t XXH64_hashFromCanonical(XXH_NOESCAPE const XXH64_can
 #    define XXH_VECTOR XXH_AVX512
 #  elif defined(__AVX2__)
 #    define XXH_VECTOR XXH_AVX2
-#  elif defined(__SSE2__) || defined(_M_AMD64) || defined(_M_X64) || (defined(_M_IX86_FP) && (_M_IX86_FP == 2))
+#  elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && (_M_IX86_FP == 2))
 #    define XXH_VECTOR XXH_SSE2
 #  elif (defined(__PPC64__) && defined(__POWER8_VECTOR__)) \
      || (defined(__s390x__) && defined(__VEC__)) \
@@ -4369,7 +4390,10 @@ do { \
 #  error "default keyset is not large enough"
 #endif
 
-/*! Pseudorandom secret taken directly from FARSH. */
+/*!
+ * @internal
+ * @def XXH3_kSecret
+ * @brief Pseudorandom secret taken directly from FARSH. */
 XXH_ALIGN(64) static const xxh_u8 XXH3_kSecret[XXH_SECRET_DEFAULT_SIZE] = {
     0xb8, 0xfe, 0x6c, 0x39, 0x23, 0xa4, 0x4b, 0xbe, 0x7c, 0x01, 0x81, 0x2c, 0xf7, 0x21, 0xad, 0x1c,
     0xde, 0xd4, 0x6d, 0xe9, 0x83, 0x90, 0x97, 0xdb, 0x72, 0x40, 0xa4, 0xa4, 0xb7, 0xb3, 0x67, 0x1f,
@@ -6404,7 +6428,7 @@ XXH3_reset_internal(XXH3_state_t* statePtr,
     XXH_ASSERT(offsetof(XXH3_state_t, nbStripesPerBlock) > initStart);
     XXH_ASSERT(statePtr != NULL);
     /* set members from bufferedSize to nbStripesPerBlock (excluded) to 0 */
-    memset((char*)statePtr + initStart, 0, initLength);
+    XXH_memset((char*)statePtr + initStart, 0, initLength);
     statePtr->acc[0] = XXH_PRIME32_3;
     statePtr->acc[1] = XXH_PRIME64_1;
     statePtr->acc[2] = XXH_PRIME64_2;
@@ -6523,8 +6547,9 @@ XXH3_consumeStripes(xxh_u64* XXH_RESTRICT acc,
 #   define XXH3_STREAM_USE_STACK 1
 # endif
 #endif
-/*
- * Both XXH3_64bits_update and XXH3_128bits_update use this routine.
+/* This function accepts f_acc and f_scramble as function pointers,
+ * making it possible to implement multiple variants with different acc & scramble stages.
+ * This is notably useful to implement multiple vector variants with different intrinsics.
  */
 XXH_FORCE_INLINE XXH_errorcode
 XXH3_update(XXH3_state_t* XXH_RESTRICT const state,
@@ -6605,12 +6630,21 @@ XXH3_update(XXH3_state_t* XXH_RESTRICT const state,
     return XXH_OK;
 }
 
+/*
+ * Both XXH3_64bits_update and XXH3_128bits_update use this routine.
+ */
+XXH_NO_INLINE XXH_errorcode
+XXH3_update_regular(XXH_NOESCAPE XXH3_state_t* state, XXH_NOESCAPE const void* input, size_t len)
+{
+    return XXH3_update(state, (const xxh_u8*)input, len,
+                       XXH3_accumulate, XXH3_scrambleAcc);
+}
+
 /*! @ingroup XXH3_family */
 XXH_PUBLIC_API XXH_errorcode
 XXH3_64bits_update(XXH_NOESCAPE XXH3_state_t* state, XXH_NOESCAPE const void* input, size_t len)
 {
-    return XXH3_update(state, (const xxh_u8*)input, len,
-                       XXH3_accumulate, XXH3_scrambleAcc);
+    return XXH3_update_regular(state, input, len);
 }
 
 
@@ -7146,7 +7180,7 @@ XXH3_128bits_reset_withSecretandSeed(XXH_NOESCAPE XXH3_state_t* statePtr, XXH_NO
 XXH_PUBLIC_API XXH_errorcode
 XXH3_128bits_update(XXH_NOESCAPE XXH3_state_t* state, XXH_NOESCAPE const void* input, size_t len)
 {
-    return XXH3_64bits_update(state, input, len);
+    return XXH3_update_regular(state, input, len);
 }
 
 /*! @ingroup XXH3_family */
@@ -7168,14 +7202,12 @@ XXH_PUBLIC_API XXH128_hash_t XXH3_128bits_digest (XXH_NOESCAPE const XXH3_state_
 #endif /* !XXH_NO_STREAM */
 /* 128-bit utility functions */
 
-#include <string.h>   /* memcmp, memcpy */
-
 /* return : 1 is equal, 0 if different */
 /*! @ingroup XXH3_family */
 XXH_PUBLIC_API int XXH128_isEqual(XXH128_hash_t h1, XXH128_hash_t h2)
 {
     /* note : XXH128_hash_t is compact, it has no padding byte */
-    return !(memcmp(&h1, &h2, sizeof(h1)));
+    return !(XXH_memcmp(&h1, &h2, sizeof(h1)));
 }
 
 /* This prototype is compatible with stdlib's qsort().
@@ -7259,7 +7291,7 @@ XXH3_generateSecret(XXH_NOESCAPE void* secretBuffer, size_t secretSize, XXH_NOES
     {   size_t pos = 0;
         while (pos < secretSize) {
             size_t const toCopy = XXH_MIN((secretSize - pos), customSeedSize);
-            memcpy((char*)secretBuffer + pos, customSeed, toCopy);
+            XXH_memcpy((char*)secretBuffer + pos, customSeed, toCopy);
             pos += toCopy;
     }   }
 
@@ -7284,7 +7316,7 @@ XXH3_generateSecret_fromSeed(XXH_NOESCAPE void* secretBuffer, XXH64_hash_t seed)
     XXH_ALIGN(XXH_SEC_ALIGN) xxh_u8 secret[XXH_SECRET_DEFAULT_SIZE];
     XXH3_initCustomSecret(secret, seed);
     XXH_ASSERT(secretBuffer != NULL);
-    memcpy(secretBuffer, secret, XXH_SECRET_DEFAULT_SIZE);
+    XXH_memcpy(secretBuffer, secret, XXH_SECRET_DEFAULT_SIZE);
 }
 
 
@@ -7306,6 +7338,6 @@ XXH3_generateSecret_fromSeed(XXH_NOESCAPE void* secretBuffer, XXH64_hash_t seed)
 #endif  /* XXH_IMPLEMENTATION */
 
 
-#if defined (__cplusplus)
+#if defined (__cplusplus) && !defined(XXH_NO_EXTERNC_GUARD)
 } /* extern "C" */
 #endif

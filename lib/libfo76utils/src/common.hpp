@@ -42,6 +42,21 @@
 #  endif
 #endif
 
+#ifndef ENABLE_GCC_SIMD_16
+#  if defined(__GNUC__) && defined(__SSE2__)
+#    define ENABLE_GCC_SIMD_16  1
+#  else
+#    define ENABLE_GCC_SIMD_16  0
+#  endif
+#endif
+#ifndef ENABLE_GCC_SIMD_32
+#  if defined(__GNUC__) && defined(__AVX__)
+#    define ENABLE_GCC_SIMD_32  1
+#  else
+#    define ENABLE_GCC_SIMD_32  0
+#  endif
+#endif
+
 class NifSkopeError : public std::exception
 {
  protected:

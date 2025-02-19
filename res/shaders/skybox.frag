@@ -4,7 +4,6 @@
 
 uniform samplerCube	CubeMap;
 uniform bool	hasCubeMap;
-uniform int	skyCubeMipLevel;
 
 in vec3 LightDir;
 in vec3 ViewDir;
@@ -49,7 +48,7 @@ void main()
 
 	vec3	viewWS = reflMatrix * V;
 
-	float	m = clamp( float(renderOptions1.z), 0.0, 6.0 );
+	float	m = clamp( float(cubeBgndMipLevel), 0.0, 6.0 );
 	float	roughness = ( 5.0 - sqrt( 25.0 - 4.0 * m ) ) / 4.0;
 	vec3	color = lightSourceDiffuse[0].rgb * LightingFuncGGX_REF( VdotL, max(roughness, 0.02) ) * VdotL0;
 
@@ -61,5 +60,5 @@ void main()
 		color += ambient * 0.08;
 	}
 
-	fragColor = vec4( tonemap( color * lightingControls.y, lightingControls.x ), 0.0 );
+	fragColor = vec4( tonemap( color * brightnessScale, toneMapScale ), 0.0 );
 }

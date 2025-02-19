@@ -3,28 +3,26 @@
 layout ( points ) in;
 layout ( triangle_strip, max_vertices = 4 ) out;
 
-uniform vec2 particleScale;
-
 #include "uniforms.glsl"
+
+uniform vec2 particleScale;
 
 in vec4 vsColor[];
 in float vsParticleSize[];
 
 out vec2 texCoords[9];
 
-out vec4 A;
+flat out vec4 A;
 out vec4 C;
-out vec4 D;
-out float glowScale;
+flat out vec4 D;
 
 out vec3 N;
 
 void main()
 {
-	A = vec4( sqrt(lightSourceAmbient.rgb) * 0.375, lightingControls.x );
+	A = vec4( sqrt(lightSourceAmbient.rgb) * 0.375, toneMapScale );
 	C = vsColor[0];
-	D = sqrt( vec4(lightSourceDiffuse[0].rgb, lightingControls.y) );
-	glowScale = sqrt( lightingControls.z );
+	D = sqrt( vec4(lightSourceDiffuse[0].rgb, brightnessScale) );
 
 	N = vec3( 0.0, 0.0, 1.0 );
 

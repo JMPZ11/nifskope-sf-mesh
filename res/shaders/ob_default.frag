@@ -1,5 +1,7 @@
 #version 410 core
 
+#include "uniforms.glsl"
+
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
 uniform sampler2D GlowMap;
@@ -49,10 +51,9 @@ in vec3 ViewDir;
 
 in vec2 texCoord;
 
-in vec4 A;
+flat in vec4 A;
 in vec4 C;
-in vec4 D;
-in float glowScale;
+flat in vec4 D;
 
 out vec4 fragColor;
 
@@ -178,7 +179,7 @@ void main()
 		}
 
 		// Emissive
-		vec3 emissive = glowColor.rgb * ( glowMult * glowScale );
+		vec3 emissive = glowColor.rgb * ( glowMult * glowScaleSRGB );
 		if ( ( vertexColorFlags & 0x10 ) == 0 )
 			emissive *= frontMaterialEmission.rgb * frontMaterialEmission.a;
 		else

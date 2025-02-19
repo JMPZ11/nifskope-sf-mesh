@@ -287,12 +287,19 @@ public:
 		FloatVector4	lightSourcePosition[3];
 		FloatVector4	lightSourceDiffuse[3];
 		FloatVector4	lightSourceAmbient;
-		// X = tone mapping control (1.0 = full tone mapping), Y = overall brightness, Z = glow scale
-		FloatVector4	lightingControls;
+		float	toneMapScale;					// 1.0 = full tone mapping
+		float	brightnessScale;
+		float	glowScale;
+		float	glowScaleSRGB;
 		std::int32_t	viewportDimensions[4];	// X, Y, width, height
-		// skinning enabled, scene flags, cube map background mip level, Starfield POM steps
-		std::int32_t	renderOptions1[4];
-		FloatVector4	renderOptions2;			// Starfield POM scale, offset
+		std::int32_t	doSkinning;
+		std::int32_t	sceneOptions;
+		std::int32_t	cubeBgndMipLevel;
+		std::int32_t	sfParallaxMaxSteps;
+		float	sfParallaxScale;
+		float	sfParallaxOffset;
+		float	unusedUniform1;
+		float	unusedUniform2;
 	};
 
 	//! Context Functions
@@ -338,6 +345,7 @@ public:
 	}
 	void setGlobalUniforms();
 	void setDefaultVertexAttribs( std::uint64_t attrMask, const float * const * attrData );
+	// bone transforms are 4x3 matrices in row-major order
 	void updateBoneTransforms( const FloatVector4 * boneTransforms, size_t numBones );
 
 	//! Load and bind geometry data without drawing the shape

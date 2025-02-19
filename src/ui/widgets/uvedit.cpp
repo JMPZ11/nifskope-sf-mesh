@@ -263,7 +263,6 @@ void UVWidget::paintGL()
 	if ( !cx )
 		return;
 	cx->setCacheSize( 16777216 );
-	cx->shrinkCache();
 	cx->setViewport( 0, 0, pixelWidth, pixelHeight );
 
 	FloatVector4	bgColor = FloatVector4( cfg.background );
@@ -384,13 +383,15 @@ void UVWidget::paintGL()
 			cx->fn->glDrawArrays( GL_LINE_LOOP, 0, GLsizei( selectPoly.size() ) );
 		}
 	}
+
+	cx->shrinkCache();
 }
 
 void UVWidget::drawTexCoords()
 {
 	qsizetype	numVerts = texcoords.size();
 	qsizetype	numTriangles = faces.size();
-	if ( !cx || numVerts < 1 || numTriangles < 1 )
+	if ( numVerts < 1 || numTriangles < 1 )
 		return;
 
 	vertexPosBuf.resize( numVerts );

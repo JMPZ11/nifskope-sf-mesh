@@ -148,12 +148,18 @@ protected:
 	// set the vertex color override uniform for the current shader program
 	void setGLColor( FloatVector4 c ) const;
 
+	struct HvkShapeStackItem {
+		const QModelIndex & iShape;
+		HvkShapeStackItem * parent;
+		HvkShapeStackItem( const QModelIndex & index, HvkShapeStackItem * p ) : iShape( index ), parent( p ) {}
+	};
+
 	// mesh data needs to be bound before calling the following two functions
 	void drawVertexSelection( qsizetype numVerts, int i );
 	void drawTriangleSelection( const QVector<Triangle> & triangles, int i, int n = 1,
 								int startVertex = 0, int endVertex = -1 );
 	void drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t, int i );
-	void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
+	void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, HvkShapeStackItem * stack,
 						Scene * scene, FloatVector4 origin_color4fv, const Matrix4 & parentTransform );
 	void drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, Scene * scene );
 	void drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosition );

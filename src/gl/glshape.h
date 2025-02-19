@@ -50,6 +50,7 @@ class Shape : public Node
 	friend class MorphController;
 	friend class UVController;
 	friend class Renderer;
+	friend class GltfStore;
 
 public:
 	Shape( Scene * s, const QModelIndex & b );
@@ -70,12 +71,14 @@ public:
 	void drawWireframe( FloatVector4 color ) const;
 	// i = first triangle, n = number of triangles to draw
 	void drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const;
+	void drawWeights( int vertexSelected ) const;
 	void drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const;
 	void drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const;
 	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
 	bool bindShape() const;
 
 	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); }
+	virtual QModelIndex triangleAt( int ) const { return QModelIndex(); }
 	virtual void updateLodLevel() { lodTriangleCount = triangles.size(); }
 
 protected:
@@ -180,11 +183,6 @@ public:
 	inline void clearHash()
 	{
 		dataHash.attrMask = 0;
-	}
-
-	inline const QVector<BoneData> & getBoneData() const
-	{
-		return boneData;
 	}
 };
 

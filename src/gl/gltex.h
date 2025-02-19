@@ -151,7 +151,7 @@ public:
 	~TexCache();
 
 	//! Bind a texture from filename
-	int bind( const QStringView & fname, const NifModel * nif = nullptr );
+	int bind( const QStringView & fname, const NifModel * nif );
 	//! Bind a cube map from filename
 	bool bindCube( const QString & fname, const NifModel * nif, bool useSecondTexture );
 	//! Bind a texture from pixel data
@@ -166,7 +166,7 @@ public:
 	bool importFile( NifModel * nif, const QModelIndex & iSource, QModelIndex & iData );
 
 	//! Find a texture based on its filename
-	static QString find( const QString & file, const NifModel * nif = nullptr );
+	static QString find( const QString & file, const NifModel * nif );
 	//! Remove the path from a filename
 	static QString stripPath( const QString & file, const QString & nifFolder );
 	//! Checks whether the given file can be loaded

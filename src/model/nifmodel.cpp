@@ -2579,27 +2579,6 @@ void NifModel::invalidateItemConditions( NifItem * item )
  *  link functions
  */
 
-bool NifModel::insertLink( QList<int> & l, int n )
-{
-	qsizetype	n0 = 0;
-	qsizetype	n2 = l.size();
-	while ( n2 > ( n0 + 1 ) ) {
-		qsizetype	n1 = ( n0 + n2 ) >> 1;
-		if ( n < l.at( n1 ) )
-			n2 = n1;
-		else
-			n0 = n1;
-	}
-	if ( n0 < n2 ) {
-		if ( n == l.at( n0 ) )
-			return false;
-		if ( n > l.at( n0 ) )
-			n0++;
-	}
-	l.insert( n0, n );
-	return true;
-}
-
 void NifModel::updateLinks( int block )
 {
 	if ( lockUpdates ) {
@@ -2642,7 +2621,7 @@ void NifModel::updateLinks( int block )
 				const NifItem *	b;
 				if ( bsVersion >= 151 && ( b = getBlockItem( qint32(c) ) ) != nullptr && b->name() == "BSShaderTextureSet" ) {
 					if ( c > 0 && ( b = getBlockItem( qint32(c - 1) ) ) != nullptr && b->name() == "BSLightingShaderProperty" )
-						insertLink( childLinks[c - 1], c );
+						childLinks[c - 1] += c;
 				} else {
 					rootLinks.append( c );
 				}
@@ -2668,10 +2647,13 @@ void NifModel::updateLinks( int block, NifItem * parent )
 
 		int i = c->getLinkValue();
 		if ( i >= 0 ) {
-			if ( c->valueType() == NifValue::tUpLink )
-				insertLink( parentLinks[block], i );
-			else
-				insertLink( childLinks[block], i );
+			if ( c->valueType() == NifValue::tUpLink ) {
+				if ( !parentLinks[block].contains( i ) )
+					parentLinks[block].append( i );
+			} else {
+				if ( !childLinks[block].contains( i ) )
+					childLinks[block].append( i );
+			}
 		}
 	}
 }

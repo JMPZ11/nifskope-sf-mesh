@@ -6,10 +6,18 @@ layout ( std140 ) uniform globalUniforms
 	vec4	lightSourcePosition[3];
 	vec4	lightSourceDiffuse[3];
 	vec4	lightSourceAmbient;
-	vec4	lightingControls;			// tone mapping control (1.0 = full tone mapping), overall and glow brightness
+	float	toneMapScale;				// 1.0 = full tone mapping
+	float	brightnessScale;
+	float	glowScale;
+	float	glowScaleSRGB;
 	ivec4	viewportDimensions;			// X, Y, width, height
-	// skinning enabled, scene flags, cube map background mip level, Starfield POM steps
-	ivec4	renderOptions1;
-	vec4	renderOptions2;				// Starfield POM scale, offset
+	bool	doSkinning;
+	int	sceneOptions;
+	int	cubeBgndMipLevel;
+	int	sfParallaxMaxSteps;
+	float	sfParallaxScale;
+	float	sfParallaxOffset;
+	float	unusedUniform1;
+	float	unusedUniform2;
 	mat3x4	boneTransforms[256];		// bone transforms in row-major order
 };

@@ -47,10 +47,9 @@ in vec3 ViewDir;
 
 in vec2 texCoord;
 
-in vec4 A;
+flat in vec4 A;
 in vec4 C;
-in vec4 D;
-in float glowScale;
+flat in vec4 D;
 
 in mat3 btnMatrix;
 
@@ -189,7 +188,7 @@ void main()
 		albedo *= tintColor;
 	}
 
-	color.rgb = albedo * (diffuse + emissive * glowScale) + spec;
+	color.rgb = albedo * (diffuse + emissive * glowScaleSRGB) + spec;
 	color.rgb = tonemap( color.rgb );
 
 	fragColor = color;

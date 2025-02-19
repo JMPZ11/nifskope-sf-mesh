@@ -39,7 +39,9 @@ void BSMesh::drawShapes( NodeList * secondPass )
 		return;
 	}
 
-	auto nif = NifModel::fromIndex(iBlock);
+	auto nif = scene->nifModel;
+	if ( !nif )
+		return;
 	if ( lodLevel != scene->lodLevel ) {
 		lodLevel = scene->lodLevel;
 		updateData(nif);
@@ -48,7 +50,8 @@ void BSMesh::drawShapes( NodeList * secondPass )
 	if ( !bindShape() )
 		return;
 
-	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+	int	selectionFlags = scene->selecting;
+	if ( ( selectionFlags & int(Scene::SelVertex) ) && drawInSecondPass ) [[unlikely]] {
 		glDisable( GL_FRAMEBUFFER_SRGB );
 		drawVerts();
 		return;
@@ -62,33 +65,34 @@ void BSMesh::drawShapes( NodeList * secondPass )
 
 	auto	context = scene->renderer;
 
-	if ( !scene->selecting ) [[likely]] {
+	if ( !selectionFlags ) [[likely]] {
 		glEnable( GL_FRAMEBUFFER_SRGB );
 		shader = context->setupProgram( this, shader );
 
-	} else {
+	} else if ( auto prog = context->useProgram( "selection.prog" ); prog ) {
 		glDisable( GL_FRAMEBUFFER_SRGB );
 
-		auto	prog = context->useProgram( "selection.prog" );
-		if ( prog ) {
-			setUniforms( prog );
-			prog->uni1i( "selectionFlags", 0x0001 );
-			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
-		}
+		setUniforms( prog );
+		prog->uni1i( "selectionFlags", selectionFlags & 5 );
+		prog->uni1i( "selectionParam", ( !( selectionFlags & int(Scene::SelVertex) ) ? nodeId : -1 ) );
 	}
 
 	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( triangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
+
+	if ( selectionFlags & int( Scene::SelVertex ) ) [[unlikely]]
+		drawVerts();
 }
 
 void BSMesh::drawSelection() const
 {
+	const auto &	blk = scene->currentBlock;
 	if ( !scene->isSelModeVertex() ) {
 		if ( scene->hasOption(Scene::ShowNodes) )
 			Node::drawSelection();
 
-		if ( !( scene->isSelModeObject() && scene->currentBlock == iBlock ) )
+		if ( !( scene->isSelModeObject() && blk.isValid() && ( blk == iBlock || blk == iSkinData ) ) )
 			return;
 	}
 
@@ -141,14 +145,18 @@ void BSMesh::drawSelection() const
 			Shape::drawBoundingBox( boundsCenter, boundsDims, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
 	} else if ( n == "Vertices" || n == "UVs" || n == "UVs 2" || n == "Vertex Colors" || n == "Weights" ) {
 		int	s = -1;
-		if ( n == p && ( s = idx.row() ) >= 0 ) {
-			if ( n == "Weights" ) {
+		if ( n == p )
+			s = idx.row();
+		if ( n == "Weights" ) {
+			if ( s >= 0 ) {
 				int	weightsPerVertex = int( nif->get<quint32>(idx.parent().parent(), "Weights Per Vertex") );
 				if ( weightsPerVertex > 1 )
 					s /= weightsPerVertex;
 			}
+			Shape::drawWeights( s );
+		} else {
+			Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 		}
-		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 	} else if ( n == "Normals" || n == "Tangents" ) {
 		int	btnMask = ( n == "Normals" ? 0x04 : 0x03 );
 		int	s = -1;
@@ -166,24 +174,32 @@ void BSMesh::drawSelection() const
 				int	numBones;
 				if ( iBones.isValid() && nif->isArray( iBones ) && ( numBones = nif->rowCount( iBones ) ) > 0 ) {
 					for ( int i = 0; i < numBones; i++ ) {
-						auto	iBone = nif->getIndex( iBones, i );
-						if ( !iBone.isValid() )
-							continue;
-						BoundSphere	sph( nif, iBone );
-						if ( !( sph.radius > 0.0f ) )
-							continue;
-						Transform	t( nif, iBone );
-						sph.center -= t.translation;
-						t.rotation = t.rotation.inverted();
-						t.translation = Vector3( 0.0f, 0.0f, 0.0f );
-						t.scale = 1.0f / t.scale;
-						sph.radius *= t.scale;
-						sph.center = t * sph.center;
-						drawBoundingSphere( sph, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
-						bindShape();
+						if ( auto iBone = nif->getIndex( iBones, i ); iBone.isValid() )
+							boneSphere( nif, iBone );
 					}
 				}
 			}
+		}
+	} else if ( n == "BSSkin::BoneData" ) {
+		// Draw all bones' bounding spheres
+
+		// Get shape block
+		if ( nif->getBlockIndex( nif->getParent( nif->getParent( blk ) ) ) == iBlock ) {
+			auto iBones = nif->getIndex( blk, "Bone List" );
+			int ct = nif->rowCount( iBones );
+
+			for ( int i = 0; i < ct; i++ ) {
+				auto b = nif->getIndex( iBones, i );
+				boneSphere( nif, b );
+			}
+		}
+	} else if ( n == "Bone List" ) {
+		// Draw bone bounding sphere
+		if ( nif->isArray( idx ) ) {
+			for ( int i = 0; i < nif->rowCount( idx ); i++ )
+				boneSphere( nif, nif->getIndex( idx, i ) );
+		} else {
+			boneSphere( nif, idx );
 		}
 	} else {
 		int	s = -1;
@@ -306,15 +322,12 @@ void BSMesh::drawVerts() const
 	Shape::drawVerts( GLView::Settings::vertexSelectPointSize, vertexSelected );
 }
 
-QModelIndex BSMesh::vertexAt( int c ) const
+QModelIndex BSMesh::getMeshDataIndex() const
 {
-	if ( !( c >= 0 && c < verts.size() ) )
-		return QModelIndex();
-
-	QModelIndex	iMeshData = iBlock;
-	if ( !iMeshData.isValid() )
-		return QModelIndex();
-	for ( auto nif = NifModel::fromValidIndex( iMeshData ); nif && nif->blockInherits( iMeshData, "BSGeometry" ); ) {
+	for ( QModelIndex iMeshData = iBlock; iMeshData.isValid(); ) {
+		auto	nif = scene->nifModel;
+		if ( !( nif && nif->blockInherits( iMeshData, "BSGeometry" ) ) )
+			break;
 		iMeshData = nif->getIndex( iMeshData, "Meshes" );
 		if ( !( iMeshData.isValid() && nif->isArray( iMeshData ) ) )
 			break;
@@ -325,38 +338,65 @@ QModelIndex BSMesh::vertexAt( int c ) const
 		if ( !iMeshData.isValid() )
 			break;
 		iMeshData = nif->getIndex( iMeshData, "Mesh" );
-		if ( !iMeshData.isValid() )
-			break;
-		iMeshData = nif->getIndex( iMeshData, "Mesh Data" );
-		if ( !iMeshData.isValid() )
-			break;
-		QModelIndex	iVerts;
-		const auto &	idx = scene->currentIndex;
-		if ( idx.isValid() ) {
-			auto	n = idx.data( NifSkopeDisplayRole ).toString();
-			if ( n == "UVs" )
-				iVerts = nif->getIndex( iMeshData, "UVs" );
-			else if ( n == "UVs 2" )
-				iVerts = nif->getIndex( iMeshData, "UVs 2" );
-			else if ( n == "Vertex Colors" )
-				iVerts = nif->getIndex( iMeshData, "Vertex Colors" );
-			else if ( n == "Normals" )
-				iVerts = nif->getIndex( iMeshData, "Normals" );
-			else if ( n == "Tangents" )
-				iVerts = nif->getIndex( iMeshData, "Tangents" );
-			else if ( n == "Weights" )
-				iVerts = nif->getIndex( iMeshData, "Weights" );
-		}
-		if ( !iVerts.isValid() )
-			iVerts = nif->getIndex( iMeshData, "Vertices" );
-		if ( !( iVerts.isValid() && nif->isArray( iVerts ) ) )
-			break;
-		int	n = nif->rowCount( iVerts );
-		if ( n <= 0 )
-			break;
-		return nif->getIndex( iVerts, int( std::int64_t( c ) * n / verts.size() ) );
+		if ( iMeshData.isValid() )
+			return nif->getIndex( iMeshData, "Mesh Data" );
 	}
 	return QModelIndex();
+}
+
+QModelIndex BSMesh::vertexAt( int c ) const
+{
+	auto	nif = scene->nifModel;
+	if ( !( c >= 0 && c < verts.size() && nif ) )
+		return QModelIndex();
+
+	QModelIndex	iMeshData = getMeshDataIndex();
+	if ( !iMeshData.isValid() )
+		return QModelIndex();
+	QModelIndex	iVerts;
+	const auto &	idx = scene->currentIndex;
+	if ( idx.isValid() ) {
+		auto	n = idx.data( NifSkopeDisplayRole ).toString();
+		if ( n == "UVs" )
+			iVerts = nif->getIndex( iMeshData, "UVs" );
+		else if ( n == "UVs 2" )
+			iVerts = nif->getIndex( iMeshData, "UVs 2" );
+		else if ( n == "Vertex Colors" )
+			iVerts = nif->getIndex( iMeshData, "Vertex Colors" );
+		else if ( n == "Normals" )
+			iVerts = nif->getIndex( iMeshData, "Normals" );
+		else if ( n == "Tangents" )
+			iVerts = nif->getIndex( iMeshData, "Tangents" );
+		else if ( n == "Weights" )
+			iVerts = nif->getIndex( iMeshData, "Weights" );
+	}
+	if ( !iVerts.isValid() )
+		iVerts = nif->getIndex( iMeshData, "Vertices" );
+	int	n;
+	if ( iVerts.isValid() && nif->isArray( iVerts ) && ( n = nif->rowCount( iVerts ) ) > 0 )
+		return nif->getIndex( iVerts, int( std::int64_t( c ) * n / verts.size() ) );
+	return QModelIndex();
+}
+
+QModelIndex BSMesh::triangleAt( int c ) const
+{
+	auto	nif = scene->nifModel;
+	if ( !( c >= 0 && c < triangles.size() && nif ) )
+		return QModelIndex();
+
+	QModelIndex	iMeshData = getMeshDataIndex();
+	if ( !iMeshData.isValid() )
+		return QModelIndex();
+	QModelIndex	iTriangles = iMeshData;
+	quint32	l = lodLevel;
+	quint32	n;
+	if ( l && ( n = nif->get<quint32>( iMeshData, "Num LODs" ) ) != 0 ) {
+		l = std::min( l, n );
+		iTriangles = nif->getIndex( nif->getIndex( iMeshData, "LODs" ), int( l - 1U ) );
+	}
+	if ( iTriangles.isValid() )
+		iTriangles = nif->getIndex( iTriangles, "Triangles" );
+	return nif->getIndex( iTriangles, c );
 }
 
 void BSMesh::updateImpl(const NifModel* nif, const QModelIndex& index)
@@ -367,7 +407,7 @@ void BSMesh::updateImpl(const NifModel* nif, const QModelIndex& index)
 		return;
 
 	iData = index;
-	iMeshes = nif->getIndex(index, "Meshes");
+	auto iMeshes = nif->getIndex(index, "Meshes");
 	meshes.clear();
 	for ( int i = 0; i < 4; i++ ) {
 		auto meshArray = nif->getIndex( iMeshes, i );
@@ -390,10 +430,7 @@ void BSMesh::updateData(const NifModel* nif)
 	resetSkinning();
 	resetVertexData();
 	resetSkeletonData();
-	skinID = -1;
-	numWeights = 0;
 	gpuLODs.clear();
-	boneNames.clear();
 
 	if ( meshes.size() == 0 )
 		return;
@@ -407,7 +444,9 @@ void BSMesh::updateData(const NifModel* nif)
 
 	lodLevel = std::min(scene->lodLevel, Scene::LodLevel(lodCount - 1));
 
-	const BoneWeightsUNorm *	weights = nullptr;
+	const std::uint32_t *	weights = nullptr;
+	int	weightsPerVertex = 0;
+	int	numWeights = 0;
 	auto meshIndex = (hasMeshLODs) ? 0 : lodLevel;
 	if ( lodCount > int(lodLevel) ) {
 		auto& mesh = meshes[meshIndex];
@@ -431,8 +470,11 @@ void BSMesh::updateData(const NifModel* nif)
 		mesh->calculateBitangents( tangents );
 		boneWeights0.clear();
 		boneWeights1.clear();
-		numWeights = int( mesh->weights.size() );
-		if ( numWeights >= verts.size() )
+		if ( mesh->weightsPerVertex > 0 ) {
+			weightsPerVertex = mesh->weightsPerVertex;
+			numWeights = int( mesh->weights.size() / mesh->weightsPerVertex );
+		}
+		if ( numWeights > 0 )
 			weights = mesh->weights.constData();
 		gpuLODs = mesh->lods;
 
@@ -440,70 +482,47 @@ void BSMesh::updateData(const NifModel* nif)
 		boundSphere.applyInv( viewTrans() );
 	}
 
-	auto links = nif->getChildLinks(nif->getBlockNumber(iBlock));
-	for ( const auto link : links ) {
-		auto idx = nif->getBlockIndex(link);
-		if ( nif->blockInherits(idx, "BSSkin::Instance") ) {
+	if ( int link = nif->getLink( iBlock, "Skin" ); link >= 0 ) {
+		if ( auto idx = nif->getBlockIndex( link ); nif->blockInherits( idx, "BSSkin::Instance" ) ) {
 			iSkin = idx;
-			iSkinData = nif->getBlockIndex(nif->getLink(nif->getIndex(idx, "Data")));
-			skinID = nif->getBlockNumber(iSkin);
+			iSkinData = nif->getBlockIndex( nif->getLink( nif->getIndex(idx, "Data") ) );
 
-			qsizetype numBones = nif->get<int>(iSkinData, "Num Bones");
+			qsizetype numBones = nif->get<int>( iSkinData, "Num Bones" );
 			boneData.fill( BoneData(), numBones );
 
-			auto iBones = nif->getLinkArray(iSkin, "Bones");
-			qsizetype validBones = 0;
-			for ( qsizetype i = 0; i < iBones.size(); i++ ) {
-				auto b = iBones.at( i );
+			bones = nif->getLinkArray( iSkin, "Bones" );
+			for ( qsizetype i = 0; i < bones.size(); i++ ) {
+				int b = bones.at( i );
 				if ( i < numBones )
 					boneData[i].bone = b;
-				if ( b == -1 )
-					continue;
-				auto iBone = nif->getBlockIndex(b);
-				boneNames.append(nif->resolveString(iBone, "Name"));
-				validBones++;
 			}
-			isSkinned = ( validBones >= numBones );
+			isSkinned = true;
 
-			auto iBoneList = nif->getIndex(iSkinData, "Bone List");
+			auto iBoneList = nif->getIndex( iSkinData, "Bone List" );
 			for ( int i = 0; i < numBones; i++ )
 				boneData[i].setTransform( nif, nif->getIndex( iBoneList, i ) );
 
-			if ( weights && isSkinned ) {
-				size_t	numVerts = size_t( verts.size() );
-				boneWeights0.assign( numVerts, FloatVector4( 0.0f ) );
-				for ( size_t i = 0; i < numVerts; i++ ) {
+			if ( weights ) {
+				size_t	n = size_t( numWeights );
+				boneWeights0.assign( n, FloatVector4( 0.0f ) );
+				for ( size_t i = 0; i < n; i++ ) {
 					size_t	k = 0;
-					for ( const auto & bw : weights[i].weightsUNORM ) {
-						unsigned int	b = bw.bone;
-						float	w = bw.weight;
-						if ( b < (unsigned int) numBones && b < 256U && w > ( !b ? 0.00005f : 0.00001f ) ) {
-							w = float( int(b) ) + ( std::min( w, 1.0f ) * float( 65535.0 / 65536.0 ) );
+					for ( int j = 0; j < weightsPerVertex; j++, weights++ ) {
+						std::uint32_t	bw = *weights;
+						unsigned int	b = bw >> 16;
+						unsigned int	w = bw & 0xFFFFU;
+						if ( b < (unsigned int) numBones && b < 256U && w > ( !b ? 3U : 0U ) ) {
+							float	tmp = float( int(bw) ) * float( 1.0 / 65536.0 );
 							if ( k < 4 ) {
-								boneWeights0[i][k] = w;
+								boneWeights0[i][k] = tmp;
 							} else if ( k < 8 ) {
-								if ( boneWeights1.size() < numVerts ) [[unlikely]]
-									boneWeights1.assign( numVerts, FloatVector4( 0.0f ) );
-								boneWeights1[i][k & 3] = w;
+								if ( boneWeights1.size() < n ) [[unlikely]]
+									boneWeights1.assign( n, FloatVector4( 0.0f ) );
+								boneWeights1[i][k & 3] = tmp;
 							}
 							k++;
 						}
 					}
-				}
-			}
-		}
-	}
-	// Do after dependent blocks above
-	for ( const auto link : links ) {
-		auto idx = nif->getBlockIndex(link);
-		if ( nif->blockInherits(idx, "SkinAttach") ) {
-			boneNames = nif->getArray<QString>(idx, "Bones");
-			if ( std::all_of(boneNames.begin(), boneNames.end(), [](const QString& name) { return name.isEmpty(); }) ) {
-				boneNames.clear();
-				auto iBones = nif->getLinkArray(nif->getIndex(iSkin, "Bones"));
-				for ( const auto& b : iBones ) {
-					auto iBone = nif->getBlockIndex(b);
-					boneNames.append(nif->resolveString(iBone, "Name"));
 				}
 			}
 		}

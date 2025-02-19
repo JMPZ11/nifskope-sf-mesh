@@ -1091,9 +1091,6 @@ background: qradialgradient(spread:pad, cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0
    <property name="checkable">
     <bool>true</bool>
    </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
    <property name="icon">
     <iconset resource="../../res/nifskope.qrc">
      <normaloff>:/btn/cubeFront16</normaloff>:/btn/cubeFront16</iconset>

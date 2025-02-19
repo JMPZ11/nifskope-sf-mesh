@@ -163,7 +163,7 @@ void main()
 	} else if ( hasGlowMap ) {
 		emissive += glowMap.rgb * glowMult;
 	}
-	emissive *= lightingMap.a * lightingControls.z;
+	emissive *= lightingMap.a * glowScale;
 
 	vec3	f0 = max(reflMap.rgb, vec3(0.02));
 
@@ -231,7 +231,7 @@ void main()
 	// Emissive
 	color.rgb += emissive;
 
-	color.rgb = tonemap(color.rgb * lightingControls.y, lightingControls.x);
+	color.rgb = tonemap(color.rgb * brightnessScale, toneMapScale);
 
 	fragColor = color;
 }

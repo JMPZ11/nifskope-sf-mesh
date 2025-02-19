@@ -36,11 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "basemodel.h" // Inherited
 #include "gamemanager.h"
 
-#include <QHash>
 #include <QReadWriteLock>
-#include <QStack>
-#include <QStringList>
-
 #include <memory>
 
 class SpellBook;
@@ -674,6 +670,8 @@ public:
 	// The size of QVector must match the current size of the array.
 	bool setLinkArray( const QModelIndex & arrayParent, const char * arrayName, const QVector<qint32> & links );
 
+	bool updateChildArraySizes( NifItem * parent );
+
 public slots:
 	void updateSettings();
 
@@ -687,7 +685,6 @@ protected:
 
 	bool updateArraySizeImpl( NifItem * array ) override final;
 	bool updateByteArraySize( NifItem * array );
-	bool updateChildArraySizes( NifItem * parent );
 
 	QString ver2str( quint32 v ) const override final { return version2string( v ); }
 	quint32 str2ver( QString s ) const override final { return version2number( s ); }
@@ -729,11 +726,11 @@ protected:
 	QHash<int, QList<int> > childLinks;
 	QHash<int, QList<int> > parentLinks;
 	QList<int> rootLinks;
-	static bool insertLink( QList<int> & l, int n );
 
 	bool lockUpdates;
 	bool batchProcessingMode = false;
 
+public:
 	enum UpdateType
 	{
 		utNone   = 0,
@@ -745,7 +742,7 @@ protected:
 	UpdateType needUpdates;
 
 	void updateModel( UpdateType value = utAll );
-
+protected:
 	void cacheBSVersion( const NifItem * headerItem );
 
 	QString topItemRepr( const NifItem * item ) const override final;

@@ -611,15 +611,25 @@ int updateRecentActions( QAction * acts[], const QStringList & files )
 {
 	int numRecentFiles = std::min< qsizetype >( files.size(), NifSkope::NumRecentFiles );
 
-	for ( int i = 0; i < numRecentFiles; ++i ) {
-		QString text = QString( "&%1 %2" ).arg( i + 1 ).arg( strippedName( files[i] ) );
+	for ( int i = 0; i < NifSkope::NumRecentFiles; ++i ) {
+		QString fileName;
+		QString text;
+		if ( i >= numRecentFiles ) {
+			if ( i > 0 ) {
+				acts[i]->setVisible( false );
+				continue;
+			}
+			text = "<None>";
+		} else {
+			fileName = files[i];
+			text = QString( "&%1 %2" ).arg( i + 1 ).arg( strippedName( files[i] ) );
+		}
 		acts[i]->setText( text );
-		acts[i]->setData( files[i] );
-		acts[i]->setStatusTip( files[i] );
+		acts[i]->setData( fileName );
+		acts[i]->setStatusTip( fileName );
 		acts[i]->setVisible( true );
 	}
-	for ( int j = numRecentFiles; j < NifSkope::NumRecentFiles; ++j )
-		acts[j]->setVisible( false );
+	acts[0]->setEnabled( numRecentFiles > 0 );
 
 	return numRecentFiles;
 }
@@ -639,10 +649,7 @@ void NifSkope::updateRecentFileActions()
 	QSettings settings;
 	QStringList files = settings.value( "File/Recent File List" ).toStringList();
 
-	int numRecentFiles = ::updateRecentActions( recentFileActs, files );
-
-	aRecentFilesSeparator->setVisible( numRecentFiles > 0 );
-	ui->mRecentFiles->setEnabled( numRecentFiles > 0 );
+	::updateRecentActions( recentFileActs, files );
 }
 
 void NifSkope::updateAllRecentFileActions()
@@ -737,12 +744,13 @@ void NifSkope::setCurrentArchive( bool isArchiveFolder )
 		archiveName += "/*.bsa,*.ba2";
 	currentArchiveNames += archiveName;
 
-	QSettings settings;
-	QStringList files = settings.value( "File/Recent Archive List" ).toStringList();
-	::updateRecentFiles( files, currentArchivePath );
+	{
+		QSettings settings;
+		QStringList files = settings.value( "File/Recent Archive List" ).toStringList();
+		::updateRecentFiles( files, currentArchivePath );
 
-	settings.setValue( "File/Recent Archive List", files );
-
+		settings.setValue( "File/Recent Archive List", files );
+	}
 	updateAllRecentFileActions();
 }
 
@@ -770,9 +778,7 @@ void NifSkope::updateRecentArchiveActions()
 	QSettings settings;
 	QStringList files = settings.value( "File/Recent Archive List" ).toStringList();
 
-	int numRecentFiles = ::updateRecentActions( recentArchiveActs, files );
-
-	ui->mRecentArchives->setEnabled( numRecentFiles > 0 );
+	::updateRecentActions( recentArchiveActs, files );
 }
 
 void NifSkope::updateRecentArchiveFileActions()
@@ -780,14 +786,11 @@ void NifSkope::updateRecentArchiveFileActions()
 	QSettings settings;
 	QHash<QString, QVariant> hash = settings.value( "File/Recent Archive Files" ).toHash();
 
-	if ( !currentArchive || currentArchiveNames.empty() )
-		return;
+	QStringList files;
+	if ( currentArchive && !currentArchiveNames.empty() )
+		files = hash.value( currentArchiveNames.back() ).toStringList();
 
-	QStringList files = hash.value( currentArchiveNames.back() ).toStringList();
-
-	int numRecentFiles = ::updateRecentActions( recentArchiveFileActs, files );
-
-	mRecentArchiveFiles->setEnabled( numRecentFiles > 0 );
+	::updateRecentActions( recentArchiveFileActs, files );
 }
 
 QModelIndex NifSkope::currentNifIndex() const

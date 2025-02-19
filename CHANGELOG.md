@@ -1,6 +1,43 @@
  == CHANGELOG ==
 
-* Reworked the renderer to no longer use legacy (compatibility profile) OpenGL. This is an experimental change and there are still limitations and issues.
+* Implemented experimental glTF export and import for Skyrim: Special Edition, Fallout 4 and Fallout 76. See [README\_GLTF.md](https://github.com/fo76utils/nifskope/blob/develop/README_GLTF.md) for details, and known limitations and issues.
+* Updating bounds has been implemented for skinned BSTriShape meshes, and 'Update All Bounds' is now applicable to Skyrim Special Edition NIFs.
+* The viewport is now enabled by default on opening a new window, and not only after loading a NIF. This allows models imported to a new window to be visible, but may increase startup time, because resources need to be initialized for the default game (the default NIF version can be configured in the general settings).
+* Implemented triangle selection on triangle strips, shift-clicking selects the last point of the triangle.
+* Added keyboard controls for setting the light direction: F, L, T, Up, Down, Left and Right control the light source instead of the camera if Shift is held down.
+* Fixed incorrect sorting of link rows.
+* Fixed errors on drawing bhkPackedNiTriStripsShape.
+* Fixes to Fallout 3/New Vegas rendering: depth buffer flags are now checked only on BSShaderNoLightingProperty, added support for Lighting30ShaderProperty and TallGrassShaderProperty.
+* Fixes to skinned mesh rendering and glTF import.
+* Fixed the light direction being reset on changes to the render settings.
+* Fixed loading Fallout 76 and Starfield cube maps with legacy DDS header.
+* Fixed restoring the background color after silhouette mode.
+* Fixed issues with empty recent file menus (e.g. recent archive files before opening an archive).
+* Improved handling of the alpha channel on DDS screenshots when the model uses alpha blending.
+* Minor optimizations: faster cube map filtering, and use of SIMD data types in 'noavx' GCC and Clang builds.
+
+#### NifSkope-2.0.dev9-20250130
+
+* Reworked the renderer and UV editor to use OpenGL 4.2 or (on macOS) 4.1 core profile. The use of legacy (compatibility profile) functions has been removed. There is a new render setting for the size of mesh cache (vertex and element buffers), but the option to disable shaders has been removed.
+* Added support for Fallout 4 and 76 Havok material types, contributed by Jonathan Ostrus.
+* In object selection mode, triangles can be selected by shift-clicking. Note that this feature is not implemented yet for triangle strips.
+* Antialiasing (MSAA) now defaults to 4x, and the supported number of samples can be detected in the settings.
+* New render setting for the color of the grid, and the axes are highlighted with different colors (X: red, Y: green, Z: blue).
+* When the up axis is set to X or Y, the environment map and light direction are now correctly rotated so that the "up" direction matches the setting.
+* Flipping the view (F11) is no longer limited to the preset view directions.
+* Texture rendering in the UV editor reconstructs the missing channel of BC5 normal maps, and correctly handles signed formats.
+* BSTriShape and BSGeometry bone weights can now be rendered when selected, and also the bounding spheres of Starfield bones.
+* Added new spell to set all vertices of the selected triangle to zero, contributed by Thomas Caron.
+* The Transform/Edit spell has been changed to use a non-modal window.
+* Improved rendering of bounding spheres.
+* Added very limited support for Starfield skinning.
+* When frontal light mode is disabled, the light direction can be controlled with Shift + mouse dragging. The sliders on the lighting widget previously used for the same purpose have been replaced by environment map rotation and glow intensity controls.
+* New spell to optimize the order of triangles, using meshopt\_optimizeVertexCache().
+* Stripifying triangles is implemented with meshoptimizer instead of NvTriStrip.
+* Fixed issues https://github.com/hexabits/nifskope/issues/94 and https://github.com/niftools/nifskope/issues/239.
+* Fixed bugs in selecting furniture markers, and setting the OpenGL context when saving screenshots.
+* Various optimizations to rendering and to NIF item data structures.
+* The use of Qt 6 Core5 compatibility module (previously required by the XML parser) has been removed.
 
 #### NifSkope-2.0.dev9-20241228
 

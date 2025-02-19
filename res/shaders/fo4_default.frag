@@ -1,5 +1,7 @@
 #version 410 core
 
+#include "uniforms.glsl"
+
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
 uniform sampler2D GlowMap;
@@ -53,7 +55,6 @@ in vec2 texCoord;
 flat in vec4 A;
 in vec4 C;
 flat in vec4 D;
-flat in float glowScale;
 
 in mat3 btnMatrix;
 flat in mat3 reflMatrix;
@@ -339,7 +340,7 @@ void main()
 	color.rgb += spec;
 	color.rgb += A.rgb * specMask * fresnelSchlick( VdotH, 0.2 ) * (1.0 - NdotV) * D.rgb;
 	// Emissive
-	color.rgb += emissive * glowScale;
+	color.rgb += emissive * glowScaleSRGB;
 
 	color.rgb = tonemap( color.rgb );
 

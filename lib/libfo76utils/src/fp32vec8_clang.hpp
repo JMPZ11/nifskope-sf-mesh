@@ -134,8 +134,8 @@ inline void FloatVector8::convertToInt16(std::int16_t *p) const
 
 inline void FloatVector8::convertToInt32(std::int32_t *p) const
 {
-  YMM_UInt32  tmp;
-  __asm__ ("vcvtps2dq %t1, %t0" : "=x" (tmp) : "xm" (v));
+  YMM_Int32 tmp;
+  __asm__ ("vcvtps2dq %t1, %t0" : "=x" (tmp) : "x" (v));
   __asm__ ("vmovdqu %t1, %0" : "=m" (*p) : "x" (tmp));
 }
 

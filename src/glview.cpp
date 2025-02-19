@@ -82,19 +82,25 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ZOOM_MAX 1000.0
 
 #define DEBUG_FRAME_TIME 0
-#if DEBUG_FRAME_TIME
-#  include <chrono>
-#endif
 
 //! @file glview.cpp GLView implementation
 
+
+const Vector3 GLView::viewRotations[6] = {
+	{ 0.0f, 0.0f, 0.0f },		// Top
+	{ 180.0f, 0.0f, 0.0f },		// Bottom
+	{ -90.0f, 0.0f, -90.0f },	// Left
+	{ -90.0f, 0.0f, 90.0f },	// Right
+	{ -90.0f, 0.0f, 180.0f },	// Front
+	{ -90.0f, 0.0f, 0.0f }		// Back
+};
 
 GLView::GLView( QWindow * p )
 	: QOpenGLWindow( QOpenGLWindow::NoPartialUpdate, p )
 {
 	QSettings settings;
 	int	aa = settings.value( "Settings/Render/General/Msaa Samples", 2 ).toInt();
-	aa = std::min< int >( std::max< int >( aa, 0 ), 4 );
+	aa = std::clamp< int >( aa, 0, 4 );
 
 	QSurfaceFormat	fmt;
 
@@ -120,22 +126,28 @@ GLView::GLView( QWindow * p )
 	setFormat( fmt );
 
 	view = ViewDefault;
-	animState = AnimEnabled;
 	debugMode = DbgNone;
+	perspectiveMode = true;
+	contextMenuShiftModifier = false;
+	animState = AnimEnabled;
 
 	Zoom = 1.0;
 
 	doCenter  = false;
-	doCompile = false;
+	doCompile = 0;
 
 	model = nullptr;
 
-	time = 0.0;
-	lastTime = QTime::currentTime();
+	time = 0.0f;
+	Dist = 128.0f;
+	lastTime = std::chrono::steady_clock::now();
 
 	textures = new TexCache( this );
 
 	updateSettings();
+	view = cfg.startupDirection;
+	if ( int i = int( view ) - int( ViewTop ); i >= 0 && i <= 5 )
+		Rot = viewRotations[i];
 
 	scene = new Scene( textures );
 	connect( textures, &TexCache::sigRefresh, this, static_cast<void (GLView::*)()>(&GLView::update) );
@@ -152,25 +164,20 @@ GLView::GLView( QWindow * p )
 	connect( lightVisTimer, &QTimer::timeout, [this]() { setVisMode( Scene::VisLightPos, false ); update(); } );
 
 	connect( NifSkope::getOptions(), &SettingsDialog::flush3D, textures, &TexCache::flush );
-
-	connect(NifSkope::getOptions(), &SettingsDialog::update3D, this, static_cast<void (GLView::*)()>(&GLView::updateSettings));
-	connect(NifSkope::getOptions(), &SettingsDialog::update3D, [this]() {
-		// Calling update() here in a lambda can crash..
-		//updateSettings();
-		glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
-		//update();
-	});
-	connect(NifSkope::getOptions(), &SettingsDialog::update3D, this, static_cast<void (GLView::*)()>(&GLView::update));
+	connect( NifSkope::getOptions(), &SettingsDialog::update3D, this, &GLView::update3D );
 
 	setMinimumSize( QSize( 50, 50 ) );
 }
 
 GLView::~GLView()
 {
-	flush();
+	auto	prvContext = pushGLContext();
 
+	flush();
 	delete textures;
 	delete scene;
+
+	popGLContext( prvContext );
 }
 
 QWidget * GLView::createWindowContainer( QWidget * parent )
@@ -204,7 +211,7 @@ void GLView::updateSettings()
 	QSettings settings;
 	settings.beginGroup( "Settings/Render" );
 
-	cfg.background = settings.value( "Colors/Background", QColor( 46, 46, 46 ) ).value<QColor>();
+	cfg.background = Color4( settings.value( "Colors/Background", QColor( 46, 46, 46 ) ).value<QColor>() );
 	cfg.fov = settings.value( "General/Camera/Field Of View" ).toFloat();
 	cfg.moveSpd = settings.value( "General/Camera/Movement Speed" ).toFloat();
 	cfg.rotSpd = settings.value( "General/Camera/Rotation Speed" ).toFloat();
@@ -213,9 +220,9 @@ void GLView::updateSettings()
 	static const ViewState	startupDirections[6] = {
 		ViewLeft, ViewFront, ViewTop, ViewRight, ViewBack, ViewBottom
 	};
-	cfg.startupDirection = startupDirections[std::min< int >( std::max< int >( z, 0 ), 5 )];
+	cfg.startupDirection = startupDirections[std::clamp< int >( z, 0, 5 )];
 	z = settings.value( "General/Camera/Mwheel Zoom Speed", 8 ).toInt();
-	z = std::min< int >( std::max< int >( z, 0 ), 16 );
+	z = std::clamp< int >( z, 0, 16 );
 
 	settings.endGroup();
 
@@ -237,6 +244,15 @@ void GLView::updateSettings()
 	double	tmp = std::pow( 0.95, std::sqrt( double(1 << z) * (1.0 / 256.0) ) );
 	Settings::zoomInScale = float( tmp );
 	Settings::zoomOutScale = float( 1.0 / tmp );
+}
+
+void GLView::update3D()
+{
+	updateSettings();
+	auto	prvContext = pushGLContext();
+	glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
+	popGLContext( prvContext );
+	update();
 }
 
 static bool envMapFileListFilterFunction( void * p, const std::string_view & s )
@@ -289,7 +305,7 @@ void GLView::selectPBRCubeMap()
 	}
 }
 
-QColor GLView::clearColor() const
+Color4 GLView::clearColor() const
 {
 	return cfg.background;
 }
@@ -322,7 +338,7 @@ void GLView::updateAnimationState( bool checked )
 			animState &= ~opt;
 
 		scene->animate = (animState & AnimEnabled);
-		lastTime = QTime::currentTime();
+		lastTime = std::chrono::steady_clock::now();
 
 		update();
 	}
@@ -335,17 +351,19 @@ void GLView::updateAnimationState( bool checked )
 
 void GLView::initializeGL()
 {
-	glContext = context();
+	auto	cx = context();
 	// Obtain a functions object and resolve all entry points
-	glFuncs = glContext->functions();
+	auto	glFuncs = cx->functions();
 	if ( !glFuncs ) {
 		QMessageBox::critical( nullptr, "NifSkope error", tr( "Could not obtain OpenGL functions" ) );
 		std::exit( 1 );
 	}
 	glFuncs->initializeOpenGLFunctions();
-	scene->setOpenGLContext( glContext );
-	textures->setOpenGLContext( scene->renderer );
+	scene->setOpenGLContext( cx );
+	glContext = scene->renderer;
+	textures->setOpenGLContext( glContext );
 	updateShaders();		// should be called after TexCache is initialized
+	glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
 
 	// Initial viewport values
 	//	Made viewport and aspect member variables.
@@ -362,10 +380,11 @@ void GLView::initializeGL()
 
 void GLView::updateShaders()
 {
-	makeCurrent();
 	if ( !isValid() )
 		return;
+	auto	prvContext = pushGLContext();
 	scene->updateShaders();
+	popGLContext( prvContext );
 	update();
 }
 
@@ -416,7 +435,7 @@ void GLView::paintGL()
 	glDepthMask( GL_TRUE );
 
 	if ( isDisabled || !scene->haveRenderer() ) [[unlikely]] {
-		glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+		glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT );
 		return;
 	}
@@ -430,6 +449,10 @@ void GLView::paintGL()
 
 	// Compile the model
 	if ( doCompile ) [[unlikely]] {
+		if ( doCompile > 1 ) [[unlikely]] {
+			doCompile--;
+			return;
+		}
 		// avoid potential infinite recursion in case a message box is opened while initializing the scene
 		isDisabled = true;
 		textures->setNifFolder( model->getFolder() );
@@ -450,7 +473,7 @@ void GLView::paintGL()
 		}
 		emit sceneTimeChanged( time, scene->timeMin(), scene->timeMax() );
 		isDisabled = false;
-		doCompile = false;
+		doCompile = 0;
 	}
 
 	// Center the model
@@ -462,22 +485,21 @@ void GLView::paintGL()
 	NifSkopeOpenGLContext *	cx = scene->renderer;
 
 	// Transform the scene
-	static const float	axisRotation[27] = {
-		1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,		// Z
-		0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,		// Y
-		0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f		// X
-	};
-	const float *	ap = axisRotation;
-
-	if ( cfg.upAxis == YAxis )
-		ap = ap + 9;
-	else if ( cfg.upAxis == XAxis )
-		ap = ap + 18;
-
 	Transform	viewTrans;
 	viewTrans.rotation.fromEuler( deg2rad(Rot[0]), deg2rad(Rot[1]), deg2rad(Rot[2]) );
 	viewTrans.translation = viewTrans.rotation * Pos;
-	viewTrans.rotation = viewTrans.rotation * Matrix( ap );
+	if ( cfg.upAxis != ZAxis ) {
+		float *	r = &( viewTrans.rotation( 0, 0 ) );
+		if ( cfg.upAxis == XAxis ) {			// YZX -> XYZ
+			FloatVector4::convertVector3( r ).shuffleValues( 0xD2 ).convertToVector3( r );
+			FloatVector4::convertVector3( r + 3 ).shuffleValues( 0xD2 ).convertToVector3( r + 3 );
+			FloatVector4::convertVector3( r + 6 ).shuffleValues( 0xD2 ).convertToVector3( r + 6 );
+		} else if ( cfg.upAxis == YAxis ) {		// ZXY -> XYZ
+			FloatVector4::convertVector3( r ).shuffleValues( 0xC9 ).convertToVector3( r );
+			FloatVector4::convertVector3( r + 3 ).shuffleValues( 0xC9 ).convertToVector3( r + 3 );
+			FloatVector4::convertVector3( r + 6 ).shuffleValues( 0xC9 ).convertToVector3( r + 6 );
+		}
+	}
 
 	if ( view != ViewWalk )
 		viewTrans.translation[2] -= Dist * 2;
@@ -487,34 +509,40 @@ void GLView::paintGL()
 	// Setup projection mode
 	glProjection();
 
-	cx->globalUniforms->lightingControls = FloatVector4( toneMapping, brightnessScale, 1.0f, 0.0f );
-	if ( !scene->hasOption(Scene::DoGlow) )
-		cx->globalUniforms->lightingControls[2] = 0.0f;
+	cx->setViewTransform( scene->view, int( cfg.upAxis ), envMapRotation );
+	auto &	globalUniforms = *( cx->globalUniforms );
+	globalUniforms.toneMapScale = toneMapping;
+	globalUniforms.brightnessScale = brightnessScale;
+	globalUniforms.glowScale = ( scene->hasOption(Scene::DoGlow) ? glowScale : 0.0f );
 	FloatVector4	mat_amb( 0.0f );
 	FloatVector4	mat_diff( 0.0f );
-	Vector3	lightDir( 0.0f, 0.0f, 1.0f );
+	FloatVector4	lightDir( 0.0f, 0.0f, 1.0f, 0.0f );
 	bool	drawLightPos = false;
 
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
-		cx->globalUniforms->lightingControls.blendValues( FloatVector4( 0.0f ), 0x06 );
+		globalUniforms.brightnessScale = 0.0f;
 
 	} else if ( scene->hasOption(Scene::DoLighting) ) {
 		// Setup light
 
 		if ( !frontalLight ) {
-			float decl = deg2rad( declination );
 			Matrix m;
-			m.fromEuler( 0, 0, deg2rad( planarAngle ) );
-			lightDir = m * Vector3( std::sin( decl ), 0.0f, std::cos( decl ) );
-			cx->globalUniforms->lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
+			m.fromEuler( deg2rad( declination ), 0.0f, deg2rad( planarAngle ) );
+			lightDir = FloatVector4::convertVector3( m.data() + 6 );
+			if ( cfg.upAxis == XAxis )
+				lightDir.shuffleValues( 0xD2 );
+			else if ( cfg.upAxis == YAxis )
+				lightDir.shuffleValues( 0xC9 );
+			globalUniforms.lightSourcePosition[0] = globalUniforms.viewMatrix[0] * lightDir[0];
+			globalUniforms.lightSourcePosition[0] += globalUniforms.viewMatrix[1] * lightDir[1];
+			globalUniforms.lightSourcePosition[0] += globalUniforms.viewMatrix[2] * lightDir[2];
 
 			drawLightPos = scene->hasVisMode( Scene::VisLightPos );
 		} else {
-			cx->globalUniforms->lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f );
+			globalUniforms.lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f );
 		}
 
 		mat_amb = FloatVector4( ambient );
-		mat_amb[3] = toneMapping;
 
 		const FloatVector4	a6( 0.02729229f, -0.03349948f, -0.93633725f, 0.0f );
 		const FloatVector4	a5( 0.18128491f, -0.17835246f, 1.44207620f, 0.0f );
@@ -533,17 +561,15 @@ void GLView::paintGL()
 		mat_diff = c;
 
 	} else {
-		mat_amb = FloatVector4( 0.5f );
-		mat_diff = FloatVector4( 1.0f );
-		cx->globalUniforms->lightingControls.blendValues( FloatVector4( 1.0f ), 0x03 );
+		mat_amb = FloatVector4( 7.0f );
+		mat_diff = FloatVector4( 0.0f );
 	}
 
-	// in frontal light mode, planar angle controls environment map rotation around the Z axis
-	cx->setViewTransform( scene->view, int( cfg.upAxis ), ( frontalLight ? planarAngle : 0.0f ) );
-	cx->globalUniforms->lightSourceAmbient = mat_amb;
-	cx->globalUniforms->lightSourceDiffuse[0] = mat_diff;
-	cx->globalUniforms->renderOptions1[0] = std::int32_t( scene->hasOption(Scene::DoSkinning) );
-	cx->globalUniforms->renderOptions1[1] = std::int32_t( scene->options );
+	globalUniforms.lightSourceAmbient = mat_amb;
+	globalUniforms.lightSourceDiffuse[0] = mat_diff;
+	globalUniforms.glowScaleSRGB = float( std::sqrt( globalUniforms.glowScale ) );
+	globalUniforms.doSkinning = std::int32_t( scene->hasOption(Scene::DoSkinning) );
+	globalUniforms.sceneOptions = std::int32_t( scene->options );
 	cx->setGlobalUniforms();
 
 	cx->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
@@ -567,8 +593,8 @@ void GLView::paintGL()
 		scene->setGLColor( FloatVector4( 1.0f ) );
 		scene->setGLLineWidth( Settings::lineWidthAxes * 0.5f );
 		scene->loadModelViewMatrix( viewTrans );
-		scene->drawDashLine( Vector3(), lightDir, 30 );
-		scene->drawSphereSimple( lightDir, axis / 10.0f, 72, 6 );
+		scene->drawDashLine( Vector3(), Vector3( lightDir ), 30 );
+		scene->drawSphereSimple( Vector3( lightDir ), axis / 10.0f, 72, 6 );
 	}
 
 #ifndef QT_NO_DEBUG
@@ -593,9 +619,9 @@ void GLView::paintGL()
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LEQUAL );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-		scene->selecting = true;
+		scene->selecting = ( scene->isSelModeVertex() ? 3 : 5 );
 	} else {
-		scene->selecting = false;
+		scene->selecting = 0;
 	}
 #endif
 
@@ -676,17 +702,20 @@ void GLView::resizeGL( int width, int height )
 	pixelWidth = width;
 	pixelHeight = height;
 
-	makeCurrent();
 	if ( !isValid() )
 		return;
+	auto	prvContext = pushGLContext();
+
 	aspect = GLdouble(width) / GLdouble(height);
 	if ( !scene->renderer ) [[unlikely]]
 		glViewport( 0, 0, width, height );
 	else
 		scene->renderer->setViewport( 0, 0, width, height );
 
-	glDisable(GL_FRAMEBUFFER_SRGB);
-	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+	glDisable( GL_FRAMEBUFFER_SRGB );
+	glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
+
+	popGLContext( prvContext );
 }
 
 void GLView::resizeEvent( QResizeEvent * e )
@@ -751,19 +780,15 @@ void GLView::setAmbient( int value )
 	update();
 }
 
-void GLView::setDeclination( int decl )
+void GLView::setEnvMapRotation( int angle )
 {
-	declination = float(decl) / 4; // Divide by 4 because sliders are -720 <-> 720
-	lightVisTimer->start( lightVisTimeout );
-	setVisMode( Scene::VisLightPos, true );
+	envMapRotation = float( angle ) * 0.25f;	// Divide by 4 because sliders are -720 <-> 720
 	update();
 }
 
-void GLView::setPlanarAngle( int angle )
+void GLView::setGlowScale( int value )
 {
-	planarAngle = float(angle) / 4; // Divide by 4 because sliders are -720 <-> 720
-	lightVisTimer->start( lightVisTimeout );
-	setVisMode( Scene::VisLightPos, true );
+	glowScale = convertBrightnessValue( value );
 	update();
 }
 
@@ -774,19 +799,25 @@ void GLView::setDebugMode( DebugMode mode )
 
 void GLView::setVisMode( Scene::VisMode mode, bool checked )
 {
-	if ( checked )
+	if ( checked ) {
 		scene->visMode |= mode;
-	else
+	} else {
+		if ( mode & scene->visMode & Scene::VisSilhouette ) {
+			auto	prvContext = pushGLContext();
+			glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
+			popGLContext( prvContext );
+		}
 		scene->visMode &= ~mode;
+	}
 
 	update();
 }
 
 typedef void (Scene::* DrawFunc)( void );
 
-int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, int cycle, const QPointF & pos, int & furn )
+static int indexAt(
+	NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, const QPointF & pos, int & furn, bool shiftModifier )
 {
-	Q_UNUSED( model ); Q_UNUSED( cycle );
 	// Color Key O(1) selection
 	//	Open GL 3.0 says glRenderMode is deprecated
 	//	ATI OpenGL API implementation of GL_SELECT corrupts NifSkope memory
@@ -796,8 +827,6 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	// The FBO can be used for the drawing operations to keep the drawing operations invisible to the user.
 
 	auto	context = scene->renderer;
-	if ( !context )
-		return -1;
 	std::int32_t	viewport[4];
 	context->getViewport().convertToInt32( viewport );
 
@@ -829,11 +858,16 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	context->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
 
 	// Rasterize the scene
-	scene->selecting = true;
+	int	selectionFlags = int( Scene::SelObject );
+	if ( scene->isSelModeVertex() )
+		selectionFlags |= int( Scene::SelVertex );
+	else if ( shiftModifier )
+		selectionFlags |= int( Scene::SelTriangle );
+	scene->selecting = (unsigned char) selectionFlags;
 	for ( DrawFunc df : drawFunc ) {
 		(scene->*df)();
 	}
-	scene->selecting = false;
+	scene->selecting = 0;
 
 	context->stopProgram();
 	context->shrinkCache();
@@ -865,7 +899,7 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	int choose = getIDFromColorKey( pixel );
 
 	// Pick BSFurnitureMarker
-	if ( choose > 0 ) {
+	if ( choose > 0 && selectionFlags == int( Scene::SelObject ) ) {
 		int b = choose & 0x0ffff;
 		int p = ( choose >> 16 ) & 0x0ffff;
 		auto furnBlock = model->getBlockIndex( b, "BSFurnitureMarker" );
@@ -880,22 +914,10 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	return choose;
 }
 
-QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
+QModelIndex GLView::indexAt( const QPointF & pos, bool shiftModifier )
 {
-	if ( !(model && isVisible() && height() && scene->renderer) )
+	if ( !(model && isValid() && isVisible() && height() && scene->renderer) )
 		return QModelIndex();
-
-	makeCurrent();
-	if ( !isValid() )
-		return {};
-
-	double	p = devicePixelRatioF();
-	int	wp = pixelWidth;
-	int	hp = pixelHeight;
-	QPointF	posScaled( pos );
-	posScaled *= p;
-	scene->renderer->setViewport( 0, 0, wp, hp );
-	glProjection( int( posScaled.x() + 0.5 ), int( posScaled.y() + 0.5 ) );
 
 	QList<DrawFunc> df;
 
@@ -910,8 +932,20 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 
 	df << &Scene::drawShapes;
 
+	auto	prvContext = pushGLContext();
+
+	double	p = devicePixelRatioF();
+	int	wp = pixelWidth;
+	int	hp = pixelHeight;
+	QPointF	posScaled( pos );
+	posScaled *= p;
+	scene->renderer->setViewport( 0, 0, wp, hp );
+	glProjection( int( posScaled.x() + 0.5 ), int( posScaled.y() + 0.5 ) );
+
 	int choose = -1, furn = -1;
-	choose = ::indexAt( model, scene, df, cycle, posScaled, /*out*/ furn );
+	choose = ::indexAt( model, scene, df, posScaled, /*out*/ furn, shiftModifier );
+
+	popGLContext( prvContext );
 
 	QModelIndex chooseIndex;
 
@@ -925,9 +959,17 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 			chooseIndex = shape->vertexAt( vert );
 	} else if ( choose >= 0 ) {
 		// Block Index
-		chooseIndex = model->getBlockIndex( choose );
-
-		if ( furn != -1 ) {
+		chooseIndex = model->getBlockIndex( !shiftModifier ? choose : ( choose & 0x7FFF ) );
+		if ( shiftModifier ) {
+			// Triangle
+			if ( auto node = scene->getNode( scene->nifModel, chooseIndex ); node ) {
+				if ( auto shape = dynamic_cast< Shape * >( node ); shape ) {
+					auto	triangleIndex = shape->triangleAt( int( (unsigned int) choose >> 15 ) );
+					if ( triangleIndex.isValid() )
+						chooseIndex = triangleIndex;
+				}
+			}
+		} else if ( furn != -1 ) {
 			// Furniture Row @ Block Index
 			chooseIndex = model->getIndex( model->getIndex( chooseIndex, "Positions" ), furn );
 		}
@@ -958,6 +1000,16 @@ void GLView::rotate( float x, float y, float z )
 	update();
 }
 
+void GLView::rotateLight( float x, float z )
+{
+	declination += x;
+	planarAngle -= z;
+	declination -= float( roundFloat( declination / 360.0f ) ) * 360.0f;		// wrap to -180.0 to 180.0
+	planarAngle -= float( roundFloat( planarAngle / 360.0f ) ) * 360.0f;
+	lightVisTimer->start( lightVisTimeout );
+	setVisMode( Scene::VisLightPos, true );
+}
+
 void GLView::setCenter()
 {
 	Node * node = scene->getNode( model, scene->currentBlock );
@@ -982,8 +1034,6 @@ void GLView::setCenter()
 		Zoom = 1.0;
 
 		Pos = -bs.center;
-
-		setOrientation( view );
 	}
 }
 
@@ -1070,27 +1120,9 @@ void GLView::setOrientation( GLView::ViewState state, bool recenter )
 	if ( state == view )
 		return;
 
-	switch ( state ) {
-	case ViewBottom:
-		setRotation( 180, 0, 0 ); // Bottom
-		break;
-	case ViewTop:
-		setRotation( 0, 0, 0 ); // Top
-		break;
-	case ViewBack:
-		setRotation( -90, 0, 0 ); // Back
-		break;
-	case ViewFront:
-		setRotation( -90, 0, 180 ); // Front
-		break;
-	case ViewRight:
-		setRotation( -90, 0, 90 ); // Right
-		break;
-	case ViewLeft:
-		setRotation( -90, 0, -90 ); // Left
-		break;
-	default:
-		break;
+	if ( int i = int( state ) - int( ViewTop ); i >= 0 && i <= 5 ) {
+		Rot = viewRotations[i];
+		update();
 	}
 
 	view = state;
@@ -1144,9 +1176,10 @@ void GLView::setNif( NifModel * nif )
 		connect( model, &NifModel::linksChanged, this, &GLView::modelLinked );
 		connect( model, &NifModel::modelReset, this, &GLView::modelChanged );
 		connect( model, &NifModel::destroyed, this, &GLView::modelDestroyed );
+		Dist = ( model->getBSVersion() < 170 ? 1228.8f : 19.2f );
 	}
 
-	doCompile = true;
+	doCompile = 2;
 }
 
 void GLView::setCurrentIndex( const QModelIndex & index )
@@ -1208,7 +1241,7 @@ void GLView::modelChanged()
 	if ( doCompile )
 		return;
 
-	doCompile = true;
+	doCompile = 1;
 	//doCenter  = true;
 	update();
 }
@@ -1218,7 +1251,7 @@ void GLView::modelLinked()
 	if ( doCompile )
 		return;
 
-	doCompile = true; //scene->update( model, QModelIndex() );
+	doCompile = 1; //scene->update( model, QModelIndex() );
 	update();
 }
 
@@ -1292,15 +1325,14 @@ void GLView::advanceGears()
 {
 	updatePending -= (unsigned char) bool( updatePending );
 
-	QTime t  = QTime::currentTime();
-	float dT = lastTime.msecsTo( t ) / 1000.0;
-	dT = (dT < 0) ? 0 : ((dT > 1.0) ? 1.0 : dT);
-
+	std::chrono::steady_clock::time_point t = std::chrono::steady_clock::now();
+	float dT = float( std::chrono::duration_cast< std::chrono::microseconds >( t - lastTime ).count() ) * 0.000001f;
 	lastTime = t;
 
 	if ( !isVisible() )
 		return;
 
+	dT = std::clamp< float >( dT, 0.0f, 1.0f );
 	if ( ( animState & AnimEnabled ) && ( animState & AnimPlay )
 		&& scene->timeMin() != scene->timeMax() )
 	{
@@ -1332,24 +1364,34 @@ void GLView::advanceGears()
 		update();
 	}
 
+	float	rotateStep = cfg.rotSpd * dT;
+	// Fix movement speed for Starfield scale
+	dT *= scale();
+	float	moveStep = cfg.moveSpd * dT;
+
 	// TODO: Some kind of input class for choosing the appropriate
 	// keys based on user preferences of what app they would like to
 	// emulate for the control scheme
 	// Rotation
-	if ( kbd( Key_RotateUp ) )    rotate( -cfg.rotSpd * dT, 0, 0 );
-	if ( kbd( Key_RotateDown ) )  rotate( +cfg.rotSpd * dT, 0, 0 );
-	if ( kbd( Key_RotateLeft ) )  rotate( 0, 0, -cfg.rotSpd * dT );
-	if ( kbd( Key_RotateRight ) ) rotate( 0, 0, +cfg.rotSpd * dT );
+	if ( kbd( Key_Shift ) && !frontalLight ) {
+		if ( kbd( Key_RotateUp ) )    rotateLight( -rotateStep, 0.0f );
+		if ( kbd( Key_RotateDown ) )  rotateLight( rotateStep, 0.0f );
+		if ( kbd( Key_RotateLeft ) )  rotateLight( 0.0f, -rotateStep );
+		if ( kbd( Key_RotateRight ) ) rotateLight( 0.0f, rotateStep );
+	} else {
+		if ( kbd( Key_RotateUp ) )    rotate( -rotateStep, 0, 0 );
+		if ( kbd( Key_RotateDown ) )  rotate( rotateStep, 0, 0 );
+		if ( kbd( Key_RotateLeft ) )  rotate( 0, 0, -rotateStep );
+		if ( kbd( Key_RotateRight ) ) rotate( 0, 0, rotateStep );
+	}
 
-	// Fix movement speed for Starfield scale
-	dT *= scale();
 	// Movement
-	if ( kbd( Key_MoveLeft ) ) move( +cfg.moveSpd * dT, 0, 0 );
-	if ( kbd( Key_MoveRight ) ) move( -cfg.moveSpd * dT, 0, 0 );
-	if ( kbd( Key_MoveForward ) ) move( 0, 0, +cfg.moveSpd * dT );
-	if ( kbd( Key_MoveBack ) ) move( 0, 0, -cfg.moveSpd * dT );
-	if ( kbd( Key_MoveDown ) ) move( 0, +cfg.moveSpd * dT, 0 );
-	if ( kbd( Key_MoveUp ) ) move( 0, -cfg.moveSpd * dT, 0 );
+	if ( kbd( Key_MoveLeft ) ) move( moveStep, 0, 0 );
+	if ( kbd( Key_MoveRight ) ) move( -moveStep, 0, 0 );
+	if ( kbd( Key_MoveForward ) ) move( 0, 0, moveStep );
+	if ( kbd( Key_MoveBack ) ) move( 0, 0, -moveStep );
+	if ( kbd( Key_MoveDown ) ) move( 0, moveStep, 0 );
+	if ( kbd( Key_MoveUp ) ) move( 0, -moveStep, 0 );
 
 	// Focal Length
 	if ( kbd( Key_ZoomIn ) )   setZoom( Zoom * std::sqrt( Settings::zoomOutScale ) );
@@ -1386,7 +1428,7 @@ void GLView::saveImage()
 		QSettings settings;
 		jpegQuality = settings.value( "JPEG/Quality", 90 ).toInt();
 		imgFormat = settings.value( "Screenshot/Format", 0 ).toInt();
-		imgFormat = std::min< int >( std::max< int >( imgFormat, 0 ), 4 );
+		imgFormat = std::clamp< int >( imgFormat, 0, 4 );
 		imgPath = settings.value( "Screenshot/Folder", "screenshots" ).toString();
 	}
 
@@ -1522,6 +1564,8 @@ void GLView::saveImage()
 			// Supersampling
 			int	ss = grpSize->checkedId();
 
+			auto	prvContext = pushGLContext();
+
 			// Resize viewport for supersampling
 			if ( ss > 1 )
 				resizeGL( int( p * ( w * ss ) + 0.5 ), int( p * ( h * ss ) + 0.5 ) );
@@ -1535,7 +1579,7 @@ void GLView::saveImage()
 
 			QImage	rgbImg;
 			QImage	alphaImg;
-			const QColor & c = cfg.background;
+			const Color4 & c = cfg.background;
 			try {
 				for ( int i = 0; i <= int( useSilhouette ); i++ ) {
 					QOpenGLFramebufferObjectFormat fboFmt;
@@ -1550,7 +1594,7 @@ void GLView::saveImage()
 
 					if ( haveAlpha ) {
 						if ( !useSilhouette )
-							glClearColor( c.redF(), c.greenF(), c.blueF(), 0.0f );
+							glClearColor( c.red(), c.green(), c.blue(), 0.0f );
 						scene->options = savedSceneOptions & ~( Scene::ShowAxes | Scene::ShowGrid );
 						if ( i )
 							scene->visMode = Scene::VisSilhouette;
@@ -1568,9 +1612,11 @@ void GLView::saveImage()
 			// Restore settings and return viewport to original size
 			scene->options = savedSceneOptions;
 			scene->visMode = savedSceneVisMode;
-			glClearColor( c.redF(), c.greenF(), c.blueF(), c.alphaF() );
+			glClearColor( c.red(), c.green(), c.blue(), c.alpha() );
 			if ( ss > 1 )
 				resizeGL( int( p * w + 0.5 ), int( p * h + 0.5 ) );
+
+			popGLContext( prvContext );
 
 			if ( !err.empty() ) {
 				QMessageBox::critical( nullptr, "NifSkope error", QString::fromStdString( err ) );
@@ -1655,6 +1701,7 @@ void GLView::contextMenuEvent( QContextMenuEvent * e )
 {
 	if ( ( pressPos - lastPos ).manhattanLength() <= 10 ) {
 		mouseButtonState = 0;
+		contextMenuShiftModifier = bool( e->modifiers() & Qt::ShiftModifier );
 		emit graphicsView->customContextMenuRequested( e->pos() );
 		e->accept();
 	}
@@ -1811,6 +1858,8 @@ int GLView::convertKeyCode( int n ) const
 		return Key_Update;
 	case Qt::Key_Space:
 		return Key_MoveCam;
+	case Qt::Key_Shift:
+		return Key_Shift;
 	}
 	return -1;
 }
@@ -1820,16 +1869,46 @@ void GLView::keyPressEvent( QKeyEvent * event )
 	int	k = convertKeyCode( event->key() );
 	if ( k >= 0 ) {
 		kbdState = kbdState | ( 1ULL << k );
-	} else if ( event->key() == Qt::Key_Escape ) {
-		doCompile = true;
-
-		if ( view == ViewWalk )
-			doCenter = true;
-
-		update();
+		if ( k != Key_Shift )
+			return;
 	} else {
-		event->ignore();
+		switch ( event->key() ) {
+		case Qt::Key_Escape:
+			doCompile = 1;
+
+			if ( view == ViewWalk )
+				doCenter = true;
+
+			update();
+			break;
+		case Qt::Key_F:
+		case Qt::Key_L:
+		case Qt::Key_T:
+			if ( event->modifiers() & Qt::ShiftModifier ) {
+				if ( event->key() == Qt::Key_F ) {
+					if ( !frontalLight ) {
+						frontalLight = true;
+						emit frontalLightChanged( true );
+						update();
+					}
+				} else {
+					float	d = ( event->key() == Qt::Key_T ? 0.0f : 90.0f );
+					declination = d;
+					planarAngle = d;
+					if ( frontalLight ) {
+						frontalLight = false;
+						emit frontalLightChanged( false );
+					}
+					update();
+				}
+				return;
+			}
+			break;
+		default:
+			break;
+		}
 	}
+	event->ignore();
 }
 
 void GLView::keyReleaseEvent( QKeyEvent * event )
@@ -1837,15 +1916,16 @@ void GLView::keyReleaseEvent( QKeyEvent * event )
 	int	k = convertKeyCode( event->key() );
 	if ( k >= 0 ) {
 		kbdState = kbdState & ~( 1ULL << k );
-	} else {
-		event->ignore();
+		if ( k != Key_Shift )
+			return;
 	}
+	event->ignore();
 }
 
 void GLView::mouseDoubleClickEvent( QMouseEvent * )
 {
 	/*
-	doCompile = true;
+	doCompile = 1;
 	if ( ! aViewWalk->isChecked() )
 	doCenter = true;
 	update();
@@ -1868,10 +1948,13 @@ void GLView::mouseMoveEvent( QMouseEvent * event )
 	}
 
 	if ( ( buttonMask & Qt::LeftButton ) && !kbd( Key_MoveCam ) ) {
-		mouseRot += Vector3( dy * .5, 0, dx * .5 );
+		if ( !frontalLight && ( event->modifiers() & Qt::ShiftModifier ) )
+			rotateLight( dy * 0.5f, dx * 0.5f );
+		else
+			mouseRot += Vector3( dy * 0.5f, 0.0f, dx * 0.5f );
 	} else if ( ( buttonMask & Qt::MiddleButton ) || ( ( buttonMask & Qt::LeftButton ) && kbd( Key_MoveCam ) ) ) {
 		float d = axis / (qMax( width(), height() ) + 1);
-		mouseMov += Vector3( dx * d, -dy * d, 0 );
+		mouseMov += Vector3( dx * d, -dy * d, 0.0f );
 	} else if ( buttonMask & Qt::RightButton ) {
 		setDistance( Dist - (dx + dy) * (axis / (qMax( width(), height() ) + 1)) );
 	}
@@ -1888,11 +1971,6 @@ void GLView::mousePressEvent( QMouseEvent * event )
 	}
 
 	lastPos = event->position();
-
-	if ( (pressPos - lastPos).manhattanLength() <= 3 )
-		cycleSelect++;
-	else
-		cycleSelect = 0;
 
 	pressPos = lastPos;
 }
@@ -1914,7 +1992,7 @@ void GLView::mouseReleaseEvent( QMouseEvent * event )
 	bool	isColorPicker = bool( event->modifiers() & Qt::AltModifier );
 #endif
 	if ( !isColorPicker ) {
-		QModelIndex idx = indexAt( event->position(), cycleSelect );
+		QModelIndex idx = indexAt( event->position(), bool( event->modifiers() & Qt::ShiftModifier ) );
 		scene->currentBlock = model->getBlockIndex( idx );
 		scene->currentIndex = idx.sibling( idx.row(), 0 );
 

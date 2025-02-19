@@ -173,5 +173,5 @@ void main()
 		color.rgb += cube * falloff;
 	}
 
-	fragColor = vec4( color.rgb * lightingControls.y, color.a );
+	fragColor = vec4( color.rgb * brightnessScale, color.a );
 }

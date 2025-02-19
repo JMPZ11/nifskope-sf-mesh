@@ -34,7 +34,7 @@ void main()
 	vec3	t = tangentVector;
 	vec3	b = bitangentVector;
 
-	if ( boneWeights[0] > 0.0 && renderOptions1.x != 0 )
+	if ( boneWeights[0].x > 0.0 && doSkinning )
 		boneTransform( v, n, t, b );
 
 	v = modelViewMatrix * v;

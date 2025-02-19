@@ -790,7 +790,11 @@ NifSkopeOpenGLContext::NifSkopeOpenGLContext( QOpenGLContext * context )
 	globalUniforms->lightSourcePosition[0][2] = 1.0f;
 	globalUniforms->lightSourceDiffuse[0] = FloatVector4( 1.0f );
 	globalUniforms->lightSourceAmbient = FloatVector4( 1.0f );
-	globalUniforms->lightingControls = FloatVector4( 1.0f );
+	globalUniforms->toneMapScale = 1.0f;
+	globalUniforms->brightnessScale = 1.0f;
+	globalUniforms->glowScale = 1.0f;
+	globalUniforms->glowScaleSRGB = 1.0f;
+
 	fn->glGenBuffers( 1, &globalUniformsBufferObject );
 	fn->glBindBuffer( GL_UNIFORM_BUFFER, globalUniformsBufferObject );
 	fn->glBufferData( GL_UNIFORM_BUFFER, GLsizeiptr( sizeof(FloatVector4) * 768 + sizeof(GlobalUniforms) ), (void *) 0,

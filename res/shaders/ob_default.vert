@@ -5,10 +5,9 @@ out vec3 ViewDir;
 
 out vec2 texCoord;
 
-out vec4 A;
+flat out vec4 A;
 out vec4 C;
-out vec4 D;
-out float glowScale;
+flat out vec4 D;
 
 out mat3 reflMatrix;
 
@@ -35,7 +34,7 @@ void main()
 	vec3	t = tangentVector;
 	vec3	b = bitangentVector;
 
-	if ( boneWeights[0] > 0.0 && renderOptions1.x != 0 )
+	if ( boneWeights[0].x > 0.0 && doSkinning )
 		boneTransform( v, n, t, b );
 
 	v = modelViewMatrix * v;
@@ -54,8 +53,7 @@ void main()
 		ViewDir = btnMatrix * -v.xyz;
 	LightDir = btnMatrix * lightSourcePosition[0].xyz;
 
-	A = vec4( sqrt(lightSourceAmbient.rgb) * 0.375, lightingControls.x );
+	A = vec4( sqrt(lightSourceAmbient.rgb) * 0.375, toneMapScale );
 	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
-	D = vec4( sqrt(lightSourceDiffuse[0].rgb), lightingControls.y );
-	glowScale = sqrt( lightingControls.z );
+	D = vec4( sqrt(lightSourceDiffuse[0].rgb), brightnessScale );
 }

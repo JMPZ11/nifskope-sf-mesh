@@ -34,20 +34,19 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "message.h"
 #include "model/kfmmodel.h"
 
-#include <QtXml> // QXmlDefaultHandler Inherited
 #include <QCoreApplication>
+#include <QDir>
 #include <QMessageBox>
-#include <QXmlDefaultHandler>
-#include <QXmlSimpleReader>
+#include <QXmlStreamReader>
 
-#define err( X ) { errorStr = X; return false; }
+#define err( X ) { errorStr = X; return; }
 
 
-QReadWriteLock KfmModel::XMLlock;
-QList<quint32>                  KfmModel::supportedVersions;
-QHash<QString, NifBlockPtr>        KfmModel::compounds;
+QReadWriteLock	KfmModel::XMLlock;
+QList<quint32>	KfmModel::supportedVersions;
+QHash<QString, NifBlockPtr>	KfmModel::compounds;
 
-class KfmXmlHandler final : public QXmlDefaultHandler
+class KfmXmlHandler final
 {
 	Q_DECLARE_TR_FUNCTIONS( KfmXmlHandler )
 
@@ -76,7 +75,7 @@ public:
 		return stack[--depth];
 	}
 
-	bool startElement( const QString &, const QString &, const QString & name, const QXmlAttributes & list ) override final
+	void startElement( const QString & name, const QXmlStreamAttributes & list )
 	{
 		if ( depth >= 8 )
 			err( tr( "error maximum nesting level exceeded" ) );
@@ -91,7 +90,7 @@ public:
 				err( tr( "this is not a niftoolsxml file" ) );
 
 			push( x );
-			return true;
+			return;
 		}
 
 		int v;
@@ -106,9 +105,9 @@ public:
 
 			switch ( x ) {
 			case 1:
-				v = KfmModel::version2number( list.value( "num" ).trimmed() );
+				v = KfmModel::version2number( list.value( QLatin1StringView("num") ).toString().trimmed() );
 
-				if ( v != 0 && !list.value( "num" ).isEmpty() )
+				if ( v != 0 && !list.value( QLatin1StringView("num") ).isEmpty() )
 					KfmModel::supportedVersions.append( v );
 				else
 					err( tr( "invalid version string" ) );
@@ -116,13 +115,13 @@ public:
 				break;
 			case 2:
 
-				if ( x == 2 && NifValue::isValid( NifValue::type( list.value( "name" ) ) ) )
-					err( tr( "compound %1 is already registered as internal type" ).arg( list.value( "name" ) ) );
+				if ( x == 2 && NifValue::isValid( NifValue::type( list.value( QLatin1StringView("name") ).toString() ) ) )
+					err( tr( "compound %1 is already registered as internal type" ).arg( list.value( QLatin1StringView("name") ) ) );
 
 				if ( !blk )
 					blk = NifBlockPtr( new NifBlock );
 
-				blk->id = list.value( "name" );
+				blk->id = list.value( QLatin1StringView("name") ).toString();
 				break;
 			}
 
@@ -133,21 +132,21 @@ public:
 		case 2:
 
 			if ( x == 3 ) {
-				QString type = list.value( "type" );
-				QString tmpl = list.value( "template" );
-				QString arr1 = list.value( "arr1" );
-				QString arr2 = list.value( "arr2" );
-				QString cond = list.value( "cond" );
-				QString ver1 = list.value( "ver1" );
-				QString ver2 = list.value( "ver2" );
-				QString abs = list.value( "abstract" );
+				QString type = list.value( QLatin1StringView("type") ).toString();
+				QString tmpl = list.value( QLatin1StringView("template") ).toString();
+				QString arr1 = list.value( QLatin1StringView("arr1") ).toString();
+				QString arr2 = list.value( QLatin1StringView("arr2") ).toString();
+				QString cond = list.value( QLatin1StringView("cond") ).toString();
+				QString ver1 = list.value( QLatin1StringView("ver1") ).toString();
+				QString ver2 = list.value( QLatin1StringView("ver2") ).toString();
+				QString abs = list.value( QLatin1StringView("abstract") ).toString();
 
 				NifData data(
-				    list.value( "name" ),
+				    list.value( QLatin1StringView("name") ).toString(),
 					type,
 					tmpl,
 				    NifValue( NifValue::type( type ) ),
-				    list.value( "arg" ),
+				    list.value( QLatin1StringView("arg") ).toString(),
 					arr1,
 					arr2,
 					cond,
@@ -183,11 +182,9 @@ public:
 			err( tr( "error unhandled tag %1 in %2" ).arg( name, elements.value( current() ) ) );
 			break;
 		}
-
-		return true;
 	}
 
-	bool endElement( const QString &, const QString &, const QString & name ) override final
+	void endElement( const QString & name )
 	{
 		if ( depth <= 0 )
 			err( tr( "mismatching end element tag for element " ) + name );
@@ -216,8 +213,6 @@ public:
 
 			break;
 		}
-
-		return true;
 	}
 
 	bool checkType( const NifData & data )
@@ -230,7 +225,7 @@ public:
 		return data.templ().isEmpty() || NifValue::type( data.templ() ) != NifValue::tNone || data.templ() == XMLTMPL;
 	}
 
-	bool endDocument() override final
+	void endDocument()
 	{
 		// make a rough check of the maps
 		for ( const QString& key : KfmModel::compounds.keys() ) {
@@ -246,20 +241,11 @@ public:
 					err( tr( "compound type %1 contains itself" ).arg( key ) );
 			}
 		}
-		return true;
 	}
 
-	QString errorString() const override final
+	QString errorString() const
 	{
 		return errorStr;
-	}
-	bool fatalError( const QXmlParseException & exception ) override final
-	{
-		if ( errorStr.isEmpty() )
-			errorStr = tr( "Syntax error" );
-
-		errorStr.prepend( tr( "%1 XML parse error (line %2): " ).arg( "KFM" ).arg( exception.lineNumber() ) );
-		return false;
 	}
 };
 
@@ -308,17 +294,33 @@ QString KfmModel::parseXmlDescription( const QString & filename )
 		return tr( "Couldn't open KFM XML description file: %1" ).arg( filename );
 
 	KfmXmlHandler handler;
-	QXmlSimpleReader reader;
-	reader.setContentHandler( &handler );
-	reader.setErrorHandler( &handler );
-	QXmlInputSource source( &f );
-	reader.parse( source );
+	QXmlStreamReader reader( &f );
+	while ( !reader.atEnd() && handler.errorStr.isEmpty() ) {
+		reader.readNext();
+		if ( reader.isStartElement() )
+			handler.startElement( reader.name().toString(), reader.attributes() );
+		else if ( reader.isEndElement() )
+			handler.endElement( reader.name().toString() );
+		else if ( reader.isEndDocument() )
+			handler.endDocument();
+	}
 
-	if ( !handler.errorString().isEmpty() ) {
+	QString	errorStr;
+	if ( reader.hasError() ) {
+		errorStr = reader.errorString();
+		if ( errorStr.isEmpty() )
+			errorStr = tr( "Syntax error" );
+	} else {
+		errorStr = handler.errorString();
+	}
+
+	if ( !errorStr.isEmpty() ) {
+		errorStr.prepend( tr( "%1 XML parse error (line %2): " ).arg( "KFM" ).arg( reader.lineNumber() ) );
+
 		compounds.clear();
 		supportedVersions.clear();
 	}
 
-	return handler.errorString();
+	return errorStr;
 }
 

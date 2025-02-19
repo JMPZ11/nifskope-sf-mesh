@@ -54,6 +54,7 @@
         <verset token="#STF#" string="V20_2_0_7_STF" />
         <verset token="#FO3_AND_LATER#" string="V20_0_0_4__11 V20_2_0_7__11_1 V20_2_0_7__11_2 V20_2_0_7__11_3 V20_2_0_7__11_4 V20_2_0_7__11_5 V20_2_0_7__11_6 V20_2_0_7__11_7 V20_2_0_7__11_8 V20_2_0_7_FO3 V20_2_0_7_SKY V20_2_0_7_SSE V20_2_0_7_FO4 V20_2_0_7_F76 V20_2_0_7_STF" />
         <verset token="#SKY_AND_LATER#" string="V20_2_0_7_SKY V20_2_0_7_SSE V20_2_0_7_FO4 V20_2_0_7_F76 V20_2_0_7_STF" />
+        <verset token="#FO4_AND_LATER#" string="V20_2_0_7_FO4 V20_2_0_7_F76 V20_2_0_7_STF" />
     </token>
 
     <token name="default" attrs="default">
@@ -9505,11 +9506,11 @@
 
     <!-- Fallout 4 Physics -->
 
-    <niobject name="bhkSystem" abstract="true" inherit="NiObject" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkSystem" abstract="true" inherit="NiObject" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Physics System
     </niobject>
 
-    <niobject name="bhkNPCollisionObject" inherit="NiCollisionObject" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkNPCollisionObject" inherit="NiCollisionObject" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Collision Object
         <field name="Flags" type="bhkCOFlags" default="0x80">
             Note: The CK Preview scenegraph reports these bits incorrectly.
@@ -9518,28 +9519,28 @@
         <field name="Body ID" type="uint" />
     </niobject>
 
-    <niobject name="bhkPhysicsSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkPhysicsSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Collision System
         <field name="Binary Data" type="ByteArray" />
     </niobject>
 
-    <niobject name="bhkRagdollSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkRagdollSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Ragdoll System
         <field name="Binary Data" type="ByteArray" />
     </niobject>
 
-    <niobject name="BSExtraData" inherit="NiExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSExtraData" inherit="NiExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Extra Data
     </niobject>
 
-    <niobject name="BSClothExtraData" inherit="BSExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSClothExtraData" inherit="BSExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Cloth data
         <field name="Binary Data" type="ByteArray" />
     </niobject>
 
     <!-- Fallout 4 Skeleton -->
 
-    <struct name="BSSkinBoneTrans" size="68" module="BSMain" versions="#FO4# #F76#">
+    <struct name="BSSkinBoneTrans" size="68" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Bone Transform
         <field name="Bounding Sphere" type="NiBound" />
         <field name="Rotation" type="Matrix33" />
@@ -9547,7 +9548,7 @@
         <field name="Scale" type="float" />
     </struct>
 
-    <niobject name="BSSkin::Instance" inherit="NiObject" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSSkin::Instance" inherit="NiObject" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Skin Instance
         <field name="Skeleton Root" type="Ptr" template="NiAVObject" />
         <field name="Data" type="Ref" template="BSSkin::BoneData" />
@@ -9557,7 +9558,7 @@
         <field name="Scales" type="Vector3" length="Num Scales" />
     </niobject>
 
-    <niobject name="BSSkin::BoneData" inherit="NiObject" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSSkin::BoneData" inherit="NiObject" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Bone Data
         <field name="Num Bones" type="uint" />
         <field name="Bone List" type="BSSkinBoneTrans" length="Num Bones" />
@@ -9569,7 +9570,7 @@
         <field name="Data" type="hfloat" length="Num Data" />
     </niobject>
 
-    <struct name="BSConnectPoint" module="BSMain" versions="#FO4# #F76#">
+    <struct name="BSConnectPoint" module="BSMain" versions="#FO4_AND_LATER#">
         <field name="Parent" type="SizedString" default="WorkshopConnectPoints" />
         <field name="Name" type="SizedString" />
         <field name="Rotation" type="Quaternion" />
@@ -9577,13 +9578,13 @@
         <field name="Scale" type="float" default="1.0" />
     </struct>
 
-    <niobject name="BSConnectPoint::Parents" inherit="NiExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSConnectPoint::Parents" inherit="NiExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Item Slot Parent
         <field name="Num Connect Points" type="uint" default="1" />
         <field name="Connect Points" type="BSConnectPoint" length="Num Connect Points" />
     </niobject>
 
-    <niobject name="BSConnectPoint::Children" inherit="NiExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSConnectPoint::Children" inherit="NiExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Item Slot Child
         <field name="Skinned" type="bool" />
         <field name="Num Points" type="uint" default="1" />

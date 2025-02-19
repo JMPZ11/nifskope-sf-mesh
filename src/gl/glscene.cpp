@@ -56,7 +56,7 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 	QObject( parent )
 {
 	currentBlock = currentIndex = QModelIndex();
-	selecting = false;
+	selecting = 0;
 	animate = true;
 
 	time = 0.0;
@@ -259,7 +259,7 @@ void Scene::make( NifModel * nif, bool flushTextures )
 Node * Scene::getNode( const NifModel * nif, const QModelIndex & iNode )
 {
 	if ( !nif || !iNode.isValid() )
-		return 0;
+		return nullptr;
 
 	Node * node = nodes.get( iNode );
 

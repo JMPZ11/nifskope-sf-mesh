@@ -148,8 +148,6 @@ void BSShape::updateData( const NifModel * nif )
 	// Fill skeleton data
 	resetSkeletonData();
 	if ( isSkinned && iSkin.isValid() ) {
-		skeletonRoot = nif->getLink( iSkin, "Skeleton Root" );
-
 		bones = nif->getLinkArray( iSkin, "Bones" );
 		auto nTotalBones = bones.size();
 
@@ -184,7 +182,7 @@ void BSShape::updateData( const NifModel * nif )
 
 QModelIndex BSShape::vertexAt( int idx ) const
 {
-	auto nif = NifModel::fromIndex( iBlock );
+	auto nif = scene->nifModel;
 	if ( !nif )
 		return QModelIndex();
 
@@ -198,6 +196,36 @@ QModelIndex BSShape::vertexAt( int idx ) const
 	}
 
 	return nif->getIndex( nif->getIndex( nif->getIndex( blk, "Vertex Data" ), idx ), "Vertex" );
+}
+
+QModelIndex BSShape::triangleAt( int idx ) const
+{
+	auto nif = scene->nifModel;
+	if ( !nif )
+		return QModelIndex();
+
+	auto blk = iBlock;
+	if ( iSkinPart.isValid() ) {
+		// Triangles are on NiSkinPartition in version 100
+		auto iPartitions = nif->getIndex( iSkinPart, "Partitions" );
+		if ( iPartitions.isValid() && nif->isArray( iPartitions ) ) {
+			for ( int i = 0; i < nif->rowCount( iPartitions ); i++ ) {
+				auto iPart = nif->getIndex( iPartitions, i );
+				if ( !iPart.isValid() )
+					continue;
+				auto iTriangles = nif->getIndex( iPart, "Triangles" );
+				if ( !( iTriangles.isValid() && nif->isArray( iTriangles ) ) )
+					continue;
+				int n = nif->rowCount( iTriangles );
+				if ( idx < n )
+					return nif->getIndex( iTriangles, idx );
+				idx -= n;
+			}
+		}
+		return QModelIndex();
+	}
+
+	return nif->getIndex( nif->getIndex( blk, "Triangles" ), idx );
 }
 
 void BSShape::transformShapes()
@@ -236,12 +264,13 @@ void BSShape::drawShapes( NodeList * secondPass )
 		return;
 	}
 
-	auto nif = NifModel::fromIndex( iBlock );
+	auto nif = scene->nifModel;
 
-	if ( !bindShape() )
+	if ( !nif || !bindShape() )
 		return;
 
-	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+	int	selectionFlags = scene->selecting;
+	if ( ( selectionFlags & int(Scene::SelVertex) ) && drawInSecondPass ) [[unlikely]] {
 		glDisable( GL_FRAMEBUFFER_SRGB );
 		drawVerts();
 		return;
@@ -258,29 +287,29 @@ void BSShape::drawShapes( NodeList * secondPass )
 
 	qsizetype	numTriangles = std::clamp< qsizetype >( lodTriangleCount, 0, triangles.size() );
 
-	if ( !scene->selecting ) [[likely]] {
+	if ( !selectionFlags ) [[likely]] {
 		if ( nif->getBSVersion() >= 151 )
 			glEnable( GL_FRAMEBUFFER_SRGB );
 		else
 			glDisable( GL_FRAMEBUFFER_SRGB );
 		shader = context->setupProgram( this, shader );
 
-	} else {
+	} else if ( auto prog = context->useProgram( "selection.prog" ); prog ) {
 		if ( nif->getBSVersion() >= 151 )
 			glDisable( GL_FRAMEBUFFER_SRGB );
 
-		auto	prog = context->useProgram( "selection.prog" );
-		if ( prog ) {
-			setUniforms( prog );
-			prog->uni1i( "selectionFlags", 0x0001 );
-			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
-		}
+		setUniforms( prog );
+		prog->uni1i( "selectionFlags", selectionFlags & 5 );
+		prog->uni1i( "selectionParam", ( !( selectionFlags & int(Scene::SelVertex) ) ? nodeId : -1 ) );
 	}
 
 	if ( numTriangles > 0 )
 		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( numTriangles * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
+
+	if ( selectionFlags & int( Scene::SelVertex ) ) [[unlikely]]
+		drawVerts();
 }
 
 void BSShape::drawVerts() const
@@ -322,17 +351,18 @@ void BSShape::drawSelection() const
 	auto idx = scene->currentIndex;
 	auto blk = scene->currentBlock;
 
-	// Is the current block extra data
 	bool extraData = false;
-
-	// Set current block name and detect if extra data
-	auto blockName = nif->itemName( blk );
-	// Don't do anything if this block is not the current block
-	//	or if there is not extra data
-	if ( blockName.startsWith( QLatin1StringView("BSPackedCombined") ) )
-		extraData = true;
-	else if ( blk != iBlock && blk != iSkin && blk != iSkinData && blk != iSkinPart && !scene->isSelModeVertex() )
-		return;
+	if ( !scene->isSelModeVertex() ) {
+		if ( !blk.isValid() )
+			return;
+		// Is the current block extra data
+		if ( auto i = nif->getItem( blk ); i != nullptr )
+			extraData = i->name().startsWith( QLatin1StringView("BSPackedCombined") );
+		// Don't do anything if this block is not the current block
+		//	or if there is not extra data
+		if ( blk != iBlock && blk != iSkin && blk != iSkinData && blk != iSkinPart && !extraData )
+			return;
+	}
 
 	auto	context = scene->renderer;
 	if ( !( context && bindShape() ) )
@@ -381,9 +411,8 @@ void BSShape::drawSelection() const
 			if ( minVal > 0.0f && maxVal < 2.1e9f )
 				Shape::drawBoundingBox( boundsCenter, boundsDims, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
 		}
-	}
 
-	if ( blockName.startsWith( QLatin1StringView("BSPackedCombined") ) && pBlock == iBlock ) {
+	} else if ( pBlock == iBlock ) {
 		QVector<QModelIndex> idxs;
 		if ( n == "Bounding Sphere" ) {
 			idxs += idx;
@@ -466,8 +495,16 @@ void BSShape::drawSelection() const
 	// Draw Triangles
 	if ( n == "Triangles" ) {
 		int s = -1;
-		if ( n == p )
+		if ( n == p ) {
 			s = idx.row();
+			if ( iSkinPart.isValid() ) {
+				int i = idx.parent().parent().row();
+				while ( i-- > 0 ) {
+					if ( auto j = nif->getIndex( nif->getIndex( iSkinPart, "Partitions" ), i ); j.isValid() )
+						s += int( nif->get<quint32>( j, "Num Triangles" ) );
+				}
+			}
+		}
 		Shape::drawWireframe( scene->wireframeColor );
 		if ( s >= 0 && s < triangles.size() )
 			Shape::drawTriangles( s, 1, scene->highlightColor );
@@ -563,6 +600,10 @@ void BSShape::drawSelection() const
 				}
 			}
 		}
+
+	} else if ( n == "Bone Weights" ) {
+		// Draw bone weights
+		Shape::drawWeights( scene->currentIndex.parent().row() );
 
 	} else if ( n == "NiSkinData" || n == "BSSkin::BoneData" ) {
 		// Draw all bones' bounding spheres

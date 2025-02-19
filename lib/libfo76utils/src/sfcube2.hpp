@@ -71,7 +71,8 @@ class SFCubeMapFilter
       errorMessage("SFCubeMapFilter: invalid output dimensions");
     width = std::uint32_t(w);
   }
-  // set the number of samples to use for importance sampling (-1: disable)
+  // Set the number of samples to use for importance sampling.
+  // 'n' should be a multiple of 8, or -1 to use maximum quality
   inline void setImportanceSamplingQuality(std::int32_t n)
   {
     importanceSampleCnt = std::uint32_t(n);

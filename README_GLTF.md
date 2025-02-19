@@ -1,12 +1,18 @@
 # NifSkope glTF 2.0 Import and Export v1.2
 
+glTF 2.0 export and import are currently supported on static and skinned Skyrim: Special Edition, Fallout 4, Fallout 76 and Starfield meshes. Collision data, controllers and particle systems cannot be exported or imported, and there are a number of other limitations described below.
+
 # glTF Import
 
-glTF Import into NifSkope currently supports static and (with limitations) skinned meshes. Skeleton and material data are not imported.
+## Skinned meshes
+
+Importing skeleton data is not implemented for Starfield, and skin partitions (used by Skyrim) are not supported. Weights and bone transforms are imported for all games.
+
+## Materials
+
+Material import is limited to setting material paths, using the name of the material, or the "Material Path" extra data if available. Shader property data and texture sets need to be created manually, or copied from an existing model.
 
 # glTF Export
-
-glTF export is currently supported on static and skinned Starfield meshes.
 
 To view and export Starfield meshes, you must first:
 
@@ -37,11 +43,11 @@ As of Exporter v1.1 you should **no longer need to uncheck "Guess Original Bind 
 
 glTF export includes a limited set of material settings, and textures from the first layer of the material, which are saved in the output .bin file in PNG format. Replacement colors are stored as 1x1 textures. Texture quality can be configured in the general settings with the 'Export texture mip level' option. A mip level of -1 disables texture export.
 
-Import is limited to using the name of the material as a material path (name of the created BSLightingShaderProperty block), or the "Material Path" extra data if available.
+For Skyrim, only the diffuse and normal maps are exported. PBR support is limited for Fallout 4, while in the case of Fallout 76 materials, albedo, roughness, metalness and occlusion maps are generated from the texture set.
 
 ## LOD
 
-Exporting and importing LOD meshes is disabled by default, and can be enabled in the general settings. When enabled, LOD meshes use the MSFT\_lod glTF extension.
+Exporting and importing LOD meshes is implemented only for Starfield. It is disabled by default, and can be enabled in the general settings. When enabled, LOD meshes use the MSFT\_lod glTF extension.
 
 ## Blender scripts
 

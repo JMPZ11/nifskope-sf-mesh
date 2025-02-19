@@ -8,6 +8,8 @@
 #include "ui/widgets/uvedit.h"
 #include "ui/widgets/filebrowser.h"
 #include "model/nifmodel.h"
+#include "glview.h"
+#include "nifskope.h"
 
 #include "lib/nvtristripwrapper.h"
 #include "libfo76utils/src/ddstxt16.hpp"
@@ -973,15 +975,21 @@ public:
 				return index;
 		}
 
-		TexCache	tex;
-		tex.setNifFolder( nif->getFolder() );
+		auto	w = dynamic_cast< NifSkope * >( nif->getWindow() );
+		GLView *	v;
+		TexCache *	tex;
+		if ( !( w && ( v = w->getGLView() ) != nullptr && ( tex = v->getTexCache() ) != nullptr ) )
+			return index;
 
+		auto	prvContext = v->pushGLContext();
+		tex->activateTextureUnit( 0 );
 		if ( isExternal )
-			tex.bind( filename, nif );
+			tex->bind( filename, nif );
 		else
-			tex.bind( iBlock );
+			tex->bind( iBlock );
+		v->popGLContext( prvContext );
 
-		QMessageBox::information( nullptr, tr( "Texture information" ), tex.info( iBlock ) );
+		QMessageBox::information( nullptr, tr( "Texture information" ), tex->info( iBlock ) );
 		return index;
 	}
 };
@@ -1112,12 +1120,20 @@ public:
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
-		TexCache	tex;
-		tex.setNifFolder( nif->getFolder() );
+		auto	w = dynamic_cast< NifSkope * >( nif->getWindow() );
+		GLView *	v;
+		TexCache *	tex;
+		if ( !( w && ( v = w->getGLView() ) != nullptr && ( tex = v->getTexCache() ) != nullptr ) )
+			return index;
+
 		QModelIndex iBlock = nif->getBlockIndex( index );
 
 		if ( nif->blockInherits( iBlock, "NiSourceTexture" ) ) {
-			tex.bind( index );
+			auto	prvContext = v->pushGLContext();
+			tex->activateTextureUnit( 0 );
+			tex->bind( index );
+			v->popGLContext( prvContext );
+
 			QString file = nif->getFolder();
 
 			if ( nif->checkVersion( 0x0A010000, 0 ) ) {
@@ -1129,12 +1145,15 @@ public:
 			QString filename  = QFileDialog::getSaveFileName( qApp->activeWindow(), Spell::tr( "Export texture" ), file, "Textures (*.dds *.tga)" );
 
 			if ( !filename.isEmpty() ) {
-				if ( tex.exportFile( iData, filename ) ) {
+				prvContext = v->pushGLContext();
+				tex->activateTextureUnit( 0 );
+				if ( tex->exportFile( iData, filename ) ) {
 					nif->set<int>( index, "Use External", 1 );
 					filename = TexCache::stripPath( filename, nif->getFolder() );
 					nif->set<QString>( index, "File Name", filename );
-					tex.bind( filename, nif );
+					tex->bind( filename, nif );
 				}
+				v->popGLContext( prvContext );
 			}
 
 			return index;
@@ -1143,7 +1162,10 @@ public:
 			QString filename = QFileDialog::getSaveFileName( qApp->activeWindow(), Spell::tr( "Export texture" ), file, "Textures (*.dds *.tga)" );
 
 			if ( !filename.isEmpty() ) {
-				tex.exportFile( index, filename );
+				auto	prvContext = v->pushGLContext();
+				tex->activateTextureUnit( 0 );
+				tex->exportFile( index, filename );
+				v->popGLContext( prvContext );
 			}
 		}
 
@@ -1177,40 +1199,51 @@ public:
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
-		TexCache	tex;
-		tex.setNifFolder( nif->getFolder() );
+		auto	w = dynamic_cast< NifSkope * >( nif->getWindow() );
+		GLView *	v;
+		TexCache *	tex;
+		if ( !( w && ( v = w->getGLView() ) != nullptr && ( tex = v->getTexCache() ) != nullptr ) )
+			return index;
 
-		if ( tex.bind( index ) ) {
-			//qDebug() << "spEmbedTexture: Embedding texture " << index;
+		auto	prvContext = v->pushGLContext();
+		tex->activateTextureUnit( 0 );
+		if ( !tex->bind( index ) ) {
+			v->popGLContext( prvContext );
+			return index;
+		}
 
-			int blockNum = nif->getBlockNumber( index );
-			nif->insertNiBlock( "NiPixelData", blockNum + 1 );
-			QPersistentModelIndex iSourceTexture = nif->getBlockIndex( blockNum, "NiSourceTexture" );
-			QModelIndex iPixelData = nif->getBlockIndex( blockNum + 1, "NiPixelData" );
+		//qDebug() << "spEmbedTexture: Embedding texture " << index;
 
-			//qDebug() << "spEmbedTexture: Block number" << blockNum << "holds source" << iSourceTexture << "Pixel data will be stored in" << iPixelData;
+		int blockNum = nif->getBlockNumber( index );
+		nif->insertNiBlock( "NiPixelData", blockNum + 1 );
+		QPersistentModelIndex iSourceTexture = nif->getBlockIndex( blockNum, "NiSourceTexture" );
+		QModelIndex iPixelData = nif->getBlockIndex( blockNum + 1, "NiPixelData" );
 
-			// finish writing this function
-			if ( tex.importFile( nif, iSourceTexture, iPixelData ) ) {
-				QString tempFileName = nif->get<QString>( iSourceTexture, "File Name" );
-				tempFileName = TexCache::stripPath( tempFileName, nif->getFolder() );
-				nif->set<int>( iSourceTexture, "Use External", 0 );
-				nif->set<int>( iSourceTexture, "Unknown Byte", 1 );
-				nif->setLink( iSourceTexture, "Pixel Data", blockNum + 1 );
+		//qDebug() << "spEmbedTexture: Block number" << blockNum << "holds source" << iSourceTexture << "Pixel data will be stored in" << iPixelData;
 
-				if ( nif->checkVersion( 0x0A010000, 0 ) ) {
-					nif->set<QString>( iSourceTexture, "File Name", tempFileName );
-				} else {
-					nif->set<QString>( index, "Name", tempFileName );
-				}
+		// finish writing this function
+		bool	noError = tex->importFile( nif, iSourceTexture, iPixelData );
+		v->popGLContext( prvContext );
+		if ( noError ) {
+			QString tempFileName = nif->get<QString>( iSourceTexture, "File Name" );
+			tempFileName = TexCache::stripPath( tempFileName, nif->getFolder() );
+			nif->set<int>( iSourceTexture, "Use External", 0 );
+			if ( auto i = nif->getIndex( iSourceTexture, "Use Internal" ); i.isValid() )
+				nif->set<int>( i, 1 );
+			nif->setLink( iSourceTexture, "Pixel Data", blockNum + 1 );
+
+			if ( nif->checkVersion( 0x0A010000, 0 ) ) {
+				nif->set<QString>( iSourceTexture, "File Name", tempFileName );
 			} else {
-				qCWarning( nsSpell ) << tr( "Could not save texture." );
-				// delete block?
-				/*
-				nif->removeNiBlock( blockNum+1 );
-				nif->set<int>( iSourceTexture, "Use External", 1 );
-				*/
+				nif->set<QString>( index, "Name", tempFileName );
 			}
+		} else {
+			qCWarning( nsSpell ) << tr( "Could not save texture." );
+			// delete block?
+			/*
+			nif->removeNiBlock( blockNum+1 );
+			nif->set<int>( iSourceTexture, "Use External", 1 );
+			*/
 		}
 
 		return index;

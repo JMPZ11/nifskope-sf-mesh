@@ -1,5 +1,7 @@
 #version 410 core
 
+#include "uniforms.glsl"
+
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
 uniform sampler2D SpecularMap;
@@ -44,10 +46,9 @@ in vec3 ViewDir;
 
 in vec2 texCoord;
 
-in vec4 A;
+flat in vec4 A;
 in vec4 C;
-in vec4 D;
-in float glowScale;
+flat in vec4 D;
 
 out vec4 fragColor;
 
@@ -203,7 +204,7 @@ void main()
 		albedo *= tintColor;
 	}
 
-	color.rgb = albedo * (diffuse + emissive * glowScale) + spec;
+	color.rgb = albedo * (diffuse + emissive * glowScaleSRGB) + spec;
 	color.rgb = tonemap( color.rgb );
 
 	fragColor = color;

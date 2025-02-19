@@ -14,14 +14,10 @@
 
 #include <dxgiformat.h>
 
-typedef unsigned char BYTE;
-typedef unsigned short WORD;
-typedef unsigned long DWORD;
-
 #ifndef MAKEFOURCC
     #define MAKEFOURCC(ch0, ch1, ch2, ch3)                              \
-                ((DWORD)(BYTE)(ch0) | ((DWORD)(BYTE)(ch1) << 8) |   \
-                ((DWORD)(BYTE)(ch2) << 16) | ((DWORD)(BYTE)(ch3) << 24 ))
+                (std::uint32_t(std::uint8_t(ch0)) | (std::uint32_t(std::uint8_t(ch1)) << 8) |   \
+                (std::uint32_t(std::uint8_t(ch2)) << 16) | (std::uint32_t(std::uint8_t(ch3)) << 24))
 #endif //defined(MAKEFOURCC)
 
 
@@ -31,14 +27,14 @@ typedef unsigned long DWORD;
 
 struct DDS_PIXELFORMAT
 {
-    DWORD dwSize;
-    DWORD dwFlags;
-    DWORD dwFourCC;
-    DWORD dwRGBBitCount;
-    DWORD dwRBitMask;
-    DWORD dwGBitMask;
-    DWORD dwBBitMask;
-    DWORD dwABitMask;
+    std::uint32_t dwSize;
+    std::uint32_t dwFlags;
+    std::uint32_t dwFourCC;
+    std::uint32_t dwRGBBitCount;
+    std::uint32_t dwRBitMask;
+    std::uint32_t dwGBitMask;
+    std::uint32_t dwBBitMask;
+    std::uint32_t dwABitMask;
 };
 
 #define DDS_FOURCC      0x00000004  // DDPF_FOURCC
@@ -134,27 +130,27 @@ enum DDS_ALPHA_MODE
 
 typedef struct
 {
-    DWORD dwSize;
-    DWORD dwHeaderFlags;
-    DWORD dwHeight;
-    DWORD dwWidth;
-    DWORD dwPitchOrLinearSize;
-    DWORD dwDepth; // only if DDS_HEADER_FLAGS_VOLUME is set in dwHeaderFlags
-    DWORD dwMipMapCount;
-    DWORD dwReserved1[11];
+    std::uint32_t dwSize;
+    std::uint32_t dwHeaderFlags;
+    std::uint32_t dwHeight;
+    std::uint32_t dwWidth;
+    std::uint32_t dwPitchOrLinearSize;
+    std::uint32_t dwDepth; // only if DDS_HEADER_FLAGS_VOLUME is set in dwHeaderFlags
+    std::uint32_t dwMipMapCount;
+    std::uint32_t dwReserved1[11];
     DDS_PIXELFORMAT ddspf;
-    DWORD dwSurfaceFlags;
-    DWORD dwCubemapFlags;
-    DWORD dwReserved2[3];
+    std::uint32_t dwSurfaceFlags;
+    std::uint32_t dwCubemapFlags;
+    std::uint32_t dwReserved2[3];
 } DDS_HEADER;
 
 typedef struct
 {
     DXGI_FORMAT dxgiFormat;
     DDS_RESOURCE_DIMENSION resourceDimension;
-    DWORD miscFlag; // see DDS_RESOURCE_MISC_FLAG
-    DWORD arraySize;
-    DWORD miscFlags2; // see DDS_MISC_FLAGS2
+    std::uint32_t miscFlag; // see DDS_RESOURCE_MISC_FLAG
+    std::uint32_t arraySize;
+    std::uint32_t miscFlags2; // see DDS_MISC_FLAGS2
 } DDS_HEADER_DXT10;
 
 

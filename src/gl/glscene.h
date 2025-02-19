@@ -168,7 +168,8 @@ public:
 	{
 		SelNone = 0,
 		SelObject = 1,
-		SelVertex = 2
+		SelVertex = 2,
+		SelTriangle = 4
 	};
 
 	Q_DECLARE_FLAGS( SelMode, SelModes );
@@ -201,7 +202,7 @@ public:
 
 	Transform view;
 
-	bool selecting;
+	unsigned char selecting;	// 0: not selecting, 1: shape selection, 3: vertex selection, 5: triangle selection
 	bool animate;
 
 	float time;
