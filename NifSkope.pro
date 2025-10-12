@@ -3,33 +3,38 @@
 ###############################
 
 *msvc* {
-    TEMPLATE = vcapp
+	TEMPLATE = vcapp
 } else {
-    TEMPLATE = app
+	TEMPLATE = app
 }
 
 TARGET   = NifSkope
 
 macx: {
-    QMAKE_CC = clang
-    QMAKE_CXX = clang++
+	QMAKE_CC = clang
+	QMAKE_CXX = clang++
 
-    ICON = res/nifskope.icns
+	ICON = res/nifskope.icns
 }
 
-QT += xml opengl network widgets openglwidgets core5compat
-
-# Require Qt 6.2 or higher
-contains(QT_VERSION, ^6\\.[0-1]\\..*) {
+# Require Qt 6.4 or higher, or Qt 5.15
+contains(QT_VERSION, ^5\\.15\\..*) {
+	QT += xml opengl network widgets
+	# C++ Standard Support
+	CONFIG += c++2a
+	DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x050F00 QLatin1StringView=QLatin1String
+} else:contains(QT_VERSION, ^6\\.[0-3]\\..*) {
 	message("Cannot build NifSkope with Qt version $${QT_VERSION}")
-	error("Minimum required version is Qt 6.2")
+	error("Minimum required version is Qt 6.4")
+} else {
+	QT += xml opengl network widgets openglwidgets
+	# C++ Standard Support
+	CONFIG += c++20
+	DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060400
 }
-
-# C++ Standard Support
-CONFIG += c++20
 
 # Dependencies
-CONFIG += nvtristrip qhull gli libfo76utils
+CONFIG += qhull gli libfo76utils
 
 # Debug/Release options
 contains(debug, 1) {
@@ -154,11 +159,10 @@ HEADERS += \
 	src/data/nifitem.h \
 	src/data/niftypes.h \
 	src/data/nifvalue.h \
-	src/gl/marker/constraints.h \
-	src/gl/marker/furniture.h \
 	src/gl/BSMesh.h \
 	src/gl/bsshape.h \
 	src/gl/controllers.h \
+	src/gl/glcontext.hpp \
 	src/gl/glcontroller.h \
 	src/gl/glmarker.h \
 	src/gl/glmesh.h \
@@ -168,7 +172,6 @@ HEADERS += \
 	src/gl/glscene.h \
 	src/gl/glshape.h \
 	src/gl/gltex.h \
-	src/gl/gltexloaders.h \
 	src/gl/gltools.h \
 	src/gl/icontrollable.h \
 	src/gl/renderer.h \
@@ -187,12 +190,14 @@ HEADERS += \
 	src/spells/mesh.h \
 	src/spells/misc.h \
 	src/spells/sanitize.h \
+	src/spells/simplify.h \
 	src/spells/skeleton.h \
 	src/spells/stringpalette.h \
 	src/spells/tangentspace.h \
 	src/spells/texture.h \
 	src/spells/transform.h \
 	src/ui/widgets/colorwheel.h \
+	src/ui/widgets/ddspreview.h \
 	src/ui/widgets/filebrowser.h \
 	src/ui/widgets/fileselect.h \
 	src/ui/widgets/floatedit.h \
@@ -218,17 +223,18 @@ HEADERS += \
 	src/glview.h \
 	src/message.h \
 	src/nifskope.h \
-	src/qtcompat.h \
+	src/qt5compat.hpp \
 	src/spellbook.h \
 	src/version.h \
 	lib/dds.h \
 	lib/dxgiformat.h \
 	lib/json.hpp \
 	lib/meshlet.h \
-	lib/meshoptimizer/meshoptimizer.h \
+	lib/meshoptimizer/src/meshoptimizer.h \
 	lib/stb_image.h \
 	lib/stb_image_write.h \
-	lib/tiny_gltf.h
+	lib/tiny_gltf.h \
+	lib/xxhash.h
 
 SOURCES += \
 	src/data/nifitem.cpp \
@@ -237,6 +243,7 @@ SOURCES += \
 	src/gl/BSMesh.cpp \
 	src/gl/bsshape.cpp \
 	src/gl/controllers.cpp \
+	src/gl/glcontext.cpp \
 	src/gl/glcontroller.cpp \
 	src/gl/glmarker.cpp \
 	src/gl/glmesh.cpp \
@@ -297,6 +304,7 @@ SOURCES += \
 	src/spells/texture.cpp \
 	src/spells/transform.cpp \
 	src/ui/widgets/colorwheel.cpp \
+	src/ui/widgets/ddspreview.cpp \
 	src/ui/widgets/filebrowser.cpp \
 	src/ui/widgets/fileselect.cpp \
 	src/ui/widgets/floatedit.cpp \
@@ -328,10 +336,11 @@ SOURCES += \
 	src/spellbook.cpp \
 	src/version.cpp \
 	lib/meshlet.cpp \
-	lib/meshoptimizer/clusterizer.cpp \
-	lib/meshoptimizer/simplifier.cpp \
-	lib/meshoptimizer/spatialorder.cpp \
-	lib/meshoptimizer/vcacheoptimizer.cpp
+	lib/meshoptimizer/src/clusterizer.cpp \
+	lib/meshoptimizer/src/simplifier.cpp \
+	lib/meshoptimizer/src/spatialorder.cpp \
+	lib/meshoptimizer/src/stripifier.cpp \
+	lib/meshoptimizer/src/vcacheoptimizer.cpp
 
 RESOURCES += \
 	res/nifskope.qrc
@@ -350,18 +359,6 @@ FORMS += \
 ###############################
 ## DEPENDENCY SCOPES
 ###############################
-
-nvtristrip {
-	INCLUDEPATH += lib/NvTriStrip
-	HEADERS += \
-		lib/NvTriStrip/NvTriStrip.h \
-		lib/NvTriStrip/NvTriStripObjects.h \
-		lib/NvTriStrip/VertexCache.h
-	SOURCES += \
-		lib/NvTriStrip/NvTriStrip.cpp \
-		lib/NvTriStrip/NvTriStripObjects.cpp \
-		lib/NvTriStrip/VertexCache.cpp
-}
 
 qhull {
     !*msvc*:QMAKE_CFLAGS += -Ilib/qhull/src
@@ -397,7 +394,6 @@ libfo76utils {
     # SOURCES += $$PWD/lib/libfo76utils/src/downsamp.cpp
     # SOURCES += $$PWD/lib/libfo76utils/src/esmfile.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/filebuf.cpp
-    # SOURCES += $$PWD/lib/libfo76utils/src/frtable.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/jsonread.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/matcomps.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/material.cpp
@@ -405,10 +401,7 @@ libfo76utils {
     SOURCES += $$PWD/lib/libfo76utils/src/mat_json.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/mat_list.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/pbr_lut.cpp
-    # SOURCES += $$PWD/lib/libfo76utils/src/sdlvideo.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/sfcube2.cpp
-    # SOURCES += $$PWD/lib/libfo76utils/src/stringdb.cpp
-    # SOURCES += $$PWD/lib/libfo76utils/src/viewrtbl.cpp
     SOURCES += $$PWD/lib/libfo76utils/src/zlib.cpp
 }
 
@@ -571,8 +564,13 @@ build_pass|!debug_and_release {
 			$$[QT_INSTALL_PLUGINS]/imageformats/qjpeg$${DLLEXT} \
 			$$[QT_INSTALL_PLUGINS]/imageformats/qwebp$${DLLEXT}
 
-		styles += \
-			$$[QT_INSTALL_PLUGINS]/styles/qmodernwindowsstyle$${DLLEXT}
+		contains(QT_VERSION, ^5\\..*) {
+			styles += \
+				$$[QT_INSTALL_PLUGINS]/styles/qwindowsvistastyle$${DLLEXT}
+		} else {
+			styles += \
+				$$[QT_INSTALL_PLUGINS]/styles/qmodernwindowsstyle$${DLLEXT}
+		}
 
 		copyFiles( $$platforms, platforms, true )
 		copyFiles( $$imageformats, imageformats, true )

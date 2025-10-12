@@ -1,4 +1,6 @@
-#version 120
+#version 410 core
+
+#include "uniforms.glsl"
 
 uniform sampler2D BaseMap;
 uniform sampler2D GreyscaleMap;
@@ -17,32 +19,38 @@ uniform bool hasWeaponBlood;
 uniform vec4 glowColor;
 uniform float glowMult;
 
+uniform int alphaFlags;			// bits 0 to 2: alpha test mode, bit 3: alpha blending enabled
+uniform float alphaThreshold;
+
 uniform vec2 uvScale;
 uniform vec2 uvOffset;
 
 uniform vec4 falloffParams;
 uniform float falloffDepth;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec4 C;
+in vec2 texCoord;
 
-varying vec3 N;
-varying vec3 v;
+in vec4 C;
+
+in vec3 N;
+
+out vec4 fragColor;
 
 vec4 colorLookup( float x, float y ) {
 
-	return texture2D( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0)) );
+	return texture( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0)) );
 }
 
-void main( void )
+void main()
 {
-	vec4 baseMap = texture2D( BaseMap, gl_TexCoord[0].st * uvScale + uvOffset );
+	vec4 baseMap = texture( BaseMap, texCoord.st * uvScale + uvOffset );
 
 	vec4 color;
 
-	vec3 normal = N;
+	vec3 normal = normalize( N );
 
 	// Reconstructed normal
 	//normal = normalize(cross(dFdy(v.xyz), dFdx(v.xyz)));
@@ -65,16 +73,16 @@ void main( void )
 
 	float alphaMult = glowColor.a * glowColor.a;
 
-	color.rgb = baseMap.rgb;
-	color.a = baseMap.a;
+	color = baseMap;
 
 	if ( hasWeaponBlood ) {
 		color.rgb = vec3( 1.0, 0.0, 0.0 ) * baseMap.r;
 		color.a = baseMap.a * baseMap.g;
 	}
 
-	color.rgb *= C.rgb * glowColor.rgb;
-	color.a *= C.a * falloff * alphaMult;
+	color *= C;
+	color.rgb *= glowColor.rgb;
+	color.a *= falloff * alphaMult;
 
 	if ( greyscaleColor ) {
 		// Only Red emissive channel is used
@@ -91,6 +99,14 @@ void main( void )
 		color.a = luA.a;
 	}
 
-	gl_FragColor.rgb = color.rgb * glowMult;
-	gl_FragColor.a = color.a;
+	if ( alphaFlags > 0 ) {
+		// 0: always, 1: <, 2: ==, 3: <=, 4: >, 5: !=, 6: >=, 7: never
+		int	m = ( color.a < alphaThreshold ? 0x2B2B : ( color.a > alphaThreshold ? 0x7171 : 0x4D4D ) );
+		if ( ( m & ( 1 << alphaFlags ) ) == 0 )
+			discard;
+	}
+	if ( alphaFlags < 8 )
+		color.a = 1.0;
+
+	fragColor = vec4( color.rgb * ( glowMult * sqrt(brightnessScale) ), color.a );
 }

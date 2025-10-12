@@ -1,5 +1,6 @@
-#version 120
-#extension GL_ARB_shader_texture_lod : require
+#version 410 core
+
+#include "uniforms.glsl"
 
 uniform sampler2D BaseMap;
 uniform sampler2D GreyscaleMap;
@@ -8,9 +9,6 @@ uniform sampler2D NormalMap;
 uniform sampler2D EnvironmentMap;
 uniform sampler2D ReflMap;
 uniform sampler2D LightingMap;
-
-uniform bool isWireframe;
-uniform vec4 solidColor;
 
 uniform bool hasSourceTexture;
 uniform bool hasGreyscaleMap;
@@ -24,11 +22,15 @@ uniform bool greyscaleColor;
 
 uniform bool useFalloff;
 uniform bool hasRGBFalloff;
+uniform bool isGlass;
 
 uniform bool hasWeaponBlood;
 
 uniform vec4 glowColor;
 uniform float glowMult;
+
+uniform int alphaFlags;			// bits 0 to 2: alpha test mode, bit 3: alpha blending enabled
+uniform float alphaThreshold;
 
 uniform vec2 uvScale;
 uniform vec2 uvOffset;
@@ -41,42 +43,34 @@ uniform float envReflection;
 
 uniform float fLumEmittance;
 
-uniform mat4 worldMatrix;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec2 texCoord;
 
-varying vec4 A;
-varying vec4 C;
-varying vec4 D;
+in vec4 C;
 
-varying mat3 btnMatrix;
-varying mat4 reflMatrix;
+in mat3 btnMatrix;
+flat in mat3 reflMatrix;
+
+out vec4 fragColor;
 
 vec3 ViewDir_norm = normalize( ViewDir );
 mat3 btnMatrix_norm = mat3( normalize( btnMatrix[0] ), normalize( btnMatrix[1] ), normalize( btnMatrix[2] ) );
-
-vec4 colorLookup( float x, float y ) {
-
-	return texture2D( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0)) );
-}
 
 vec3 fresnelSchlickRoughness(float NdotV, vec3 F0, float roughness)
 {
 	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - NdotV, 5.0);
 }
 
-void main( void )
-{
-	if ( isWireframe ) {
-		gl_FragColor = solidColor;
-		return;
-	}
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
 
-	vec4 baseMap = texture2D( BaseMap, offset );
-	vec4 normalMap = texture2D( NormalMap, offset );
-	vec4 reflMap = texture2D(ReflMap, offset);
+void main()
+{
+	vec2 offset = texCoord.st * uvScale + uvOffset;
+
+	vec4 baseMap = texture( BaseMap, offset );
+	vec4 normalMap = texture( NormalMap, offset );
+	vec4 reflMap = texture(ReflMap, offset);
 
 	vec3 normal = normalMap.rgb;
 	// Calculate missing blue channel
@@ -97,7 +91,7 @@ void main( void )
 	float LdotH = max( dot(L, H), 0.000001 );
 	float NdotNegL = max( dot(normal, -L), 0.000001 );
 
-	vec3 reflectedWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(R, 0.0))) * vec3(1.0, 1.0, -1.0);
+	vec3 reflectedWS = reflMatrix * R;
 
 	if ( greyscaleAlpha )
 		baseMap.a = 1.0;
@@ -126,30 +120,33 @@ void main( void )
 
 	float alphaMult = baseColor.a * baseColor.a;
 
-	vec4 color;
-	color.rgb = baseMap.rgb * C.rgb * baseColor.rgb;
-	color.a = alphaMult * C.a * baseMap.a;
+	vec4 color = baseMap * C;
+	color.rgb *= baseColor.rgb;
+	color.a *= alphaMult;
 
-	if ( greyscaleColor ) {
-		vec4 luG = colorLookup( texture2D( BaseMap, offset ).g, baseColor.r * C.r * falloff );
+	if ( greyscaleColor )
+		color.rgb = textureLod( GreyscaleMap, vec2( texture( BaseMap, offset ).g, baseColor.r * C.r * falloff ), 0.0 ).rgb;
 
-		color.rgb = luG.rgb;
+	if ( greyscaleAlpha )
+		color.a = textureLod( GreyscaleMap, vec2( texture( BaseMap, offset ).a, color.a ), 0.0 ).a;
+
+	if ( alphaFlags > 0 ) {
+		// 0: always, 1: <, 2: ==, 3: <=, 4: >, 5: !=, 6: >=, 7: never
+		int	m = ( color.a < alphaThreshold ? 0x2B2B : ( color.a > alphaThreshold ? 0x7171 : 0x4D4D ) );
+		if ( ( m & ( 1 << alphaFlags ) ) == 0 )
+			discard;
 	}
+	if ( alphaFlags < 8 )
+		color.a = 1.0;
 
-	if ( greyscaleAlpha ) {
-		vec4 luA = colorLookup( texture2D( BaseMap, offset ).a, color.a );
-
-		color.a = luA.a;
-	}
-
-	vec3 diffuse = A.rgb + (D.rgb * NdotL);
-	color.rgb = mix( color.rgb, color.rgb * D.rgb, lightingInfluence );
+	vec3 diffuse = lightSourceAmbient.rgb + (lightSourceDiffuse[0].rgb * NdotL);
+	color.rgb = mix( color.rgb, color.rgb * lightSourceDiffuse[0].rgb, lightingInfluence );
 
 	// Specular
 	float g = 1.0;
 	float s = 1.0;
-	if ( hasSpecularMap ) {
-		vec4 lightingMap = texture2D(LightingMap, offset);
+	if ( hasSpecularMap && !isGlass ) {
+		vec4 lightingMap = texture(LightingMap, offset);
 		s = lightingMap.r;
 		g = lightingMap.g;
 	}
@@ -158,14 +155,13 @@ void main( void )
 	// Environment
 	if ( hasCubeMap ) {
 		float	m = roughness * (roughness * -4.0 + 10.0);
-		vec3	cube = textureCubeLod( CubeMap, reflectedWS, max(m, 0.0) ).rgb;
-		cube.rgb *= envReflection * g;
-		cube.rgb = mix( cube.rgb, cube.rgb * D.rgb, lightingInfluence );
+		vec3	cube = textureLod( CubeMap, reflectedWS, max(m, 0.0) ).rgb;
+		cube *= envReflection * g;
+		cube = mix( cube, cube * lightSourceDiffuse[0].rgb, lightingInfluence );
 		if ( hasEnvMask )
-			cube.rgb *= texture2D( EnvironmentMap, offset ).rgb;
-		color.rgb += cube.rgb * falloff;
+			cube *= texture( EnvironmentMap, offset ).rgb;
+		color.rgb += cube * falloff;
 	}
 
-	gl_FragColor.rgb = color.rgb * D.a;
-	gl_FragColor.a = color.a;
+	fragColor = vec4( color.rgb * brightnessScale, color.a );
 }

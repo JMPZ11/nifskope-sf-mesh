@@ -4,7 +4,6 @@
 #include "spells/mesh.h"
 #include "spells/tangentspace.h"
 #include "spells/transform.h"
-#include "qtcompat.h"
 
 #include <QBuffer>
 #include <QMessageBox>
@@ -50,6 +49,14 @@ public:
 
 			for ( qint32 b = 0; b < nif->getBlockCount(); b++ ) {
 				QModelIndex iBlock = nif->getBlockIndex( b );
+
+				if ( !( nif->blockInherits( iBlock, "NiProperty" ) || nif->blockInherits( iBlock, "NiSourceTexture" )
+						|| nif->isNiBlock( iBlock, "BSShaderTextureSet" ) ) ) {
+					continue;
+				}
+				if ( nif->blockInherits( iBlock, "BSShaderProperty" ) )	// this needs to be unique
+					continue;
+
 				QString original_material_name;
 
 				if ( nif->isNiBlock( iBlock, "NiMaterialProperty" ) ) {
@@ -61,12 +68,7 @@ public:
 						nif->set<QString>( iBlock, "Name", "Default" );
 				}
 
-				if ( nif->blockInherits( iBlock, "BSShaderProperty" ) || nif->isNiBlock( iBlock, "BSShaderTextureSet" ) ) {
-					// these need to be unique
-					continue;
-				}
-
-				if ( nif->blockInherits( iBlock, "NiProperty" ) || nif->blockInherits( iBlock, "NiSourceTexture" ) ) {
+				{
 					QBuffer data;
 					data.open( QBuffer::WriteOnly );
 					data.write( nif->itemName( iBlock ).toLatin1() );
@@ -81,17 +83,10 @@ public:
 			}
 
 			for ( const auto x : props.keys() ) {
+				qsizetype	n = props[x].size();
 				for ( const auto y : props.keys() ) {
-					if ( x < y && ( !map.contains( y ) ) && props[x].size() == props[y].size() ) {
-						int c = 0;
-
-						while ( c < props[x].size() ) {
-							if ( props[x][c] != props[y][c] )
-								break;
-							c++;
-						}
-
-						if ( c == props[x].size() )
+					if ( x < y && ( !map.contains( y ) ) && props[y].size() == n ) {
+						if ( n < 1 || std::memcmp( props[x].constData(), props[y].constData(), size_t( n ) ) == 0 )
 							map.insert( y, x );
 					}
 				}
@@ -102,16 +97,28 @@ public:
 				nif->mapLinks( map );
 				QList<qint32> l = map.keys();
 				std::sort( l.begin(), l.end(), std::greater<qint32>() );
+				nif->setState( BaseModel::Loading );
 				for ( const auto b : l ) {
 					nif->removeNiBlock( b );
 				}
+				nif->restoreState();
+				nif->updateModel();
 			}
 		} while ( !map.isEmpty() );
 
-		Message::info( nullptr, Spell::tr( "Removed %1 properties" ).arg( numRemoved ) );
+		if ( !nif->getBatchProcessingMode() )
+			Message::info( nullptr, Spell::tr( "Removed %1 properties" ).arg( numRemoved ) );
 		return QModelIndex();
 	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
+
+QModelIndex spCombiProps::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spCombiProps	sp;
+	return sp.cast( nif, index );
+}
 
 REGISTER_SPELL( spCombiProps )
 
@@ -217,7 +224,17 @@ public:
 
 				if ( iNode.isValid() ) {
 					if ( nif->getChildLinks( b ).isEmpty() && nif->getParentLinks( b ).isEmpty() ) {
-						int x = 0;
+						int x = int( nif->isNiBlock( iNode, { "BSBlastNode", "BSDamageStage", "BSDebrisNode",
+																"BSValueNode" } ) );
+						if ( !x && nif->getBSVersion() >= 14 ) {
+							if ( auto blkName = nif->get<QString>( iNode, "Name" );
+									blkName == "ProjectileNode"
+									|| ( nif->getBSVersion() < 83
+										&& ( blkName == "ShellCasingNode" || blkName == "##SightingNode" ) )
+									|| ( nif->getBSVersion() >= 130 && blkName == "WorkshopConnectPoints" ) ) {
+								x = 1;
+							}
+						}
 
 						for ( int c = 0; c < nif->getBlockCount(); c++ ) {
 							if ( c != b ) {
@@ -243,12 +260,20 @@ public:
 			}
 		} while ( removed );
 
-		if ( cnt > 0 )
+		if ( cnt > 0 && !nif->getBatchProcessingMode() )
 			Message::info( nullptr, Spell::tr( "Removed %1 nodes" ).arg( cnt ) );
 
 		return QModelIndex();
 	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
+
+QModelIndex spRemoveBogusNodes::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spRemoveBogusNodes	sp;
+	return sp.cast( nif, index );
+}
 
 REGISTER_SPELL( spRemoveBogusNodes )
 
@@ -447,8 +472,8 @@ public:
 		QModelIndex iUVb = nif->getIndex( iDataB, "UV Sets" );
 
 		for ( int r = 0; r < nif->rowCount( iUVa ); r++ ) {
-			nif->updateArraySize( QModelIndex_child( iUVa, r ) );
-			nif->setArray<Vector2>( QModelIndex_child( iUVa, r ), nif->getArray<Vector2>( QModelIndex_child( iUVa, r ) ).mid( 0, numA ) + nif->getArray<Vector2>( QModelIndex_child( iUVb, r ) ) );
+			nif->updateArraySize( nif->getIndex( iUVa, r ) );
+			nif->setArray<Vector2>( nif->getIndex( iUVa, r ), nif->getArray<Vector2>( nif->getIndex( iUVa, r ) ).mid( 0, numA ) + nif->getArray<Vector2>( nif->getIndex( iUVb, r ) ) );
 		}
 
 		int triCntA = nif->get<int>( iDataA, "Num Triangles" );
@@ -477,15 +502,15 @@ public:
 		nif->updateArraySize( iDataA, "Points" );
 
 		for ( int r = 0; r < stripCntB; r++ ) {
-			QVector<quint16> strip = nif->getArray<quint16>( QModelIndex_child( nif->getIndex( iDataB, "Points" ), r ) );
+			QVector<quint16> strip = nif->getArray<quint16>( nif->getIndex( nif->getIndex( iDataB, "Points" ), r ) );
 			QMutableVectorIterator<quint16> it( strip );
 
 			while ( it.hasNext() )
 				it.next() += numA;
 
-			nif->set<int>( QModelIndex_child( nif->getIndex( iDataA, "Strip Lengths" ), r + stripCntA ), strip.size() );
-			nif->updateArraySize( QModelIndex_child( nif->getIndex( iDataA, "Points" ), r + stripCntA ) );
-			nif->setArray<quint16>( QModelIndex_child( nif->getIndex( iDataA, "Points" ), r + stripCntA ), strip );
+			nif->set<int>( nif->getIndex( nif->getIndex( iDataA, "Strip Lengths" ), r + stripCntA ), strip.size() );
+			nif->updateArraySize( nif->getIndex( nif->getIndex( iDataA, "Points" ), r + stripCntA ) );
+			nif->setArray<quint16>( nif->getIndex( nif->getIndex( iDataA, "Points" ), r + stripCntA ), strip );
 		}
 
 		spUpdateCenterRadius CenterRadius;
@@ -496,12 +521,12 @@ public:
 REGISTER_SPELL( spCombiTris )
 
 
-void scan( const QModelIndex & idx, NifModel * nif, QMap<QString, qint32> & usedStrings, bool hasCED )
+static void scan( const QModelIndex & idx, NifModel * nif, QMap<QString, qint32> & usedStrings, int cedIdx )
 {
 	for ( int i = 0; i < nif->rowCount( idx ); i++ ) {
-		auto child = QModelIndex_child( idx, i, 2 );
-		if ( nif->rowCount( child ) > 0 ) {
-			scan( child, nif, usedStrings, hasCED );
+		auto child = nif->getIndex( idx, i, 2 );
+		if ( child.isValid() && nif->rowCount( child ) > 0 ) {
+			scan( child, nif, usedStrings, cedIdx );
 			continue;
 		}
 
@@ -512,12 +537,15 @@ void scan( const QModelIndex & idx, NifModel * nif, QMap<QString, qint32> & used
 				continue;
 
 			auto str = nif->get<QString>( child );
-			if ( !usedStrings.contains( str ) )
-				usedStrings.insert( str, usedStrings.size() );
+			qint32 value = -1;
+			if ( !str.isEmpty() ) {
+				if ( !usedStrings.contains( str ) ) {
+					qsizetype	n = usedStrings.size();
+					usedStrings.insert( str, qint32( n - int( n <= cedIdx ) ) );
+				}
 
-			qint32 value = usedStrings[str];
-			if ( hasCED && value > 0 )
-				value++;
+				value = usedStrings[str];
+			}
 
 			nif->set<int>( child, value );
 		}
@@ -543,11 +571,16 @@ public:
 		// FO4 workaround for apparently unused but necessary BSClothExtraData string
 		int cedIdx = originalStrings.indexOf( "CED" );
 
-		bool hasCED = cedIdx >= 0;
-
 		QMap<QString, qint32> usedStrings;
+		if ( cedIdx >= 0 )
+			usedStrings.insert( "CED", cedIdx );
+
+		nif->setState( BaseModel::Processing );
+
 		for ( qint32 b = 0; b < nif->getBlockCount(); b++ )
-			scan( nif->getBlockIndex( b ), nif, usedStrings, hasCED );
+			scan( nif->getBlockIndex( b ), nif, usedStrings, cedIdx );
+		while ( usedStrings.size() <= cedIdx )
+			usedStrings.insert( "<unused>", qint32( usedStrings.size() - 1 ) );
 
 		QVector<QString> newStrings( usedStrings.size() );
 		for ( auto kv : usedStrings.toStdMap() )
@@ -555,30 +588,38 @@ public:
 
 		int newSize = newStrings.size();
 
-		if ( hasCED ) {
-			newStrings.insert( cedIdx, 1, "CED" );
-			newSize++;
-		}
-
 		nif->set<uint>( nif->getHeaderIndex(), "Num Strings", newSize );
 		nif->updateArraySize( nif->getHeaderIndex(), "Strings" );
 		nif->setArray<QString>( nif->getHeaderIndex(), "Strings", newStrings );
+
+		nif->restoreState();
 		nif->updateHeader();
 
 		// Remove new from original to see what was removed
 		for ( const auto & s : newStrings )
 			originalStrings.removeAll( s );
 
-		QString msg;
-		if ( originalStrings.size() )
-			msg = "Removed:\r\n" + QStringList::fromVector( originalStrings ).join( "\r\n" );
+		if ( !nif->getBatchProcessingMode() ) {
+			QString msg;
+			if ( originalStrings.size() )
+				msg = "Removed:\r\n" + QStringList::fromVector( originalStrings ).join( "\r\n" );
 
-		Message::info( nullptr, Spell::tr( "Strings Removed: %1. New string table has %2 entries." )
-					   .arg( originalStrings.size() ).arg( newSize ), msg
-		);
+			Message::info( nullptr, Spell::tr( "Strings Removed: %1. New string table has %2 entries." )
+									.arg( originalStrings.size() ).arg( newSize ), msg );
+		}
 
 		return QModelIndex();
 	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
+
+QModelIndex spRemoveUnusedStrings::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spRemoveUnusedStrings	tmp;
+	if ( tmp.isApplicable( nif, index ) )
+		return tmp.cast( nif, index );
+	return index;
+}
 
 REGISTER_SPELL( spRemoveUnusedStrings )

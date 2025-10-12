@@ -71,7 +71,6 @@ bool ValueEdit::canEdit( NifValue::Type t )
 	case NifValue::tChar8String:
 	case NifValue::tShortString:
 	case NifValue::tStringIndex:
-	case NifValue::tString:
 	case NifValue::tVector4:
 	case NifValue::tByteVector4:
 	case NifValue::tUDecVector4:
@@ -362,34 +361,6 @@ void ValueEdit::setValue( const NifValue & v )
 			TriangleEdit * te = new TriangleEdit( this );
 			te->setTriangle( v.get<Triangle>( nullptr, nullptr ) );
 			edit = te;
-		}
-		break;
-	case NifValue::tString:
-		{
-			if ( /*???*/ false ) {
-				QSpinBox * ie = new UIntSpinBox( this );
-				ie->setFrame( false );
-				ie->setValue( v.toCount( nullptr, nullptr ) );
-				edit = ie;
-			} else {
-				QLineEdit * le = new QLineEdit( this );
-				le->setText( v.toString() );
-				edit = le;
-			}
-		}
-		break;
-	case NifValue::tFilePath:
-		{
-			if ( /*???*/ false ) {
-				QSpinBox * ie = new UIntSpinBox( this );
-				ie->setFrame( false );
-				ie->setValue( v.toCount( nullptr, nullptr ) );
-				edit = ie;
-			} else {
-				QLineEdit * le = new QLineEdit( this );
-				le->setText( v.toString() );
-				edit = le;
-			}
 		}
 		break;
 	default:
@@ -749,6 +720,39 @@ Vector2 VectorEdit::getVector2() const
 	return Vector2( x->value(), y->value() );
 }
 
+void VectorEdit::setStepSize( double n )
+{
+	bool	isAdaptive = !( n > 0.0 );
+	QAbstractSpinBox::StepType	stepType = ( isAdaptive ? QAbstractSpinBox::AdaptiveDecimalStepType
+														: QAbstractSpinBox::DefaultStepType );
+	x->setStepType( stepType );
+	y->setStepType( stepType );
+	z->setStepType( stepType );
+	w->setStepType( stepType );
+	if ( isAdaptive )
+		return;
+	x->setSingleStep( n );
+	y->setSingleStep( n );
+	z->setSingleStep( n );
+	w->setSingleStep( n );
+}
+
+void VectorEdit::setAccelerated( bool n )
+{
+	x->setAccelerated( n );
+	y->setAccelerated( n );
+	z->setAccelerated( n );
+	w->setAccelerated( n );
+}
+
+void VectorEdit::setKeyboardTracking( bool n )
+{
+	x->setKeyboardTracking( n );
+	y->setKeyboardTracking( n );
+	z->setKeyboardTracking( n );
+	w->setKeyboardTracking( n );
+}
+
 
 RotationEdit::RotationEdit( QWidget * parent ) : ValueEdit( parent ), mode( mAuto ), setting( false )
 {
@@ -769,6 +773,8 @@ RotationEdit::RotationEdit( QWidget * parent ) : ValueEdit( parent ), mode( mAut
 	for ( int x = 0; x < 4; x++ ) {
 		lay->addWidget( l[x] = new CenterLabel, 1 );
 		lay->addWidget( v[x] = new QDoubleSpinBox, 5 );
+		v[x]->setAccelerated( true );
+		v[x]->setKeyboardTracking( false );
 		connect( v[x], dsbValueChanged, this, &RotationEdit::sltChanged );
 	}
 
@@ -804,7 +810,7 @@ void RotationEdit::setupMode()
 				l[x]->setText( labs.value( x ) );
 				v[x]->setDecimals( ROTATION_COARSE );
 				v[x]->setRange( -360, +360 );
-				v[x]->setSingleStep( 1 );
+				v[x]->setSingleStep( 0.2 );
 				l[x]->setHidden( x == 3 );
 				v[x]->setHidden( x == 3 );
 			}
@@ -821,11 +827,11 @@ void RotationEdit::setupMode()
 				if ( x == 0 ) {
 					v[x]->setDecimals( ROTATION_COARSE );
 					v[x]->setRange( -360, +360 );
-					v[x]->setSingleStep( 1 );
+					v[x]->setSingleStep( 0.2 );
 				} else {
 					v[x]->setDecimals( ROTATION_FINE );
 					v[x]->setRange( -1.0, +1.0 );
-					v[x]->setSingleStep( 0.1 );
+					v[x]->setSingleStep( 0.02 );
 				}
 
 				l[x]->setHidden( false );

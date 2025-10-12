@@ -38,8 +38,10 @@ public:
 
 	// Shape
 
-	void drawVerts() const override;
-	QModelIndex vertexAt(int) const override;
+	void drawVerts() const;
+	QModelIndex getMeshDataIndex() const;
+	QModelIndex vertexAt( int ) const override;
+	QModelIndex triangleAt( int ) const override;
 
 	QVector<std::shared_ptr<MeshFile>> meshes;
 	inline const MeshFile * getMeshFile() const
@@ -54,17 +56,11 @@ public:
 		return nullptr;
 	}
 
-	int skinID = -1;
-	QVector<BoneWeightsUNorm> weightsUNORM;
 	QVector<QVector<Triangle>> gpuLODs;
-	QVector<QString> boneNames;
-	QVector<Transform> boneTransforms;
 
 protected:
 	void updateImpl(const NifModel* nif, const QModelIndex& index) override;
 	void updateData(const NifModel* nif) override;
-
-	QModelIndex iMeshes;
 
 	BoundSphere dataBound;
 

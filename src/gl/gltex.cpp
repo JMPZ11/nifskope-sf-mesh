@@ -34,7 +34,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "message.h"
 #include "gl/glscene.h"
-#include "gl/gltexloaders.h"
 #include "model/nifmodel.h"
 
 #include <QDebug>
@@ -49,20 +48,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! @file gltex.cpp TexCache management
 
-#ifdef WIN32
-static PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
-static PFNGLCLIENTACTIVETEXTUREPROC glClientActiveTexture = nullptr;
-#endif
-
 int TexCache::num_texture_units = 0;
-int TexCache::num_txtunits_client = 0;
 int TexCache::pbrCubeMapResolution = 512;
 int TexCache::pbrImportanceSamples = 256;
 int TexCache::hdrToneMapLevel = 8;
 
 //! Maximum anisotropy
-float max_anisotropy = 1.0f;
-void set_max_anisotropy()
+static float max_anisotropy = 1.0f;
+
+void TexCache::set_max_anisotropy()
 {
 	static QSettings settings;
 	int	tmp = roundFloat( settings.value( "Settings/Render/General/Anisotropic Filtering", 4.0 ).toFloat() );
@@ -70,79 +64,36 @@ void set_max_anisotropy()
 	max_anisotropy = std::min( float( tmp ), max_anisotropy );
 }
 
-float get_max_anisotropy()
+float TexCache::get_max_anisotropy()
 {
 	return max_anisotropy;
 }
 
-void initializeTextureUnits( const QOpenGLContext * context )
+void TexCache::setOpenGLContext( NifSkopeOpenGLContext * context )
 {
-	if ( context->hasExtension( "GL_ARB_multitexture" ) ) {
-		GLint	tmp = 0;
-		glGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS, &tmp );
-		tmp = std::min( std::max( tmp, GLint(1) ), GLint(TexCache::maxTextureUnits) );
-		TexCache::num_texture_units = tmp;
-		glGetIntegerv( GL_MAX_TEXTURE_COORDS, &tmp );
-		TexCache::num_txtunits_client = std::max( tmp, GLint(1) );
+	fn = context->fn;
 
-		//qDebug() << "texture units" << TexCache::num_texture_units;
-	} else {
-		qCWarning( nsGl ) << QObject::tr( "Multitexturing not supported." );
-		TexCache::num_texture_units = 1;
-		TexCache::num_txtunits_client = 1;
-	}
+	GLint	tmp = 0;
+	glGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS, &tmp );
+	tmp = std::min( std::max( tmp, GLint(1) ), GLint(TexCache::maxTextureUnits) );
+	TexCache::num_texture_units = tmp;
 
-	if ( context->hasExtension( "GL_EXT_texture_filter_anisotropic" ) ) {
+	//qDebug() << "texture units" << TexCache::num_texture_units;
+
+	if ( context->cx->hasExtension( "GL_EXT_texture_filter_anisotropic" ) ) {
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anisotropy );
 		set_max_anisotropy();
 		//qDebug() << "maximum anisotropy" << max_anisotropy;
 	}
-
-#ifdef WIN32
-	if ( !glActiveTexture )
-		glActiveTexture = (PFNGLACTIVETEXTUREPROC)context->getProcAddress( "glActiveTexture" );
-
-	if ( !glClientActiveTexture )
-		glClientActiveTexture = (PFNGLCLIENTACTIVETEXTUREPROC)context->getProcAddress( "glClientActiveTexture" );
-#endif
-
-	initializeTextureLoaders( context );
 }
 
-bool activateTextureUnit( int stage, bool noClient )
+bool TexCache::activateTextureUnit( int stage )
 {
-	if ( TexCache::num_texture_units <= 1 )
-		return ( stage == 0 );
+	if ( stage >= TexCache::num_texture_units ) [[unlikely]]
+		return false;
 
-	if ( stage < TexCache::num_texture_units ) {
-
-		glActiveTexture( GL_TEXTURE0 + stage );
-		if ( stage < TexCache::num_txtunits_client && !noClient )
-			glClientActiveTexture( GL_TEXTURE0 + stage );
-		return true;
-	}
-
-	return false;
-}
-
-void resetTextureUnits( int numTex )
-{
-	if ( TexCache::num_texture_units <= 1 ) {
-		glDisable( GL_TEXTURE_2D );
-		return;
-	}
-
-	for ( int x = std::min( numTex, TexCache::num_texture_units ); --x >= 0; ) {
-		glActiveTexture( GL_TEXTURE0 + x );
-		glDisable( GL_TEXTURE_2D );
-		glMatrixMode( GL_TEXTURE );
-		glLoadIdentity();
-		glMatrixMode( GL_MODELVIEW );
-		if ( x < TexCache::num_txtunits_client ) {
-			glClientActiveTexture( GL_TEXTURE0 + x );
-			glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-		}
-	}
+	fn->glActiveTexture( GL_TEXTURE0 + stage );
+	return true;
 }
 
 
@@ -202,6 +153,7 @@ TexCache::TexCache( QObject * parent ) : QObject( parent )
 	textures = nullptr;
 	textureHashMask = 0;
 	textureCount = 0;
+	fn = nullptr;
 	rehashTextures();
 }
 
@@ -217,7 +169,7 @@ QString TexCache::find( const QString & file, const NifModel * nif )
 {
 	if ( file.isEmpty() )
 		return QString();
-	if ( file.startsWith("#") && (file.length() == 9 || file.length() == 10) )
+	if ( file.startsWith( QChar('#') ) && (file.length() == 9 || file.length() == 10) )
 		return file;
 
 	QString filename( file );
@@ -254,7 +206,7 @@ QString TexCache::find( const QString & file, const NifModel * nif )
 QString TexCache::stripPath( const QString & filepath, const QString & nifFolder )
 {
 	QString file = filepath;
-	file = file.replace( "/", "\\" ).toLower();
+	file = file.replace( QChar('/'), QChar('\\') ).toLower();
 	QDir basePath;
 
 	QSettings settings;
@@ -263,13 +215,13 @@ QString TexCache::stripPath( const QString & filepath, const QString & nifFolder
 	QStringList folders = settings.value( "Settings/Resources/Folders", QStringList() ).toStringList();
 
 	for ( QString base : folders ) {
-		if ( base.startsWith( "./" ) || base.startsWith( ".\\" ) ) {
-			base = nifFolder + "/" + base;
+		if ( base.startsWith( QLatin1StringView("./") ) || base.startsWith( QLatin1StringView(".\\") ) ) {
+			base = nifFolder + QChar('/') + base;
 		}
 
 		basePath.setPath( base );
 		base = basePath.absolutePath();
-		base = base.replace( "/", "\\" ).toLower();
+		base = base.replace( QChar('/'), QChar('\\') ).toLower();
 		/*
 		 * note that basePath.relativeFilePath( file ) here is *not*
 		 * what we want - see the above doc comments for this function
@@ -281,7 +233,7 @@ QString TexCache::stripPath( const QString & filepath, const QString & nifFolder
 		}
 	}
 
-	if ( file.startsWith( "/" ) || file.startsWith( "\\" ) )
+	if ( file.startsWith( QChar('/') ) || file.startsWith( QChar('\\') ) )
 		file.remove( 0, 1 );
 
 	return file;
@@ -426,10 +378,6 @@ bool TexCache::bindCube( const QString & fname, const NifModel * nif, bool useSe
 	glTexParameteri( GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE );
 	glTexParameteri( GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	glTexParameteri( GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
-	glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	glMatrixMode( GL_TEXTURE );
-	glLoadIdentity();
-	glMatrixMode( GL_MODELVIEW );
 
 	return true;
 }
@@ -579,7 +527,7 @@ bool TexCache::exportFile( const QModelIndex & iSource, QString & filepath )
 	if ( !tx.imageInfo )
 		tx.imageInfo = new Tex::ImageInfo;
 
-	return tx.saveAsFile( iSource, filepath );
+	return tx.saveAsFile( *this, iSource, filepath );
 }
 
 bool TexCache::importFile( NifModel * nif, const QModelIndex & iSource, QModelIndex & iData )
@@ -591,7 +539,7 @@ bool TexCache::importFile( NifModel * nif, const QModelIndex & iSource, QModelIn
 			//qDebug() << "TexCache::importFile: Texture has filename (from NIF) " << filename;
 			const Tex::ImageInfo *	i = getTextureInfo( filename );
 			if ( i )
-				return i->savePixelData( nif, iData );
+				return i->savePixelData( *this, nif, iData );
 		}
 	}
 
@@ -603,40 +551,45 @@ bool TexCache::importFile( NifModel * nif, const QModelIndex & iSource, QModelIn
 *  TexCache::Tex
 */
 
-bool TexCache::Tex::saveAsFile( const QModelIndex & index, QString & savepath )
+bool TexCache::Tex::saveAsFile( TexCache & t, const QModelIndex & index, QString & savepath )
 {
 	ImageInfo *	i = imageInfo;
-	i->mipmaps = texLoad( index, i->format, target, i->width, i->height, id );
+	i->mipmaps = t.texLoad( index, i->format, target, i->width, i->height, id );
 	mipmaps = std::uint16_t( i->mipmaps );
 
-	if ( savepath.toLower().endsWith( ".tga" ) ) {
-		return texSaveTGA( index, savepath, i->width, i->height );
+	if ( savepath.toLower().endsWith( QLatin1StringView(".tga") ) ) {
+		return TexCache::texSaveTGA( index, savepath, i->width, i->height );
 	}
 
-	return texSaveDDS( index, savepath, i->width, i->height, i->mipmaps );
+	return TexCache::texSaveDDS( index, savepath, i->width, i->height, i->mipmaps );
 }
 
-bool TexCache::Tex::ImageInfo::savePixelData( NifModel * nif, QModelIndex & iData ) const
+bool TexCache::Tex::ImageInfo::savePixelData( TexCache & t, NifModel * nif, QModelIndex & iData ) const
 {
 	// gltexloaders function goes here
 	//qDebug() << "TexCache::Tex:savePixelData: Packing" << iSource << "from file" << filepath << "to" << iData;
-	return texSaveNIF( nif, filepath, iData );
+	try {
+		return t.texSaveNIF( nif, filepath, iData );
+	} catch ( QString & e ) {
+		qCWarning( nsIo ) << e;
+	}
+	return false;
 }
 
 bool TexCache::loadSettings( QSettings & settings )
 {
 	int	tmp = settings.value( "Settings/Render/General/Ibl Cube Map Resolution", 2 ).toInt();
-	tmp = 128 << std::min< int >( std::max< int >( tmp, 0 ), 4 );
+	tmp = 128 << std::clamp< int >( tmp, 0, 4 );
 	bool	r = ( tmp != pbrCubeMapResolution );
 	pbrCubeMapResolution = tmp;
 
 	tmp = settings.value( "Settings/Render/General/Ibl Importance Sample Cnt", 2 ).toInt();
-	tmp = 64 << std::min< int >( std::max< int >( tmp, 0 ), 6 );
+	tmp = 64 << std::clamp< int >( tmp, 0, 6 );
 	r = r | ( tmp != pbrImportanceSamples );
 	pbrImportanceSamples = tmp;
 
 	tmp = settings.value( "Settings/Render/General/Hdr Tone Map", 8 ).toInt();
-	tmp = std::min< int >( std::max< int >( tmp, 0 ), 16 );
+	tmp = std::clamp< int >( tmp, 0, 16 );
 	r = r | ( tmp != hdrToneMapLevel );
 	hdrToneMapLevel = tmp;
 

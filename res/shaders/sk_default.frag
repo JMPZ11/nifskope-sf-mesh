@@ -1,4 +1,6 @@
-#version 120
+#version 410 core
+
+#include "uniforms.glsl"
 
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
@@ -18,6 +20,8 @@ uniform vec3 glowColor;
 uniform float glowMult;
 
 uniform float alpha;
+uniform int alphaFlags;			// bits 0 to 2: alpha test mode, bit 3: alpha blending enabled
+uniform float alphaThreshold;
 
 uniform vec3 tintColor;
 
@@ -38,21 +42,23 @@ uniform float lightingEffect2;
 
 uniform float envReflection;
 
-uniform mat4 worldMatrix;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec2 texCoord;
 
-varying vec4 A;
-varying vec4 C;
-varying vec4 D;
+flat in vec4 A;
+in vec4 C;
+flat in vec4 D;
 
-varying mat3 tbnMatrix;
+in mat3 btnMatrix;
 
-mat3 tbnMatrix_norm = mat3(normalize(tbnMatrix[0]), normalize(tbnMatrix[1]), normalize(tbnMatrix[2]));
+out vec4 fragColor;
+
+mat3 btnMatrix_norm = mat3(normalize(btnMatrix[0]), normalize(btnMatrix[1]), normalize(btnMatrix[2]));
 
 
-vec3 tonemap(vec3 x, float y)
+vec3 tonemap(vec3 x)
 {
 	float a = 0.15;
 	float b = 0.50;
@@ -61,9 +67,9 @@ vec3 tonemap(vec3 x, float y)
 	float e = 0.02;
 	float f = 0.30;
 
-	vec3 z = x * (y * 4.22978723);
+	vec3 z = x * x * D.a * (A.a * 4.22978723);
 	z = (z * (a * z + b * c) + d * e) / (z * (a * z + b) + d * f) - e / f;
-	return z / (y * 0.93333333);
+	return sqrt(z / (A.a * 0.93333333));
 }
 
 vec3 toGrayscale(vec3 color)
@@ -71,24 +77,34 @@ vec3 toGrayscale(vec3 color)
 	return vec3(dot(vec3(0.3, 0.59, 0.11), color));
 }
 
-void main( void )
+void main()
 {
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
+	vec2 offset = texCoord.st * uvScale + uvOffset;
 
 	vec3 E = normalize(ViewDir);
 	
 	if ( hasHeightMap ) {
-		float height = texture2D( HeightMap, offset ).r;
-		offset += normalize(ViewDir * tbnMatrix_norm).xy * (height * 0.08 - 0.04); 
+		float height = texture( HeightMap, offset ).r;
+		offset += normalize(ViewDir * btnMatrix_norm).xy * (height * 0.08 - 0.04); 
 	}
 
-	vec4 baseMap = texture2D( BaseMap, offset );
-	vec4 normalMap = texture2D( NormalMap, offset );
-	vec4 glowMap = texture2D( GlowMap, offset );
+	vec4 baseMap = texture( BaseMap, offset );
+
+	vec4 color = vec4( baseMap.rgb, 1.0 );
+	if ( alphaFlags > 0 ) {
+		float	a = C.a * baseMap.a * alpha;
+		// 0: always, 1: <, 2: ==, 3: <=, 4: >, 5: !=, 6: >=, 7: never
+		int	m = ( a < alphaThreshold ? 0x2B2B : ( a > alphaThreshold ? 0x7171 : 0x4D4D ) );
+		if ( ( m & ( 1 << alphaFlags ) ) == 0 )
+			discard;
+		if ( ( alphaFlags & 8 ) != 0 )
+			color.a = a;
+	}
+
+	vec4 normalMap = texture( NormalMap, offset );
+	vec4 glowMap = texture( GlowMap, offset );
 	
-	vec3 normal = normalize(tbnMatrix_norm * (normalMap.rgb * 2.0 - 1.0));
-	if ( !gl_FrontFacing )
-		normal *= -1.0;
+	vec3 normal = normalize(btnMatrix_norm * (normalMap.rgb * 2.0 - 1.0));
 
 	vec3 L = normalize(LightDir);
 	vec3 R = reflect(-L, normal);
@@ -100,21 +116,20 @@ void main( void )
 	float NdotNegL = max( dot(normal, -L), 0.0 );
 
 	vec3 reflected = reflect( -E, normal );
-	vec3 reflectedWS = vec3( worldMatrix * (gl_ModelViewMatrixInverse * vec4( reflected, 0.0 )) );
+	vec3 reflectedWS = envMapRotation * reflected;
 
 
-	vec4 color;
 	vec3 albedo = baseMap.rgb * C.rgb;
 	vec3 diffuse = A.rgb + (D.rgb * NdotL);
 
 
 	// Environment
 	if ( hasCubeMap ) {
-		vec4 cube = textureCube( CubeMap, reflectedWS );
+		vec4 cube = texture( CubeMap, reflectedWS );
 		cube.rgb *= envReflection;
 		
 		if ( hasEnvMask ) {
-			vec4 env = texture2D( EnvironmentMap, offset );
+			vec4 env = texture( EnvironmentMap, offset );
 			cube.rgb *= env.r;
 		} else {
 			cube.rgb *= normalMap.a;
@@ -140,7 +155,7 @@ void main( void )
 
 	vec3 backlight = vec3(0.0);
 	if ( hasBacklight ) {
-		backlight = texture2D( BacklightMap, offset ).rgb;
+		backlight = texture( BacklightMap, offset ).rgb;
 		backlight *= NdotNegL;
 		
 		emissive += backlight * D.rgb;
@@ -148,7 +163,7 @@ void main( void )
 
 	vec4 mask = vec4(0.0);
 	if ( hasRimlight || hasSoftlight ) {
-		mask = texture2D( LightMask, offset );
+		mask = texture( LightMask, offset );
 	}
 
 	vec3 rim = vec3(0.0);
@@ -173,10 +188,8 @@ void main( void )
 		albedo *= tintColor;
 	}
 
-	color.rgb = albedo * (diffuse + emissive) + spec;
-	color.rgb = tonemap( color.rgb * D.a, A.a );
-	color.a = C.a * baseMap.a;
+	color.rgb = albedo * (diffuse + emissive * glowScaleSRGB) + spec;
+	color.rgb = tonemap( color.rgb );
 
-	gl_FragColor = color;
-	gl_FragColor.a *= alpha;
+	fragColor = color;
 }

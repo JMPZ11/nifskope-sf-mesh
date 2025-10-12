@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "spellbook.h"
 #include "data/niftypes.h"
 #include "ui/widgets/floatslider.h"
+#include "qt5compat.hpp"
 
 #include <QContextMenuEvent>
 #include <QDialog>
@@ -49,57 +50,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QMouseEvent>
 #include <QTransform>
 
-
-/* XPM */
-static const char * const hsv42_xpm[] = {
-	"32 32 43 1",
-	"   c None",
-	".	c #3200FF", "+	c #0024FF", "@	c #7600FF", "#	c #0045FF", "$	c #A000FF",
-	"%	c #FF0704", "&	c #015AFF", "*	c #FF0031", "=	c #FF0058", "-	c #FF0074",
-	";	c #FF0086", ">	c #006DFF", ",	c #D700FF", "'	c #FF00A3", ")	c #FF00C5",
-	"!	c #FC00DE", "~	c #FC00FA", "{	c #0086FF", "]	c #FF3700", "^	c #00A7FF",
-	"/	c #FF6000", "(	c #00C3FF", "_	c #00FF32", ":	c #00DDFF", "<	c #FF8D00",
-	"[	c #00FF55", "}	c #23FF00", "|	c #00FF72", "1	c #00FF88", "2	c #00FFA0",
-	"3	c #00FFBB", "4	c #00FFD7", "5	c #00F9F8", "6	c #FFA900", "7	c #60FF00",
-	"8	c #83FF00", "9	c #FFC200", "0	c #A3FF00", "a	c #FFD800", "b	c #C0FF00",
-	"c	c #FBF100", "d	c #E6FF00",
-	"            7778800b            ",
-	"         }}}}778800bbdd         ",
-	"       }}}}}}777800bbddcc       ",
-	"      }}}}}7}778800bdddcca      ",
-	"     __}}}}}}77880bbddccca9     ",
-	"    [___}}}}}}7780bbddcaa996    ",
-	"   [[[___}}}}77880bddccaa9666   ",
-	"  ||[[[___}}}}7780bddca9966<<   ",
-	"  |1|[[[__}}}}7880bdcca966<<</  ",
-	" 211|||[[__}}}}78bdcca966<</<// ",
-	" 22211||[[[}}}778bdca96<<<///// ",
-	" 3222121||[__}}70bda96<<</////] ",
-	"3333322211|[__}78dc96<////]]]]]]",
-	"444433332221|_}70d9<<///]]]]]]]%",
-	"4444444433322|[}ba<//]]]]]]%%%%%",
-	"555555454544442[c/]%%%%%%%%%%%%%",
-	"5555555555:5::({!=*%%%%%%%%%%%%%",
-	":5:5:::::(((^{&.$);-==******%*%%",
-	":::::((((^^{>&+.@~)';-===*******",
-	":(((((^^^{{>#+..@,~)';;-====*=* ",
-	" (^^^^^{{>>#+..@@,~!)'';;--==== ",
-	" ^^^^{{{>&##+...$$,~!)'';;---== ",
-	" ^^{{{>>&##....@@$,,~!))'';;--  ",
-	"  {{>>>&#++....@$$,,~~!)'''';;  ",
-	"  {>>&&##++....@@$,,~~!!))'''   ",
-	"   >&&##++.....@@$$,,~~!)))''   ",
-	"    &#+++......@@$$,,~~~!)))    ",
-	"     #+++.....@@@$$$,,~~!!!     ",
-	"      ++.......@$$$,,,~~~!      ",
-	"        ......@@@$$$$,,~        ",
-	"         ......@@$$,,,          ",
-	"            .@@@@$$             "
-};
-
 #include <math.h>
-
-static QIconPtr icon = nullptr;
 
 ColorWheel::ColorWheel( QWidget * parent ) : QWidget( parent )
 {
@@ -121,14 +72,6 @@ ColorWheel::ColorWheel( const QColor & c, QWidget * parent ) : QWidget( parent )
 
 	if ( V > 1.0 || V < 0.0 )
 		V = 1.0;
-}
-
-QIcon ColorWheel::getIcon()
-{
-	if ( !icon )
-		icon = QIconPtr( new QIcon(QPixmap( hsv42_xpm )) );
-
-	return *icon;
 }
 
 QColor ColorWheel::getColor() const
@@ -280,8 +223,8 @@ void ColorWheel::mousePressEvent( QMouseEvent * e )
 	if ( e->button() != Qt::LeftButton )
 		return;
 
-	double x = e->position().x();
-	double y = e->position().y();
+	double x = getQMouseEventPosition( e ).x();
+	double y = getQMouseEventPosition( e ).y();
 	double dx = abs( x - width() * 0.5 );
 	double dy = abs( y - height() * 0.5 );
 	double d  = sqrt( dx * dx + dy * dy );
@@ -302,7 +245,7 @@ void ColorWheel::mousePressEvent( QMouseEvent * e )
 void ColorWheel::mouseMoveEvent( QMouseEvent * e )
 {
 	if ( e->buttons() & Qt::LeftButton )
-		setColor( e->position().x(), e->position().y() );
+		setColor( getQMouseEventPosition( e ).x(), getQMouseEventPosition( e ).y() );
 }
 
 void ColorWheel::contextMenuEvent( QContextMenuEvent * e )
@@ -399,9 +342,9 @@ QColor ColorWheel::choose( const QColor & c, bool alphaEnable, QWidget * parent 
 
 	QHBoxLayout * hbox = new QHBoxLayout;
 	grid->addLayout( hbox, 1, 0, 1, 3 );
-	QPushButton * ok = new QPushButton( "ok" );
+	QPushButton * ok = new QPushButton( "Ok" );
 	hbox->addWidget( ok );
-	QPushButton * cancel = new QPushButton( "cancel" );
+	QPushButton * cancel = new QPushButton( "Cancel" );
 	hbox->addWidget( cancel );
 	connect( ok, &QPushButton::clicked, &dlg, &QDialog::accept );
 	connect( cancel, &QPushButton::clicked, &dlg, &QDialog::reject );
@@ -470,7 +413,7 @@ void ColorWheel::chooseHex()
 	a->setVisible( getAlpha() );
 
 	QHBoxLayout * hBox  = new QHBoxLayout;
-	QPushButton * btnOk = new QPushButton( tr( "OK" ) );
+	QPushButton * btnOk = new QPushButton( tr( "Ok" ) );
 	QPushButton * btnCancel = new QPushButton( tr( "Cancel" ) );
 	hBox->addWidget( btnOk );
 	hBox->addWidget( btnCancel );

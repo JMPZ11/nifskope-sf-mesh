@@ -15,6 +15,7 @@
         <verexpr token="#NI_BS_LT_SSE#" string="(#BSVER# #LT# 100)">All NI + BS before SSE.</verexpr>
         <verexpr token="#NI_BS_LT_FO4#" string="(#BSVER# #LT# 130)">All NI + BS before Fallout 4.</verexpr>
         <verexpr token="#NI_BS_LTE_FO4#" string="(#BSVER# #LTE# 139)">All NI + BS until Fallout 4.</verexpr>
+        <verexpr token="#NI_BS_LT_STF#" string="(#BSVER# #LT# 170)">All NI + BS before Starfield.</verexpr>
         <verexpr token="#BS_GT_FO3#" string="(#BSVER# #GT# 34)">Skyrim, SSE, and Fallout 4</verexpr>
         <verexpr token="#BS_GTE_FO3#" string="(#BSVER# #GTE# 34)">FO3 and later.</verexpr>
         <verexpr token="#BS_GTE_SKY#" string="(#BSVER# #GTE# 83)">Skyrim and later.</verexpr>
@@ -22,6 +23,7 @@
         <verexpr token="#BS_GTE_F76#" string="(#BSVER# #GTE# 155)">Fallout 76 and later.</verexpr>
         <verexpr token="#BS_GTE_STF#" string="(#BSVER# #GTE# 170)">Starfield and later.</verexpr>
         <verexpr token="#BS_SSE#" string="(#BSVER# #EQ# 100)">SSE only.</verexpr>
+        <verexpr token="#BS_SKY_SSE#" string="((#BSVER# #GTE# 83) #AND# (#BSVER# #LTE# 100))">Skyrim and SSE.</verexpr>
         <verexpr token="#BS_FO4#" string="(#BSVER# #EQ# 130)">Fallout 4 strictly, excluding stream 132 and 139 in dev files.</verexpr>
         <verexpr token="#BS_FO4_2#" string="((#BSVER# #GTE# 130) #AND# (#BSVER# #LTE# 139))">Fallout 4/76 including dev files.</verexpr>
         <verexpr token="#BS_GT_130#" string="(#BSVER# #GT# 130)">Later than Bethesda 130.</verexpr>
@@ -30,7 +32,6 @@
         <verexpr token="#BS_132_139#" string="((#BSVER# #GTE# 132) #AND# (#BSVER# #LTE# 139))">Bethesda 132 to 139.</verexpr>
         <verexpr token="#BS_GTE_152#" string="(#BSVER# #GTE# 152)">Bethesda 152 and later.</verexpr>
         <verexpr token="#BS_F76#" string="(#BSVER# #EQ# 155)">Fallout 76 stream 155 only.</verexpr>
-        <verexpr token="#BS_SSE_FO4_FO76#" string="((#BSVER# #GTE# 100) #AND# (#BSVER# #LT# 170))">SSE, FO4, FO76</verexpr>
         <verexpr token="#BS_FO4_F76#" string="((#BSVER# #GTE# 130) #AND# (#BSVER# #LTE# 159))">FO4, FO76</verexpr>
         <verexpr token="#BS202#" string="((#VER# #EQ# 20.2.0.7) #AND# (#BSVER# #GT# 0))">Bethesda 20.2 only.</verexpr>
         <verexpr token="#DIVINITY2#" string="((#USER# #EQ# 0x20000) #OR# (#USER# #EQ# 0x30000))">Divinity 2</verexpr>
@@ -53,6 +54,7 @@
         <verset token="#STF#" string="V20_2_0_7_STF" />
         <verset token="#FO3_AND_LATER#" string="V20_0_0_4__11 V20_2_0_7__11_1 V20_2_0_7__11_2 V20_2_0_7__11_3 V20_2_0_7__11_4 V20_2_0_7__11_5 V20_2_0_7__11_6 V20_2_0_7__11_7 V20_2_0_7__11_8 V20_2_0_7_FO3 V20_2_0_7_SKY V20_2_0_7_SSE V20_2_0_7_FO4 V20_2_0_7_F76 V20_2_0_7_STF" />
         <verset token="#SKY_AND_LATER#" string="V20_2_0_7_SKY V20_2_0_7_SSE V20_2_0_7_FO4 V20_2_0_7_F76 V20_2_0_7_STF" />
+        <verset token="#FO4_AND_LATER#" string="V20_2_0_7_FO4 V20_2_0_7_F76 V20_2_0_7_STF" />
     </token>
 
     <token name="default" attrs="default">
@@ -216,7 +218,7 @@
     <version id="V20_2_0_7_FO4" num="20.2.0.7" user="12" bsver="130" ext="bto btr">{{Fallout 4}}</version>
     <version id="V20_2_0_7_FO4_2" num="20.2.0.7" user="12" bsver="132 139" ext="bto btr" supported="false">Fallout 4 (LS_Mirelurk.nif, Screen.nif)</version>
     <version id="V20_2_0_7_F76" num="20.2.0.7" user="12" bsver="155" ext="bto">{{Fallout 76}}</version>
-    <version id="V20_2_0_7_STF" num="20.2.0.7" user="12" bsver="170 172 173">{{Starfield}}</version>
+    <version id="V20_2_0_7_STF" num="20.2.0.7" user="12" bsver="170 172 173 175">{{Starfield}}</version>
     <version id="V20_2_0_8" num="20.2.0.8" ext="nifcache">{{Empire Earth III}}, {{FFT Online}}, Atlantica Online, IRIS Online, Wizard101</version>
     <version id="V20_2_4_7" num="20.2.4.7">QQSpeed</version>
     <version id="V20_3_0_1" num="20.3.0.1">Emerge</version>
@@ -579,10 +581,12 @@
         <option value="127" name="FO_HAV_MAT_RUBBER_BALL_STAIRS_PLATFORM">Rubber Ball</option>
     </enum>
 
-    <enum name="SkyrimHavokMaterial" storage="uint" versions="#SKY_AND_LATER#">
+    <enum name="SkyrimHavokMaterial" storage="uint" versions="V20_2_0_7_SKY V20_2_0_7_SSE">
         Bethesda Havok. Material descriptor for a Havok shape in Skyrim. CRC32 of the lowercase of the Creation Kit Material Name.
         <option value="0" name="SKY_HAV_MAT_NONE">Invalid Material</option>
         <option value="131151687" name="SKY_HAV_MAT_BROKEN_STONE">Broken Stone</option>
+        <option value="165778930" name="SKY_HAV_MAT_MATERIAL_BLOCK_BLADE_1HAND">Material Block Blade 1Hand</option>
+        <option value="220124585" name="SKY_HAV_MAT_MATERIAL_MEAT">Material Meat</option>
         <option value="322207473" name="SKY_HAV_MAT_MATERIAL_CARRIAGE_WHEEL">Material Carriage Wheel</option>
         <option value="346811165" name="SKY_HAV_MAT_MATERIAL_METAL_LIGHT">Material Metal Light</option>
         <option value="365420259" name="SKY_HAV_MAT_LIGHT_WOOD">Light Wood</option>
@@ -591,8 +595,11 @@
         <option value="438912228" name="SKY_HAV_MAT_MATERIAL_CHAIN_METAL">Material Chain Metal</option>
         <option value="493553910" name="SKY_HAV_MAT_BOTTLE">Bottle</option>
         <option value="500811281" name="SKY_HAV_MAT_WOOD">Wood</option>
+        <option value="534864873" name="SKY_HAV_MAT_MATERIAL_ASH">Material Ash</option>
         <option value="591247106" name="SKY_HAV_MAT_SKIN">Skin</option>
-        <option value="617099282" name="SKY_HAV_MAT_UNKNOWN_617099282">Unknown in Creation Kit v1.9.32.0. Found in Dawnguard DLC in meshes\dlc01\clutter\dlc01deerskin.nif.</option>
+        <option value="593401068" name="SKY_HAV_MAT_MATERIAL_BLOCK_BLUNT">Material Block Blunt</option>
+        <option value="617099282" name="SKY_HAV_MAT_MATERIAL_CLOTH">Material Cloth</option>
+        <option value="668408902" name="SKY_HAV_MAT_INSECT">Insect</option>
         <option value="732141076" name="SKY_HAV_MAT_BARREL">Barrel</option>
         <option value="781661019" name="SKY_HAV_MAT_MATERIAL_CERAMIC_MEDIUM">Material Ceramic Medium</option>
         <option value="790784366" name="SKY_HAV_MAT_MATERIAL_BASKET">Material Basket</option>
@@ -600,34 +607,46 @@
         <option value="880200008" name="SKY_HAV_MAT_STAIRS_GLASS">Stairs Glass</option>
         <option value="899511101" name="SKY_HAV_MAT_STAIRS_STONE">Stairs Stone</option>
         <option value="1024582599" name="SKY_HAV_MAT_WATER">Water</option>
-        <option value="1028101969" name="SKY_HAV_MAT_UNKNOWN_1028101969">Unknown in Creation Kit v1.6.89.0. Found in actors\draugr\character assets\skeletons.nif.</option>
-        <option value="1060167844" name="SKY_HAV_MAT_MATERIAL_BLADE_1HAND">Material Blade 1 Hand</option>
+        <option value="1028101969" name="SKY_HAV_MAT_MATERIAL_BONE_ACTOR">Material Bone Actor</option>
+        <option value="1060167844" name="SKY_HAV_MAT_MATERIAL_BLADE_1HAND">Material Blade 1Hand</option>
         <option value="1264672850" name="SKY_HAV_MAT_MATERIAL_BOOK">Material Book</option>
         <option value="1286705471" name="SKY_HAV_MAT_MATERIAL_CARPET">Material Carpet</option>
         <option value="1288358971" name="SKY_HAV_MAT_SOLID_METAL">Solid Metal</option>
         <option value="1305674443" name="SKY_HAV_MAT_MATERIAL_AXE_1HAND">Material Axe 1Hand</option>
-        <option value="1440721808" name="SKY_HAV_MAT_UNKNOWN_1440721808">Unknown in Creation Kit v1.6.89.0. Found in armor\draugr\draugrbootsfemale_go.nif or armor\amuletsandrings\amuletgnd.nif.</option>
+        <option value="1312943906" name="SKY_HAV_MAT_MATERIAL_BLOCK_BLADE_2HAND">Material Block Blade 2Hand</option>
+        <option value="1322093133" name="SKY_HAV_MAT_ORGANIC_LARGE">Organic Large</option>
+        <option value="1440721808" name="SKY_HAV_MAT_CHAIN_METAL">Chain Metal</option>
         <option value="1461712277" name="SKY_HAV_MAT_STAIRS_WOOD">Stairs Wood</option>
         <option value="1486385281" name="SKY_HAV_MAT_MUD">Mud</option>
         <option value="1550912982" name="SKY_HAV_MAT_MATERIAL_BOULDER_SMALL">Material Boulder Small</option>
         <option value="1560365355" name="SKY_HAV_MAT_STAIRS_SNOW">Stairs Snow</option>
         <option value="1570821952" name="SKY_HAV_MAT_HEAVY_STONE">Heavy Stone</option>
-        <option value="1574477864" name="SKY_HAV_MAT_UNKNOWN_1574477864">Unknown in Creation Kit v1.6.89.0. Found in actors\dragon\character assets\skeleton.nif.</option>
-        <option value="1591009235" name="SKY_HAV_MAT_UNKNOWN_1591009235">Unknown in Creation Kit v1.6.89.0. Found in trap objects or clutter\displaycases\displaycaselgangled01.nif or actors\deer\character assets\skeleton.nif.</option>
+        <option value="1574477864" name="SKY_HAV_MAT_CHARACTER_BUMPER">Character Bumper</option>
+        <option value="1591009235" name="SKY_HAV_MAT_TRAP">Unknown in Creation Kit v1.6.89.0. Found in trap objects or clutter\displaycases\displaycaselgangled01.nif or actors\deer\character assets\skeleton.nif.</option>
         <option value="1607128641" name="SKY_HAV_MAT_MATERIAL_BOWS_STAVES">Material Bows Staves</option>
+        <option value="1668849266" name="SKY_HAV_MAT_MATERIAL_SOLID_METAL">Material Solid Metal</option>
+        <option value="1730220269" name="SKY_HAV_MAT_ALDUIN">Alduin</option>
+        <option value="1734341287" name="SKY_HAV_MAT_MATERIAL_WOOD_MEDIUM">Material Wood Medium</option>
+        <option value="1763418903" name="SKY_HAV_MAT_MATERIAL_BLOCK_BOWS_STAVES">Material Block Bows Staves</option>
         <option value="1803571212" name="SKY_HAV_MAT_MATERIAL_WOOD_AS_STAIRS">Material Wood As Stairs</option>
+        <option value="1820198263" name="SKY_HAV_MAT_MATERIAL_BLADE_2HAND_">Material Blade 2Hand </option>
         <option value="1848600814" name="SKY_HAV_MAT_GRASS">Grass</option>
         <option value="1885326971" name="SKY_HAV_MAT_MATERIAL_BOULDER_LARGE">Material Boulder Large</option>
         <option value="1886078335" name="SKY_HAV_MAT_MATERIAL_STONE_AS_STAIRS">Material Stone As Stairs</option>
         <option value="2022742644" name="SKY_HAV_MAT_MATERIAL_BLADE_2HAND">Material Blade 2Hand</option>
         <option value="2025794648" name="SKY_HAV_MAT_MATERIAL_BOTTLE_SMALL">Material Bottle Small</option>
+        <option value="2058949504" name="SKY_HAV_MAT_BONE_ACTOR">Bone Actor</option>
         <option value="2168343821" name="SKY_HAV_MAT_SAND">Sand</option>
         <option value="2229413539" name="SKY_HAV_MAT_HEAVY_METAL">Heavy Metal</option>
-        <option value="2290050264" name="SKY_HAV_MAT_UNKNOWN_2290050264">Unknown in Creation Kit v1.9.32.0. Found in Dawnguard DLC in meshes\dlc01\clutter\dlc01sabrecatpelt.nif.</option>
+        <option value="2290050264" name="SKY_HAV_MAT_MATERIAL_WOOD_HEAVY">Material Wood Heavy</option>
+        <option value="2431524493" name="SKY_HAV_MAT_MATERIAL_ICE_FORM">Material Ice Form</option>
         <option value="2518321175" name="SKY_HAV_MAT_DRAGON">Dragon</option>
         <option value="2617944780" name="SKY_HAV_MAT_MATERIAL_BLADE_1HAND_SMALL">Material Blade 1Hand Small</option>
         <option value="2632367422" name="SKY_HAV_MAT_MATERIAL_SKIN_SMALL">Material Skin Small</option>
         <option value="2742858142" name="SKY_HAV_MAT_MATERIAL_POTS_PANS">Material Pots Pans</option>
+        <option value="2794252627" name="SKY_HAV_MAT_MATERIAL_STAIRS_WOOD">Material Stairs Wood</option>
+        <option value="2821299363" name="SKY_HAV_MAT_MATERIAL_SKIN_SKELETON">Material Skin Skeleton</option>
+        <option value="2872791301" name="SKY_HAV_MAT_MATERIAL_BLUNT_1HAND">Material Blunt 1Hand</option>
         <option value="2892392795" name="SKY_HAV_MAT_STAIRS_BROKEN_STONE">Stairs Broken Stone</option>
         <option value="2965929619" name="SKY_HAV_MAT_MATERIAL_SKIN_LARGE">Material Skin Large</option>
         <option value="2974920155" name="SKY_HAV_MAT_ORGANIC">Organic</option>
@@ -635,10 +654,13 @@
         <option value="3070783559" name="SKY_HAV_MAT_HEAVY_WOOD">Heavy Wood</option>
         <option value="3074114406" name="SKY_HAV_MAT_MATERIAL_CHAIN">Material Chain</option>
         <option value="3106094762" name="SKY_HAV_MAT_DIRT">Dirt</option>
+        <option value="3312543676" name="SKY_HAV_MAT_GHOST">Ghost</option>
         <option value="3387452107" name="SKY_HAV_MAT_MATERIAL_SKIN_METAL_LARGE">Material Skin Metal Large</option>
+        <option value="3400476823" name="SKY_HAV_MAT_MATERIAL_BLOCK_AXE">Material Block Axe</option>
         <option value="3424720541" name="SKY_HAV_MAT_MATERIAL_ARMOR_LIGHT">Material Armor Light</option>
         <option value="3448167928" name="SKY_HAV_MAT_MATERIAL_SHIELD_LIGHT">Material Shield Light</option>
         <option value="3589100606" name="SKY_HAV_MAT_MATERIAL_COIN">Material Coin</option>
+        <option value="3662306947" name="SKY_HAV_MAT_MATERIAL_BLOCK_BLUNT_2HAND">Material Block Blunt 2Hand</option>
         <option value="3702389584" name="SKY_HAV_MAT_MATERIAL_SHIELD_HEAVY">Material Shield Heavy</option>
         <option value="3708432437" name="SKY_HAV_MAT_MATERIAL_ARMOR_HEAVY">Material Armor Heavy</option>
         <option value="3725505938" name="SKY_HAV_MAT_MATERIAL_ARROW">Material Arrow</option>
@@ -649,15 +671,353 @@
         <option value="3855001958" name="SKY_HAV_MAT_MATERIAL_SKIN_METAL_SMALL">Material Skin Metal Small</option>
         <option value="3895166727" name="SKY_HAV_MAT_WARD">Ward</option>
         <option value="3934839107" name="SKY_HAV_MAT_WEB">Web</option>
+        <option value="3941234649" name="SKY_HAV_MAT_MATERIAL_BLADE_1HAND_">Material Blade 1Hand </option>
         <option value="3969592277" name="SKY_HAV_MAT_MATERIAL_BLUNT_2HAND">Material Blunt 2Hand</option>
-        <option value="4239621792" name="SKY_HAV_MAT_UNKNOWN_4239621792">Unknown in Creation Kit v1.9.32.0. Found in Dawnguard DLC in meshes\dlc01\prototype\dlc1protoswingingbridge.nif.</option>
+        <option value="3974071006" name="SKY_HAV_MAT_STAIRS_METAL">Stairs Metal</option>
+        <option value="4239621792" name="SKY_HAV_MAT_DLC1_SWINGING_BRIDGE">Unknown in Creation Kit v1.9.32.0. Found in Dawnguard DLC in meshes\dlc01\prototype\dlc1protoswingingbridge.nif.</option>
         <option value="4283869410" name="SKY_HAV_MAT_MATERIAL_BOULDER_MEDIUM">Material Boulder Medium</option>
-        <option value="2794252627" name="SKY_HAV_MAT_UNKNOWN_2794252627" />
-        <option value="1668849266" name="SKY_HAV_MAT_UNKNOWN_1668849266" />
-        <option value="1734341287" name="SKY_HAV_MAT_UNKNOWN_1734341287" />
-        <option value="3974071006" name="SKY_HAV_MAT_UNKNOWN_3974071006" />
-        <option value="3941234649" name="SKY_HAV_MAT_UNKNOWN_3941234649">tfxsteelswordbloody</option>
-        <option value="1820198263" name="SKY_HAV_MAT_UNKNOWN_1820198263">steelgreatsword</option>
+    </enum>
+
+    <enum name="Fallout4HavokMaterial" storage="uint" versions="V20_2_0_7_FO4 V20_2_0_7_FO4_2">
+        Bethesda Havok. Material descriptor for a Havok shape in Fallout 4.
+        <option value="0" name="FO4_MAT_NONE">Invalid Material</option>
+        <option value="26782757" name="MaterialMetalSolidAxe1Hand">Axe1Hand</option>
+        <option value="69730436" name="MaterialPlasticBin">MaterialPlasticBin</option>
+        <option value="71178380" name="MaterialMetalVertibirdChassisSmall">MaterialMetalVertibirdChassisSmall</option>
+        <option value="104858580" name="Material_Metal">Metal</option>
+        <option value="172611777" name="MaterialGlassBottleSmall">BottleSmall</option>
+        <option value="186875565" name="Material__GenericMaster">Generic</option>
+        <option value="238888479" name="MaterialWeaponBowsStaves">WeaponBowsStaves</option>
+        <option value="293847076" name="MaterialPlasticBowlingBall">MaterialPlasticBowlingBall</option>
+        <option value="301080923" name="DLC05MaterialBallTrackWood">DLC05MaterialBallTrackWood</option>
+        <option value="327411453" name="MaterialMetalTray">MaterialMetalTray</option>
+        <option value="341181474" name="MaterialWoodCrate">MaterialWoodCrate</option>
+        <option value="361241712" name="MaterialWeaponMetalBlade1HandSmall">MaterialWeaponMetalBlade1HandSmall</option>
+        <option value="398949039" name="MaterialDirtSnow">Snow</option>
+        <option value="428587608" name="MaterialDirtGravel">Gravel</option>
+        <option value="450934209" name="MaterialWeaponMetalMine">MaterialWeaponMetalMine</option>
+        <option value="493553910" name="MaterialGlassBottle">Bottle</option>
+        <option value="500811281" name="Material_Wood">Wood</option>
+        <option value="504699171" name="MaterialWoodLightArrow">Arrow</option>
+        <option value="591247106" name="MaterialOrganicSkin">Skin</option>
+        <option value="630687820" name="MaterialClothCushion">ClothCushion</option>
+        <option value="657718602" name="MaterialPlasticLarge">MaterialPlasticLarge</option>
+        <option value="668408902" name="MaterialOrganicInsect">Insect</option>
+        <option value="672193313" name="MaterialMetalVertibirdChassisLarge">MaterialMetalVertibirdChassisLarge</option>
+        <option value="694643242" name="MaterialWeaponMetalBlade2Hand">WeaponBlade2Hand</option>
+        <option value="706373264" name="MaterialMetalSolid">MetalSolid</option>
+        <option value="747607327" name="MaterialPlasticTrafficCone">MaterialPlasticTrafficCone</option>
+        <option value="748236019" name="MaterialMetalArmorHeavy">ArmorHeavy</option>
+        <option value="774657257" name="MaterialClipboard">MaterialClipboard</option>
+        <option value="811073006" name="MaterialStoneBrokenStairs">StoneBrokenStairs</option>
+        <option value="873356572" name="MaterialDirtSnowIce">Ice</option>
+        <option value="885278459" name="MaterialGlassCeramicMedium">CeramicMedium</option>
+        <option value="911716378" name="MaterialStoneConcrete">Concrete</option>
+        <option value="950426180" name="MaterialDirtSnowStairs">SnowStairs</option>
+        <option value="976632406" name="MaterialWeaponBlockBladeMedium">MaterialWeaponBlockBladeMedium</option>
+        <option value="1024582599" name="Material_Water">Water</option>
+        <option value="1035078235" name="MaterialMetalArmorLight">ArmorLight</option>
+        <option value="1066046129" name="DLC04_Material_ArcadeSledBall_Track">DLC04_Material_ArcadeSledBall_Track</option>
+        <option value="1124183901" name="MaterialActorSkinLarge">ActorSkinLarge</option>
+        <option value="1138619501" name="MaterialSubwayGate">MaterialSubwayGate</option>
+        <option value="1185452450" name="MaterialWeaponRifleLarge">MaterialWeaponRifleLarge</option>
+        <option value="1201612612" name="MaterialWeaponRifle">MaterialWeaponRifle</option>
+        <option value="1269739668" name="MaterialMetalSign">MaterialMetalSign</option>
+        <option value="1317396055" name="MaterialActorMetal">ActorMetal</option>
+        <option value="1322093133" name="MaterialOrganicLarge">OrganicLarge</option>
+        <option value="1340314491" name="MaterialDirtStairs">DirtStairs</option>
+        <option value="1395526401" name="MaterialActorInsect">ActorInsect</option>
+        <option value="1413383033" name="MaterialStoneBroken">StoneBroken</option>
+        <option value="1423343525" name="MaterialActorSkin">ActorSkin</option>
+        <option value="1439425931" name="MaterialStoneConcreteStairs">ConcreteStairs</option>
+        <option value="1447538522" name="MaterialPaperMagazine">MaterialPaperMagazine</option>
+        <option value="1486385281" name="MaterialDirtMud">Mud</option>
+        <option value="1499295757" name="DLC05MaterialBallTrackBall">DLC05MaterialBallTrackBall</option>
+        <option value="1501436081" name="MaterialWeaponCasingPistol">MaterialWeaponCasingPistol</option>
+        <option value="1526052914" name="MaterialActorMetalLarge">ActorMetalLarge</option>
+        <option value="1540336298" name="MaterialActorGlowing">ActorGlowing</option>
+        <option value="1543121159" name="MaterialMetalChairFolding">MaterialMetalChairFolding</option>
+        <option value="1603170414" name="MaterialGroundGrassBush">MaterialGroundGrassBush</option>
+        <option value="1745686114" name="MaterialDirtSandSandbag">Sandbag</option>
+        <option value="1782067423" name="MaterialStoneAsStairs">StoneAsStairs</option>
+        <option value="1825241013" name="DLC05MaterialBallTrackMetalFunnel">DLC05MaterialBallTrackMetalFunnel</option>
+        <option value="1848600814" name="MaterialGrass">Grass</option>
+        <option value="1865379056" name="MaterialActorSkinSmall">ActorSkinSmall</option>
+        <option value="1868386674" name="MaterialRubberTire">MaterialRubberTire</option>
+        <option value="1879074862" name="MaterialWoodStairs">WoodStairs</option>
+        <option value="1887003409" name="MaterialStoneSubwayPillarLarge">MaterialStoneSubwayPillarLarge</option>
+        <option value="1905728123" name="DLC04_Material_ArcadeSledBall_Ball">DLC04_Material_ArcadeSledBall_Ball</option>
+        <option value="1923703986" name="MaterialWeaponBlockBluntMedium">WeaponBlockBlunt</option>
+        <option value="1949124673" name="MaterialMetalCoin">Coin</option>
+        <option value="1973249018" name="MaterialMetalBucket">MaterialMetalBucket</option>
+        <option value="1994095519" name="MaterialActorMetalSmall">ActorMetalSmall</option>
+        <option value="1998647255" name="MaterialMetalChain">CHAIN</option>
+        <option value="2002199878" name="MaterialMetalBarrelTrashCanOffice">MetalBarrelTrashCanOffice</option>
+        <option value="2029661776" name="MaterialActorMetalArmoredPower">ActorMetalArmoredPower</option>
+        <option value="2050332274" name="MaterialMetalBarrel">MetalBarrel</option>
+        <option value="2052480620" name="MaterialBaseball">MaterialBaseball</option>
+        <option value="2113564165" name="Material_Plastic">Plastic</option>
+        <option value="2168343821" name="MaterialDirtlSand">Sand</option>
+        <option value="2215730879" name="MaterialActorSkeleton">ActorSkeleton</option>
+        <option value="2216694923" name="MaterialActorMetalArmored">ActorArmored</option>
+        <option value="2219131696" name="MaterialWoodBroom">MaterialWoodBroom</option>
+        <option value="2253994566" name="MaterialStoneHeavy">StoneHeavy</option>
+        <option value="2262304622" name="MaterialWeaponBlockBladeSmall">MaterialWeaponBlockBladeSmall</option>
+        <option value="2276150428" name="MaterialStoneBoulderLarge">StoneBoulderLarge</option>
+        <option value="2285410059" name="Material_Paper">Paper</option>
+        <option value="2377431615" name="MaterialActorGhost">ActorGhost</option>
+        <option value="2420474045" name="DLC05MaterialBallTrackMetal">DLC05MaterialBallTrackMetal</option>
+        <option value="2459239824" name="MaterialWaterPuddle">WaterPuddle</option>
+        <option value="2474963416" name="MaterialOtherBasket">Basket</option>
+        <option value="2504525426" name="DLC03MaterialVRFloor">DLC03MaterialVRFloor</option>
+        <option value="2507079709" name="MaterialMetalWeight">MaterialMetalWeight</option>
+        <option value="2519395573" name="MaterialStoneStairs">StoneStairs</option>
+        <option value="2534329404" name="MaterialGlassStairs">GlassStairs</option>
+        <option value="2605587041" name="MaterialOtherBone">MaterialOtherBone</option>
+        <option value="2608397368" name="DLC03MaterialMetalBearTrap">DLC03MaterialMetalBearTrap</option>
+        <option value="2674265083" name="MaterialMetalCanTin">MaterialMetalCanTin</option>
+        <option value="2716293208" name="MaterialCeramicCoffeeMug">MaterialCeramicCoffeeMug</option>
+        <option value="2853713344" name="MaterialWoodBoard">MaterialWoodBoard</option>
+        <option value="2861019322" name="Material_Debug">debug</option>
+        <option value="2877656881" name="MaterialStoneBoulderSmall">StoneBoulderSmall</option>
+        <option value="2900281814" name="MaterialOrganicMeat">Meat</option>
+        <option value="2908408722" name="MaterialGroundTileVinyl">MaterialGroundTileVinyl</option>
+        <option value="2925203401" name="MaterialMetalShieldHeavy">ShieldHeavy</option>
+        <option value="2926148967" name="MaterialGrassStairs">GrassStairs</option>
+        <option value="2963595456" name="MaterialMetalShoppingCart">MaterialMetalShoppingCart</option>
+        <option value="2973353357" name="MaterialWeaponMetalGrenade">MaterialWeaponMetalGrenade</option>
+        <option value="2974920155" name="Material_Organic">Organic</option>
+        <option value="2988283556" name="MaterialMetalStairsB">MaterialMetalStairs</option>
+        <option value="2993292432" name="MaterialMetalAuto">MaterialMetalAuto</option>
+        <option value="2993325253" name="MaterialMetalHollow">MetalHollow</option>
+        <option value="3028667025" name="Material_Other">OtherParent</option>
+        <option value="3103724712" name="MaterialActorSynthGen1">MaterialActorSynthGen1</option>
+        <option value="3105913924" name="MaterialPaperBoxCardboard">MaterialPaperBoxCardboard</option>
+        <option value="3106094762" name="Material_Dirt">Dirt</option>
+        <option value="3114373106" name="MaterialRubberBall">MaterialRubberBall</option>
+        <option value="3178027915" name="MaterialWeaponMetalBlunt2Hand">WeaponBlunt2Hand</option>
+        <option value="3184958832" name="MaterialGroundDirtLeaves">MaterialGroundDirtLeaves</option>
+        <option value="3207358594" name="MaterialWeaponCasingMinigun">MaterialWeaponCasingMinigun</option>
+        <option value="3211798881" name="MaterialMetalShieldLight">ShieldLight</option>
+        <option value="3218036415" name="MaterialPaperBoxSmall">MaterialPaperBoxSmall</option>
+        <option value="3236651581" name="MaterialMetalStairs">MetalStairs</option>
+        <option value="3251579835" name="MaterialStoneBoulderMedium">StoneBoulderMedium</option>
+        <option value="3284711549" name="MaterialWeaponMetalBlade1Hand">MaterialWeaponMetalBlade1Hand</option>
+        <option value="3354927426" name="MaterialActorInsectWing">Insect Wing</option>
+        <option value="3378519871" name="MaterialMetalBarrelTrashCan">MetalBarrelTrashCan</option>
+        <option value="3403586657" name="MaterialWoodLightBarrel">WoodBarrel</option>
+        <option value="3481395209" name="MaterialWoodHeavy">WoodHeavy</option>
+        <option value="3485918636" name="MaterialWeaponCasingRifle">MaterialWeaponCasingRifle</option>
+        <option value="3504249533" name="MaterialBodyBone">MaterialBodyBone</option>
+        <option value="3626158119" name="Material_Casing">MaterialWeaponCasing</option>
+        <option value="3639674437" name="Material_Weapon">Weapon</option>
+        <option value="3699571270" name="MaterialWeaponCasingShotgun">MaterialWeaponCasingShotgun</option>
+        <option value="3735733921" name="MaterialWoodLight">WoodLight</option>
+        <option value="3736463754" name="MaterialMetalGateVault">MaterialMetalGateVault</option>
+        <option value="3739830338" name="Material_Glass">Glass</option>
+        <option value="3741512247" name="Material_Stone">Stone</option>
+        <option value="3793849624" name="MaterialWoodAsStairs">WoodAsStairs</option>
+        <option value="3824112521" name="Material_Actor">ActorGeneric</option>
+        <option value="3839073443" name="Material_Cloth">Cloth</option>
+        <option value="3845715931" name="MaterialMetalLight">MetalLight</option>
+        <option value="3877172525" name="MaterialInsectFloor">InsectFloor</option>
+        <option value="3895166727" name="MaterialWard">WARD</option>
+        <option value="3899176889" name="MaterialGroundMetalA">MaterialGroundMetalA</option>
+        <option value="3934839107" name="MaterialOtherWeb">Web</option>
+        <option value="3936451629" name="MaterialPaperBook">Book</option>
+        <option value="4005220376" name="MaterialMetalGasLine">MaterialMetalGasLine</option>
+        <option value="4013367152" name="MaterialMetalPotsPans">PotsPans</option>
+        <option value="4028041609" name="MaterialClothCarpet">Carpet</option>
+        <option value="4050795553" name="MaterialStoneBrick">Brick</option>
+        <option value="4094939507" name="MaterialMetalHeavy">MetalHeavy</option>
+        <option value="4126576412" name="MaterialMetalLunchbox">MaterialMetalLunchbox</option>
+        <option value="4146539321" name="MaterialWeaponPistol">MaterialWeaponPistol</option>
+        <option value="4162286078" name="DLC04_Material_RubberBasketBall">DLC04_Material_RubberBasketBall</option>
+        <option value="4198749890" name="MaterialActorInsectSmall">ActorInsectSmall</option>
+        <option value="4207714651" name="MaterialWeaponMetalBlunt1Hand">WeaponBlunt1Hand</option>
+        <option value="4288341836" name="MaterialActorMetalArmoredCrab">ActorArmoredCrab</option>
+        <option value="4294094670" name="MaterialGroundTileVinylSanctuaryHills">MaterialGroundTileVinylSanctuaryHills</option>
+    </enum>
+
+    <enum name="Fallout76HavokMaterial" storage="uint" versions="V20_2_0_7_F76 V20_2_0_7_STF">
+        Bethesda Havok. Material descriptor for a Havok shape in Fallout 76.
+        <option value="0" name="FO76_MAT_NONE">Invalid</option>
+        <option value="26782757" name="MaterialMetalSolidAxe1Hand">MaterialMetalSolidAxe1Hand</option>
+        <option value="69730436" name="MaterialPlasticBin">MaterialPlasticBin</option>
+        <option value="71178380" name="MaterialMetalVertibirdChassisSmall">MaterialMetalVertibirdChassisSmall</option>
+        <option value="84873873" name="MaterialWaterMtnRemovalSludge">MaterialWaterMtnRemovalSludge</option>
+        <option value="89138953" name="MaterialSoccerBall">MaterialSoccerBall</option>
+        <option value="104858580" name="Material_Metal">Material_Metal</option>
+        <option value="172611777" name="MaterialGlassBottleSmall">MaterialGlassBottleSmall</option>
+        <option value="186875565" name="Material__GenericMaster">Material__GenericMaster</option>
+        <option value="238888479" name="MaterialWeaponBowsStaves">MaterialWeaponBowsStaves</option>
+        <option value="293847076" name="MaterialPlasticBowlingBall">MaterialPlasticBowlingBall</option>
+        <option value="301080923" name="DLC05MaterialBallTrackWood">DLC05MaterialBallTrackWood</option>
+        <option value="327411453" name="MaterialMetalTray">MaterialMetalTray</option>
+        <option value="341181474" name="MaterialWoodCrate">MaterialWoodCrate</option>
+        <option value="361241712" name="MaterialWeaponMetalBlade1HandSmall">MaterialWeaponMetalBlade1HandSmall</option>
+        <option value="398949039" name="MaterialDirtSnow">MaterialDirtSnow</option>
+        <option value="428587608" name="MaterialDirtGravel">MaterialDirtGravel</option>
+        <option value="450934209" name="MaterialWeaponMetalMine">MaterialWeaponMetalMine</option>
+        <option value="493553910" name="MaterialGlassBottle">MaterialGlassBottle</option>
+        <option value="500811281" name="Material_Wood">Material_Wood</option>
+        <option value="504699171" name="MaterialWoodLightArrow">MaterialWoodLightArrow</option>
+        <option value="591247106" name="MaterialOrganicSkin">MaterialOrganicSkin</option>
+        <option value="630687820" name="MaterialClothCushion">MaterialClothCushion</option>
+        <option value="657718602" name="MaterialPlasticLarge">MaterialPlasticLarge</option>
+        <option value="668408902" name="MaterialOrganicInsect">MaterialOrganicInsect</option>
+        <option value="672193313" name="MaterialMetalVertibirdChassisLarge">MaterialMetalVertibirdChassisLarge</option>
+        <option value="678931996" name="MaterialOrganicCranberrySundewTendril2">MaterialOrganicCranberrySundewTendril2</option>
+        <option value="694643242" name="MaterialWeaponMetalBlade2Hand">MaterialWeaponMetalBlade2Hand</option>
+        <option value="706373264" name="MaterialMetalSolid">MaterialMetalSolid</option>
+        <option value="747607327" name="MaterialPlasticTrafficCone">MaterialPlasticTrafficCone</option>
+        <option value="748236019" name="MaterialMetalArmorHeavy">MaterialMetalArmorHeavy</option>
+        <option value="774657257" name="MaterialClipboard">MaterialClipboard</option>
+        <option value="790260229" name="MaterialOrganicCranberrySundewTendril6">MaterialOrganicCranberrySundewTendril6</option>
+        <option value="811073006" name="MaterialStoneBrokenStairs">MaterialStoneBrokenStairs</option>
+        <option value="873356572" name="MaterialDirtSnowIce">MaterialDirtSnowIce</option>
+        <option value="885278459" name="MaterialGlassCeramicMedium">MaterialGlassCeramicMedium</option>
+        <option value="911716378" name="MaterialStoneConcrete">MaterialStoneConcrete</option>
+        <option value="950426180" name="MaterialDirtSnowStairs">MaterialDirtSnowStairs</option>
+        <option value="976632406" name="MaterialWeaponBlockBladeMedium">MaterialWeaponBlockBladeMedium</option>
+        <option value="1024582599" name="Material_Water">Material_Water</option>
+        <option value="1035078235" name="MaterialMetalArmorLight">MaterialMetalArmorLight</option>
+        <option value="1066046129" name="DLC04_Material_ArcadeSledBall_Track">DLC04_Material_ArcadeSledBall_Track</option>
+        <option value="1124183901" name="MaterialActorSkinLarge">MaterialActorSkinLarge</option>
+        <option value="1138619501" name="MaterialSubwayGate">MaterialSubwayGate</option>
+        <option value="1185452450" name="MaterialWeaponRifleLarge">MaterialWeaponRifleLarge</option>
+        <option value="1201612612" name="MaterialWeaponRifle">MaterialWeaponRifle</option>
+        <option value="1269739668" name="MaterialMetalSign">MaterialMetalSign</option>
+        <option value="1299745439" name="MaterialActorScorchBeast">MaterialActorScorchBeast</option>
+        <option value="1317396055" name="MaterialActorMetal">MaterialActorMetal</option>
+        <option value="1322093133" name="MaterialOrganicLarge">MaterialOrganicLarge</option>
+        <option value="1333905066" name="MaterialWeaponBlockUnarmed">MaterialWeaponBlockUnarmed</option>
+        <option value="1340314491" name="MaterialDirtStairs">MaterialDirtStairs</option>
+        <option value="1395526401" name="MaterialActorInsect">MaterialActorInsect</option>
+        <option value="1413383033" name="MaterialStoneBroken">MaterialStoneBroken</option>
+        <option value="1423343525" name="MaterialActorSkin">MaterialActorSkin</option>
+        <option value="1439425931" name="MaterialStoneConcreteStairs">MaterialStoneConcreteStairs</option>
+        <option value="1447538522" name="MaterialPaperMagazine">MaterialPaperMagazine</option>
+        <option value="1486385281" name="MaterialDirtMud">MaterialDirtMud</option>
+        <option value="1499295757" name="DLC05MaterialBallTrackBall">DLC05MaterialBallTrackBall</option>
+        <option value="1501436081" name="MaterialWeaponCasingPistol">MaterialWeaponCasingPistol</option>
+        <option value="1526052914" name="MaterialActorMetalLarge">MaterialActorMetalLarge</option>
+        <option value="1540336298" name="MaterialActorGlowing">MaterialActorGlowing</option>
+        <option value="1543121159" name="MaterialMetalChairFolding">MaterialMetalChairFolding</option>
+        <option value="1601216138" name="MaterialOrganicCranberrySundewTendril3">MaterialOrganicCranberrySundewTendril3</option>
+        <option value="1603170414" name="MaterialGroundGrassBush">MaterialGroundGrassBush</option>
+        <option value="1605891008" name="MaterialWorkshopDestructionWoodA">MaterialWorkshopDestructionWoodA</option>
+        <option value="1745686114" name="MaterialDirtSandSandbag">MaterialDirtSandSandbag</option>
+        <option value="1754110989" name="MaterialMetalVertibot">MaterialMetalVertibot</option>
+        <option value="1782067423" name="MaterialStoneAsStairs">MaterialStoneAsStairs</option>
+        <option value="1825241013" name="DLC05MaterialBallTrackMetalFunnel">DLC05MaterialBallTrackMetalFunnel</option>
+        <option value="1848600814" name="MaterialDirtGrass">MaterialDirtGrass</option>
+        <option value="1865379056" name="MaterialActorSkinSmall">MaterialActorSkinSmall</option>
+        <option value="1868386674" name="MaterialRubberTire">MaterialRubberTire</option>
+        <option value="1879074862" name="MaterialWoodStairs">MaterialWoodStairs</option>
+        <option value="1887003409" name="MaterialStoneSubwayPillarLarge">MaterialStoneSubwayPillarLarge</option>
+        <option value="1905728123" name="DLC04_Material_ArcadeSledBall_Ball">DLC04_Material_ArcadeSledBall_Ball</option>
+        <option value="1923703986" name="MaterialWeaponBlockBluntMedium">MaterialWeaponBlockBluntMedium</option>
+        <option value="1949124673" name="MaterialMetalCoin">MaterialMetalCoin</option>
+        <option value="1973249018" name="MaterialMetalBucket">MaterialMetalBucket</option>
+        <option value="1994095519" name="MaterialActorMetalSmall">MaterialActorMetalSmall</option>
+        <option value="1998647255" name="MaterialMetalChain">MaterialMetalChain</option>
+        <option value="2002199878" name="MaterialMetalBarrelTrashCanOffice">MaterialMetalBarrelTrashCanOffice</option>
+        <option value="2029661776" name="MaterialActorMetalArmoredPower">MaterialActorMetalArmoredPower</option>
+        <option value="2050332274" name="MaterialMetalBarrel">MaterialMetalBarrel</option>
+        <option value="2052480620" name="MaterialBaseball">MaterialBaseball</option>
+        <option value="2098098665" name="MaterialWorkshopDestructionMetalA">MaterialWorkshopDestructionMetalA</option>
+        <option value="2113564165" name="Material_Plastic">Material_Plastic</option>
+        <option value="2168343821" name="MaterialDirtlSand">MaterialDirtlSand</option>
+        <option value="2215730879" name="MaterialActorSkeleton">MaterialActorSkeleton</option>
+        <option value="2216694923" name="MaterialActorMetalArmored">MaterialActorMetalArmored</option>
+        <option value="2219131696" name="MaterialWoodBroom">MaterialWoodBroom</option>
+        <option value="2220113522" name="MaterialWorkshopDestructionConcA">MaterialWorkshopDestructionConcA</option>
+        <option value="2253994566" name="MaterialStoneHeavy">MaterialStoneHeavy</option>
+        <option value="2262304622" name="MaterialWeaponBlockBladeSmall">MaterialWeaponBlockBladeSmall</option>
+        <option value="2276150428" name="MaterialStoneBoulderLarge">MaterialStoneBoulderLarge</option>
+        <option value="2285410059" name="Material_Paper">Material_Paper</option>
+        <option value="2377431615" name="MaterialActorGhost">MaterialActorGhost</option>
+        <option value="2420474045" name="DLC05MaterialBallTrackMetal">DLC05MaterialBallTrackMetal</option>
+        <option value="2459239824" name="MaterialWaterPuddle">MaterialWaterPuddle</option>
+        <option value="2474963416" name="MaterialOtherBasket">MaterialOtherBasket</option>
+        <option value="2504525426" name="DLC03Material_VRFloor">DLC03Material_VRFloor</option>
+        <option value="2507079709" name="MaterialMetalWeight">MaterialMetalWeight</option>
+        <option value="2519395573" name="MaterialStoneStairs">MaterialStoneStairs</option>
+        <option value="2534329404" name="MaterialGlassStairs">MaterialGlassStairs</option>
+        <option value="2605587041" name="MaterialOtherBone">MaterialOtherBone</option>
+        <option value="2608397368" name="DLC03MaterialMetalBearTrap">DLC03MaterialMetalBearTrap</option>
+        <option value="2674265083" name="MaterialMetalCanTin">MaterialMetalCanTin</option>
+        <option value="2716293208" name="MaterialCeramicCoffeeMug">MaterialCeramicCoffeeMug</option>
+        <option value="2853713344" name="MaterialWoodBoard">MaterialWoodBoard</option>
+        <option value="2861019322" name="Material_Debug">Material_Debug</option>
+        <option value="2877656881" name="MaterialStoneBoulderSmall">MaterialStoneBoulderSmall</option>
+        <option value="2900281814" name="MaterialOrganicMeat">MaterialOrganicMeat</option>
+        <option value="2908408722" name="MaterialGroundTileVinyl">MaterialGroundTileVinyl</option>
+        <option value="2923982215" name="MaterialWindChimes">MaterialWindChimes</option>
+        <option value="2925203401" name="MaterialMetalShieldHeavy">MaterialMetalShieldHeavy</option>
+        <option value="2926148967" name="MaterialDirtGrassStairs">MaterialDirtGrassStairs</option>
+        <option value="2963595456" name="MaterialMetalShoppingCart">MaterialMetalShoppingCart</option>
+        <option value="2973353357" name="MaterialWeaponMetalGrenade">MaterialWeaponMetalGrenade</option>
+        <option value="2974920155" name="Material_Organic">Material_Organic</option>
+        <option value="2977890214" name="MaterialOrganicCranberrySundewTendril1">MaterialOrganicCranberrySundewTendril1</option>
+        <option value="2988283556" name="MaterialMetalStairsB">MaterialMetalStairsB</option>
+        <option value="2993292432" name="MaterialMetalAuto">MaterialMetalAuto</option>
+        <option value="2993325253" name="MaterialMetalHollow">MaterialMetalHollow</option>
+        <option value="3017833785" name="MaterialPlasticPartyCup">MaterialPlasticPartyCup</option>
+        <option value="3028667025" name="Material_Other">Material_Other</option>
+        <option value="3054713791" name="MaterialOrganicCranberrySundewTendril5">MaterialOrganicCranberrySundewTendril5</option>
+        <option value="3103724712" name="MaterialActorSynthGen1">MaterialActorSynthGen1</option>
+        <option value="3105913924" name="MaterialPaperBoxCardboard">MaterialPaperBoxCardboard</option>
+        <option value="3106094762" name="Material_Dirt">Material_Dirt</option>
+        <option value="3114373106" name="MaterialRubberBall">MaterialRubberBall</option>
+        <option value="3178027915" name="MaterialWeaponMetalBlunt2Hand">MaterialWeaponMetalBlunt2Hand</option>
+        <option value="3184958832" name="MaterialGroundDirtLeaves">MaterialGroundDirtLeaves</option>
+        <option value="3207358594" name="MaterialWeaponCasingMinigun">MaterialWeaponCasingMinigun</option>
+        <option value="3211798881" name="MaterialMetalShieldLight">MaterialMetalShieldLight</option>
+        <option value="3218036415" name="MaterialPaperBoxSmall">MaterialPaperBoxSmall</option>
+        <option value="3236651581" name="MaterialMetalStairs">MaterialMetalStairs</option>
+        <option value="3239316265" name="MaterialOrganicCranberrySundewTendril4">MaterialOrganicCranberrySundewTendril4</option>
+        <option value="3251579835" name="MaterialStoneBoulderMedium">MaterialStoneBoulderMedium</option>
+        <option value="3272232016" name="MaterialTrash">MaterialTrash</option>
+        <option value="3284711549" name="MaterialWeaponMetalBlade1Hand">MaterialWeaponMetalBlade1Hand</option>
+        <option value="3354927426" name="MaterialActorInsectWing">MaterialActorInsectWing</option>
+        <option value="3378519871" name="MaterialMetalBarrelTrashCan">MaterialMetalBarrelTrashCan</option>
+        <option value="3403586657" name="MaterialWoodLightBarrel">MaterialWoodLightBarrel</option>
+        <option value="3435631236" name="MaterialTableTennisBall">MaterialTableTennisBall</option>
+        <option value="3481395209" name="MaterialWoodHeavy">MaterialWoodHeavy</option>
+        <option value="3485918636" name="MaterialWeaponCasingRifle">MaterialWeaponCasingRifle</option>
+        <option value="3504249533" name="MaterialBodyBone">MaterialBodyBone</option>
+        <option value="3626158119" name="Material_Casing">Material_Casing</option>
+        <option value="3639674437" name="Material_Weapon">Material_Weapon</option>
+        <option value="3699571270" name="MaterialWeaponCasingShotgun">MaterialWeaponCasingShotgun</option>
+        <option value="3735733921" name="MaterialWoodLight">MaterialWoodLight</option>
+        <option value="3736463754" name="MaterialMetalGateVault">MaterialMetalGateVault</option>
+        <option value="3739830338" name="Material_Glass">Material_Glass</option>
+        <option value="3741512247" name="Material_Stone">Material_Stone</option>
+        <option value="3793849624" name="MaterialWoodAsStairs">MaterialWoodAsStairs</option>
+        <option value="3824112521" name="Material_Actor">Material_Actor</option>
+        <option value="3839073443" name="Material_Cloth">Material_Cloth</option>
+        <option value="3845715931" name="MaterialMetalLight">MaterialMetalLight</option>
+        <option value="3877172525" name="MaterialInsectFloor">MaterialInsectFloor</option>
+        <option value="3895166727" name="MaterialWard">MaterialWard</option>
+        <option value="3899176889" name="MaterialGroundMetalA">MaterialGroundMetalA</option>
+        <option value="3934839107" name="MaterialOtherWeb">MaterialOtherWeb</option>
+        <option value="3936451629" name="MaterialPaperBook">MaterialPaperBook</option>
+        <option value="4005220376" name="MaterialMetalGasLine">MaterialMetalGasLine</option>
+        <option value="4013367152" name="MaterialMetalPotsPans">MaterialMetalPotsPans</option>
+        <option value="4028041609" name="MaterialClothCarpet">MaterialClothCarpet</option>
+        <option value="4050795553" name="MaterialStoneBrick">MaterialStoneBrick</option>
+        <option value="4094939507" name="MaterialMetalHeavy">MaterialMetalHeavy</option>
+        <option value="4126576412" name="MaterialMetalLunchbox">MaterialMetalLunchbox</option>
+        <option value="4146539321" name="MaterialWeaponPistol">MaterialWeaponPistol</option>
+        <option value="4162286078" name="DLC04_Material_RubberBasketBall">DLC04_Material_RubberBasketBall</option>
+        <option value="4183287022" name="MaterialRubberBalloon">MaterialRubberBalloon</option>
+        <option value="4198749890" name="MaterialActorInsectSmall">MaterialActorInsectSmall</option>
+        <option value="4207714651" name="MaterialWeaponMetalBlunt1Hand">MaterialWeaponMetalBlunt1Hand</option>
+        <option value="4218371855" name="MaterialWeaponTomahawk">MaterialWeaponTomahawk</option>
+        <option value="4288341836" name="MaterialActorMetalArmoredCrab">MaterialActorMetalArmoredCrab</option>
+        <option value="4294094670" name="MaterialGroundTileVinylSanctuaryHills">MaterialGroundTileVinylSanctuaryHills</option>
     </enum>
 
     <enum name="OblivionLayer" storage="byte" versions="#BETHESDA#">
@@ -770,7 +1130,7 @@
         <option value="43" name="FOL_NULL">Null (white)</option>
     </enum>
 
-    <enum name="SkyrimLayer" storage="byte" versions="#SKY_AND_LATER#">
+    <enum name="SkyrimLayer" storage="byte" versions="V20_2_0_7_SKY V20_2_0_7_SSE">
         Bethesda Havok. Describes the collision layer a body belongs to in Skyrim.
         <option value="0" name="SKYL_UNIDENTIFIED">Unidentified</option>
         <option value="1" name="SKYL_STATIC">Static</option>
@@ -827,6 +1187,132 @@
         <option value="52" name="SKYL_LIVING_AND_DEAD_ACTORS">Living And Dead Actors</option>
         <option value="53" name="SKYL_DETECTION">Detection</option>
         <option value="54" name="SKYL_TRAP_TRIGGER">Trap Trigger</option>
+    </enum>
+
+    <enum name="Fallout4Layer" storage="byte" versions="V20_2_0_7_FO4 V20_2_0_7_FO4_2">
+        Bethesda Havok. Describes the collision layer a body belongs to in Fallout 4.
+        <option value="0" name="FO4_UNIDENTIFIED">Unidentified</option>
+        <option value="1" name="FO4_STATIC">Static</option>
+        <option value="2" name="FO4_ANIMSTATIC">Anim Static</option>
+        <option value="3" name="FO4_TRANSPARENT">Transparent</option>
+        <option value="4" name="FO4_CLUTTER">Clutter. Object with this layer will float on water surface.</option>
+        <option value="5" name="FO4_WEAPON">Weapon</option>
+        <option value="6" name="FO4_PROJECTILE">Projectile</option>
+        <option value="7" name="FO4_SPELL">Spell</option>
+        <option value="8" name="FO4_BIPED">Biped. Seems to apply to all creatures/NPCs</option>
+        <option value="9" name="FO4_TREES">Trees</option>
+        <option value="10" name="FO4_PROPS">Props</option>
+        <option value="11" name="FO4_WATER">Water</option>
+        <option value="12" name="FO4_TRIGGER">Trigger</option>
+        <option value="13" name="FO4_TERRAIN">Terrain</option>
+        <option value="14" name="FO4_TRAP">Trap</option>
+        <option value="15" name="FO4_NONCOLLIDABLE">NonCollidable</option>
+        <option value="16" name="FO4_CLOUD_TRAP">CloudTrap</option>
+        <option value="17" name="FO4_GROUND">Ground. It seems that produces no sound when collide.</option>
+        <option value="18" name="FO4_PORTAL">Portal</option>
+        <option value="19" name="FO4_DEBRIS_SMALL">Debris Small</option>
+        <option value="20" name="FO4_DEBRIS_LARGE">Debris Large</option>
+        <option value="21" name="FO4_ACOUSTIC_SPACE">Acoustic Space</option>
+        <option value="22" name="FO4_ACTORZONE">Actor Zone</option>
+        <option value="23" name="FO4_PROJECTILEZONE">Projectile Zone</option>
+        <option value="24" name="FO4_GASTRAP">Gas Trap</option>
+        <option value="25" name="FO4_SHELLCASING">Shell Casing</option>
+        <option value="26" name="FO4_TRANSPARENT_SMALL">Transparent Small</option>
+        <option value="27" name="FO4_INVISIBLE_WALL">Invisible Wall</option>
+        <option value="28" name="FO4_TRANSPARENT_SMALL_ANIM">Transparent Small Anim</option>
+        <option value="29" name="FO4_CLUTTER_LARGE">Clutter Large</option>
+        <option value="30" name="FO4_CHARCONTROLLER">Char Controller</option>
+        <option value="31" name="FO4_STAIRHELPER">Stair Helper</option>
+        <option value="32" name="FO4_DEADBIP">Dead Bip</option>
+        <option value="33" name="FO4_BIPED_NO_CC">Biped No CC</option>
+        <option value="34" name="FO4_AVOIDBOX">Avoid Box</option>
+        <option value="35" name="FO4_COLLISIONBOX">Collision Box</option>
+        <option value="36" name="FO4_CAMERASHPERE">Camera Sphere</option>
+        <option value="37" name="FO4_DOORDETECTION">Door Detection</option>
+        <option value="38" name="FO4_CONEPROJECTILE">Cone Projectile</option>
+        <option value="39" name="FO4_CAMERA">Camera Pick</option>
+        <option value="40" name="FO4_ITEMPICKER">Item Pick</option>
+        <option value="41" name="FO4_LINEOFSIGHT">Line of Sight</option>
+        <option value="42" name="FO4_PATHPICK">Path Pick</option>
+        <option value="43" name="FO4_CUSTOMPICK1">Custom Pick 1</option>
+        <option value="44" name="FO4_FX_COLLIDER">FX Collider</option>
+        <option value="45" name="FO4_SPELLEXPLOSION">Spell Explosion</option>
+        <option value="46" name="FO4_DROPPINGPICK">Dropping Pick</option>
+        <option value="47" name="FO4_DEADACTORZONE">This layer only collides with dead actors.</option>
+        <option value="48" name="FO4_FALLING_TRAP">Falling Trap</option>
+        <option value="49" name="FO4_NAVCUT">Navmesh Cut</option>
+        <option value="50" name="FO4_CRITTER">Custom layer used for critters. Should receive hits from weapons/spells but not collide with characters or the world.</option>
+        <option value="51" name="FO4_SPELL_TRIGGER">Only spells collide with this for triggering happenstances.</option>
+        <option value="52" name="FO4_LIVING_AND_DEAD_ACTORS">triggers on both living and dead actors</option>
+        <option value="53" name="FO4_DETECTION"></option>
+        <option value="54" name="FO4_TRAP_TRIGGER">This is a trigger type that should only look for living actors, for trap trigger boxes.</option>
+        <option value="55" name="FO4_CLUTTER_NO_NAVCUT">Clutter NoNavCut</option>
+        <option value="56" name="FO4_CHARBUMPER">Bumper that is attached to the character controller</option>
+    </enum>
+
+    <enum name="Fallout76Layer" storage="byte" versions="V20_2_0_7_F76 V20_2_0_7_STF">
+        Bethesda Havok. Describes the collision layer a body belongs to in Fallout 76.
+        <option value="0"  name="FO76_UNIDENTIFIED"></option>
+        <option value="1"  name="FO76_STATIC">Static world object.</option>
+        <option value="2"  name="FO76_ANIMSTATIC">Animated static objects.</option>
+        <option value="3"  name="FO76_TRANSPARENT">Static object that is very thin (No projectile collision).</option>
+        <option value="4"  name="FO76_CLUTTER">Generic world clutter.</option>
+        <option value="5"  name="FO76_WEAPON">Non-projectile weapon.</option>
+        <option value="6"  name="FO76_PROJECTILE">Non-spell projectile.</option>
+        <option value="7"  name="FO76_SPELL">Spell</option>
+        <option value="8"  name="FO76_BIPED">It's a biped</option>
+        <option value="9"  name="FO76_TREES">All Flora including trees, bushes, weeds and flowers.</option>
+        <option value="10" name="FO76_PROPS">Signs, chains, flags and other static animatable objects.</option>
+        <option value="11" name="FO76_WATER">A water area phantom.</option>
+        <option value="12" name="FO76_TRIGGER">A trigger.</option>
+        <option value="13" name="FO76_TERRAIN">Terrain objects such as boulders and mountains.</option>
+        <option value="14" name="FO76_TRAP">Traps</option>
+        <option value="15" name="FO76_NONCOLLIDABLE">Object the is not collidable with character.</option>
+        <option value="16" name="FO76_CLOUDTRAP">Trap that is a cloud and doesn't have physical presence.</option>
+        <option value="17" name="FO76_GROUND">Terrain from the Height Field Map.</option>
+        <option value="18" name="FO76_PORTAL">Portal layer (same setup as noncollidable, but used differently by game code)</option>
+        <option value="19" name="FO76_DEBRIS_SMALL">Small debris collide with fewer things than large debris do</option>
+        <option value="20" name="FO76_DEBRIS_LARGE">Debris objects are junk that we don't really care about. We can set them to the debris moiontype</option>
+        <option value="21" name="FO76_ACOUSTIC_SPACE">Volumes in which sound is manipulated</option>
+        <option value="22" name="FO76_ACTORZONE">Trigger type for stream-lined actor only trigger boxes.</option>
+        <option value="23" name="FO76_PROJECTILEZONE"></option>
+        <option value="24" name="FO76_GASTRAP">Hybrid layer acts as a projectile zone and a trigger</option>
+        <option value="25" name="FO76_SHELLCASING">special shell casing layer for casing sounds</option>
+        <option value="26" name="FO76_TRANSPARENT_SMALL">Static object that is very thin (only collides with larger projectiles).</option>
+        <option value="27" name="FO76_INVISIBLE_WALL">blocks physical object but not LOS</option>
+        <option value="28" name="FO76_TRANSPARENT_SMALL_ANIM">same as L_TRANSPARENT_SMALL but animated.</option>
+        <option value="29" name="FO76_CLUTTER_LARGE">Generic large world clutter.</option>
+        <option value="30" name="FO76_CHARCONTROLLER">A character controller</option>
+        <option value="31" name="FO76_STAIRHELPER">A helper object to smooth character controller and footIK traversal of steps.</option>
+        <option value="32" name="FO76_DEADBIP">We need this to differentiate between keyframed + dynamic Bipeds</option>
+        <option value="33" name="FO76_BIPED_NO_CC">We need this to allow collision with the actor's ragdoll instead of its character controller.</option>
+        <option value="34" name="FO76_AVOIDBOX">Avoid box cast in front of the character.</option>
+        <option value="35" name="FO76_COLLISIONBOX">Broad collision phantom.</option>
+        <option value="36" name="FO76_CAMERASPHERE">Sphere around the camera -- collides only with phantom objects</option>
+        <option value="37" name="FO76_DOORDETECTION">Layer used for the phantoms in front of actors so that they can detect animated doors.</option>
+        <option value="38" name="FO76_CONEPROJECTILE">Used for Cone Projectiles, which ignore hits with certain collision layers.</option>
+        <option value="39" name="FO76_CAMERA">Player camera.</option>
+        <option value="40" name="FO76_ITEMPICKER">Pick clutter and other items of interest.</option>
+        <option value="41" name="FO76_LOS">Line of sight pick.</option>
+        <option value="42" name="FO76_PATHINGPICK">Pick for path smoothing and such</option>
+        <option value="43" name="FO76_DESTRUCTIBLE_ROOT_PROXY"></option>
+        <option value="44" name="FO76_SERVERAUTH_STRICT"></option>
+        <option value="45" name="FO76_SPELLEXPLOSION"></option>
+        <option value="46" name="FO76_DROPPINGPICK"></option>
+        <option value="47" name="FO76_DEADACTORZONE">This layer only collides with dead actors.</option>
+        <option value="48" name="FO76_TRIGGER_FALLINGTRAP">This trigger type is used for the falling traps and should get trigger events when it collides with any visible collidable.</option>
+        <option value="49" name="FO76_NAVCUT">Only for cutting namvesh.</option>
+        <option value="50" name="FO76_CRITTER">Custom layer used for critters. Should receive hits from weapons/spells but not collide with characters or the world.</option>
+        <option value="51" name="FO76_SPELLTRIGGER">Only spells collide with this for triggering happenstances.</option>
+        <option value="52" name="FO76_LIVING_AND_DEAD_ACTORS">triggers on both living and dead actors</option>
+        <option value="53" name="FO76_DETECTION"></option>
+        <option value="54" name="FO76_TRAP_TRIGGER">This is a trigger type that should only look for living actors, for trap trigger boxes.</option>
+        <option value="55" name="FO76_CLUTTER_NOCUT">Generic world clutter, that cannot cut Navmesh.</option>
+        <option value="56" name="FO76_CHARBUMPER">Bumper that is attached to the character controller</option>
+        <option value="57" name="FO76_FXCOLLIDER"></option>
+        <option value="58" name="FO76_BLOCKPICKING">Blocks cursor picking to objects beyond.</option>
+        <option value="59" name="FO76_PLAYERONLY">Confusing name. Blocks player and dead actors.</option>
+        <option value="60" name="FO76_PROJ_NO_COLLIDE_PROJ">Only collides with bare requirements. Does not collide on projectiles.</option>
     </enum>
 
     <enum name="BipedPart" storage="byte">
@@ -994,6 +1480,14 @@
     </enum>
 
     <enum name="TexClampMode" storage="uint">
+        Describes the availiable texture clamp modes, i.e. the behavior of UV mapping outside the [0,1] range.
+        <option value="0" name="CLAMP_S_CLAMP_T">Clamp in both directions.</option>
+        <option value="1" name="CLAMP_S_WRAP_T">Clamp in the S(U) direction but wrap in the T(V) direction.</option>
+        <option value="2" name="WRAP_S_CLAMP_T">Wrap in the S(U) direction but clamp in the T(V) direction.</option>
+        <option value="3" name="WRAP_S_WRAP_T">Wrap in both directions.</option>
+    </enum>
+
+    <enum name="TexClampModeB" storage="byte">
         Describes the availiable texture clamp modes, i.e. the behavior of UV mapping outside the [0,1] range.
         <option value="0" name="CLAMP_S_CLAMP_T">Clamp in both directions.</option>
         <option value="1" name="CLAMP_S_WRAP_T">Clamp in the S(U) direction but wrap in the T(V) direction.</option>
@@ -1406,22 +1900,22 @@
     <enum name="BSLightingShaderType" storage="uint" prefix="ST" versions="#SKY_AND_LATER#">
         Values for configuring the shader type in a BSLightingShaderProperty
         <option value="0" name="Default" />
-        <option value="1" name="Environment Map">Enables EnvMap Mask(TS6), EnvMap Scale</option>
-        <option value="2" name="Glow Shader">Enables Glow(TS3)</option>
-        <option value="3" name="Parallax">Enables Height(TS4)</option>
-        <option value="4" name="Face Tint">Enables Detail(TS4), Tint(TS7)</option>
-        <option value="5" name="Skin Tint">Enables Skin Tint Color</option>
-        <option value="6" name="Hair Tint">Enables Hair Tint Color</option>
+        <option value="1" name="Environment Map">Enables EnvMap(TS5) EnvMap Mask(TS6), EnvMap Scale, Requires Environment and EnvMap_Light_Fade flags</option>
+        <option value="2" name="Glow Shader">Enables Glow(TS3), Requires Glow and Own_Emit flags</option>
+        <option value="3" name="Parallax">Enables Height(TS4), Requires Parallax Flag</option>
+        <option value="4" name="Facegen">Enables Skin(TS3), Detail(TS4), Tint(TS7), Requires Facegen and Soft Lighting flags</option>
+        <option value="5" name="Skin Tint">Enables Skin(TS3), Skin Tint Color, Requires Skin Tint and Soft Lighting flags</option>
+        <option value="6" name="Hair Tint">Enables Hair Tint Color, Requires Hair Tint flag</option>
         <option value="7" name="Parallax Occ">Enables Height(TS4), Max Passes, Scale. Unimplemented.</option>
         <option value="8" name="Multitexture Landscape" />
         <option value="9" name="LOD Landscape" />
         <option value="10" name="Snow" />
-        <option value="11" name="MultiLayer Parallax">Enables EnvMap Mask(TS6), Layer(TS7), Parallax Layer Thickness, Parallax Refraction Scale, Parallax Inner Layer U Scale, Parallax Inner Layer V Scale, EnvMap Scale</option>
+        <option value="11" name="MultiLayer Parallax">Enables EnvMap(TS5), EnvMap Mask(TS6), Layer(TS7), Parallax Layer Thickness, Parallax Refraction Scale, Parallax Inner Layer U Scale, Parallax Inner Layer V Scale, EnvMap Scale, requires Multi_Layer_Parallax Flag</option>
         <option value="12" name="Tree Anim" />
         <option value="13" name="LOD Objects" />
         <option value="14" name="Sparkle Snow">Enables SparkleParams</option>
         <option value="15" name="LOD Objects HD" />
-        <option value="16" name="Eye Envmap">Enables EnvMap Mask(TS6), Eye EnvMap Scale</option>
+        <option value="16" name="Eye Envmap">Enables EnvMap(TS5), EnvMap Mask(TS6), Eye EnvMap Scale, Requires Eye_EnvMap and Envmap_Light_Fade flags</option>
         <option value="17" name="Cloud" />
         <option value="18" name="LOD Landscape Noise" />
         <option value="19" name="Multitexture Landscape LOD Blend" />
@@ -1846,16 +2340,16 @@
     </struct>
 
     <struct name="Matrix33" size="36" module="NiMain">
-        A 3x3 rotation matrix; M^T M=identity, det(M)=1.    Stored in OpenGL column-major format.
+        A 3x3 rotation matrix; M^T M=identity, det(M)=1.    Stored in row-major format.
         <field name="m11" type="float" default="1.0">Member 1,1 (top left)</field>
-        <field name="m21" type="float" default="0.0">Member 2,1</field>
-        <field name="m31" type="float" default="0.0">Member 3,1 (bottom left)</field>
-        <field name="m12" type="float" default="0.0">Member 1,2</field>
+        <field name="m21" type="float" default="0.0">Member 1,2</field>
+        <field name="m31" type="float" default="0.0">Member 1,3 (top right)</field>
+        <field name="m12" type="float" default="0.0">Member 2,1</field>
         <field name="m22" type="float" default="1.0">Member 2,2</field>
-        <field name="m32" type="float" default="0.0">Member 3,2</field>
-        <field name="m13" type="float" default="0.0">Member 1,3 (top right)</field>
-        <field name="m23" type="float" default="0.0">Member 2,3</field>
-        <field name="m33" type="float" default="1.0">Member 3,3 (bottom left)</field>
+        <field name="m32" type="float" default="0.0">Member 2,3</field>
+        <field name="m13" type="float" default="0.0">Member 3,1 (bottom left)</field>
+        <field name="m23" type="float" default="0.0">Member 3,2</field>
+        <field name="m33" type="float" default="1.0">Member 3,3 (bottom right)</field>
     </struct>
 
     <struct name="Matrix34" size="48" module="NiMain">
@@ -1875,7 +2369,7 @@
     </struct>
 
     <struct name="Matrix44" size="64" module="NiMain">
-        A 4x4 transformation matrix.
+        A 4x4 transformation matrix. Stored in OpenGL column-major format.
         <field name="m11" type="float" default="1.0">The (1,1) element.</field>
         <field name="m21" type="float" default="0.0">The (2,1) element.</field>
         <field name="m31" type="float" default="0.0">The (3,1) element.</field>
@@ -2065,8 +2559,8 @@
 
     <struct name="TexCoord" size="8" module="NiMain">
         Texture coordinates (u,v). As in OpenGL; image origin is in the lower left corner.
-        <field name="u" type="float" range="#FPM_100#">First coordinate.</field>
-        <field name="v" type="float" range="#FPM_100#">Second coordinate.</field>
+        <field name="u" type="float" range="#FPM_1000#">First coordinate.</field>
+        <field name="v" type="float" range="#FPM_1000#">Second coordinate.</field>
     </struct>
 
     <struct name="HalfTexCoord" size="4" module="NiMain">
@@ -2116,12 +2610,6 @@
         <field name="v1" type="ushort">First vertex index.</field>
         <field name="v2" type="ushort">Second vertex index.</field>
         <field name="v3" type="ushort">Third vertex index.</field>
-    </struct>
-
-    <struct name="Vector3S16" size="6" module="NiMain" versions="#STF#">
-        <field name="X" type="short" />
-        <field name="Y" type="short" />
-        <field name="Z" type="short" />
     </struct>
 
     <bitflags name="VertexAttribute" storage="ushort" prefix="VF" versions="#SSE# #FO4# #F76#">
@@ -2341,7 +2829,9 @@
         Bethesda Havok. Collision filter info representing Layer, Flags, Part Number, and Group all combined into one uint.
         <field name="Layer" suffix="OB" type="OblivionLayer" default="OL_STATIC" until="20.0.0.5" vercond="#BSVER# #LT# 16">The layer the collision belongs to.</field>
         <field name="Layer" suffix="FO" type="Fallout3Layer" default="FOL_STATIC" vercond="(#VER# == 20.2.0.7) #AND# #NI_BS_LTE_FO3#">The layer the collision belongs to.</field>
-        <field name="Layer" suffix="SK" type="SkyrimLayer" default="SKYL_STATIC" vercond="(#VER# == 20.2.0.7) #AND# #BS_GT_FO3#">The layer the collision belongs to.</field>
+        <field name="Layer" suffix="SK" type="SkyrimLayer" default="SKYL_STATIC" vercond="(#VER# == 20.2.0.7) #AND# #BS_SKY_SSE#">The layer the collision belongs to.</field>
+        <field name="Layer" suffix="FO4" type="Fallout4Layer" default="FO4_STATIC" vercond="(#VER# == 20.2.0.7) #AND# #BS_FO4_2#">The layer the collision belongs to.</field>
+        <field name="Layer" suffix="F76" type="Fallout76Layer" default="FO76_STATIC" vercond="(#VER# == 20.2.0.7) #AND# #BS_GTE_F76#">The layer the collision belongs to.</field>
         <field name="Flags" type="CollisionFilterFlags" default="0" />
         <field name="Group" type="ushort" />
     </struct>
@@ -2351,7 +2841,9 @@
         <field name="Unknown Int" type="uint" until="10.0.1.2" />
         <field name="Material" suffix="OB" type="OblivionHavokMaterial" until="20.0.0.5" vercond="#BSVER# #LT# 16">The material of the shape.</field>
         <field name="Material" suffix="FO" type="Fallout3HavokMaterial" vercond="(#VER# == 20.2.0.7) #AND# #NI_BS_LTE_FO3#">The material of the shape.</field>
-        <field name="Material" suffix="SK" type="SkyrimHavokMaterial" vercond="(#VER# == 20.2.0.7) #AND# #BS_GT_FO3#">The material of the shape.</field>
+        <field name="Material" suffix="SK" type="SkyrimHavokMaterial" vercond="(#VER# == 20.2.0.7) #AND# #BS_SKY_SSE#">The material of the shape.</field>
+        <field name="Material" suffix="FO4" type="Fallout4HavokMaterial" vercond="(#VER# == 20.2.0.7) #AND# #BS_FO4_2#">The material of the shape.</field>
+        <field name="Material" suffix="F76" type="Fallout76HavokMaterial" vercond="(#VER# == 20.2.0.7) #AND# #BS_GTE_F76#">The material of the shape.</field>
     </struct>
 
     <struct name="hkSubPartData" module="BSHavok" versions="#BETHESDA#">
@@ -3945,7 +4437,7 @@
         <field name="Vertices" type="Vector3" length="Num Vertices" cond="Has Vertices">The mesh vertices.</field>
         <field name="Data Flags" type="NiGeometryDataFlags" since="10.0.1.0" vercond="!#BS202#" />
         <field name="BS Data Flags" type="BSGeometryDataFlags" vercond="#BS202#" />
-        <field name="Material CRC" type="uint" since="20.2.0.7" until="20.2.0.7" vercond="#BS_GT_FO3#" />
+        <field name="Material CRC" type="SkyrimHavokMaterial" since="20.2.0.7" until="20.2.0.7" vercond="#BS_GT_FO3#" />
         <field name="Has Normals" type="bool">Do we have lighting normals? These are essential for proper lighting: if not present, the model will only be influenced by ambient light.</field>
         <field name="Normals" type="Vector3" length="Num Vertices" cond="Has Normals">The lighting normals.</field>
         <field name="Tangents" type="Vector3" length="Num Vertices" cond="(Has Normals) #AND# (((Data Flags #BITOR# BS Data Flags) #BITAND# 4096) != 0)" since="10.1.0.0">Tangent vectors.</field>
@@ -5046,6 +5538,10 @@
 
     <niobject name="NiPSysInitialRotAngleVarCtlr" inherit="NiPSysModifierFloatCtlr" module="NiParticle">
         Particle system controller for emitter initial rotation angle variation.
+    </niobject>
+
+    <niobject name="NiPSysRotDampeningCtlr" inherit="NiPSysModifierFloatCtlr" module="NiParticle" versions="#BS_GTE_152#">
+        Particle system rotation dampening controller.
     </niobject>
 
     <niobject name="NiPSysEmitterPlanarAngleCtlr" inherit="NiPSysModifierFloatCtlr" module="NiParticle">
@@ -6435,22 +6931,22 @@
         <option bit="4" name="Greyscale_To_PaletteColor">in EffectShaderProperty</option>
         <option bit="5" name="Greyscale_To_PaletteAlpha">in EffectShaderProperty</option>
         <option bit="6" name="Use_Falloff">Use Falloff value in EffectShaderProperty</option>
-        <option bit="7" name="Environment_Mapping">Environment mapping (uses Envmap Scale).</option>
-        <option bit="8" name="Recieve_Shadows">Object can recieve shadows.</option>
+        <option bit="7" name="Environment_Mapping">Environment mapping (uses Envmap Scale), required on Environment Shader Type.</option>
+        <option bit="8" name="Receive_Shadows">Object can recieve shadows.</option>
         <option bit="9" name="Cast_Shadows">Can cast shadows</option>
-        <option bit="10" name="Facegen_Detail_Map">Use a face detail map in the 4th texture slot.</option>
-        <option bit="11" name="Parallax">Unused?</option>
-        <option bit="12" name="Model_Space_Normals">Use Model space normals and an external Specular Map.</option>
+        <option bit="10" name="Facegen">Use a facegen detail map in the 4th texture slot and face tint texture in the 7th texture slot, Required for Facegen shader type.</option>
+        <option bit="11" name="Parallax">Use a height map in the 4th texture slot, required for Parallax Shader Type, also requires Vertex Colors.</option>
+        <option bit="12" name="Model_Space_Normals">Use Model space normals and an external Specular Map, not compatible with Backlighting if Specular is enabled.</option>
         <option bit="13" name="Non_Projective_Shadows"></option>
         <option bit="14" name="Landscape"></option>
         <option bit="15" name="Refraction">Use normal map for refraction effect.</option>
         <option bit="16" name="Fire_Refraction"></option>
         <option bit="17" name="Eye_Environment_Mapping">Eye Environment Mapping (Must use the Eye shader and the model must be skinned)</option>
-        <option bit="18" name="Hair_Soft_Lighting">Keeps from going too bright under lights (hair shader only)</option>
+        <option bit="18" name="Hair_Tint">Keeps from going too bright under lights, Required for Hair Tint shader type</option>
         <option bit="19" name="Screendoor_Alpha_Fade"></option>
         <option bit="20" name="Localmap_Hide_Secret">Object and anything it is positioned above will not render on local map view.</option>
-        <option bit="21" name="FaceGen_RGB_Tint">Use tintmask for Face.</option>
-        <option bit="22" name="Own_Emit">Provides its own emittance color. (will not absorb light/ambient color?)</option>
+        <option bit="21" name="Skin_Tint">Use skin tint map in texture slot 3 for Skin, Required for Skin Tint shader type.</option>
+        <option bit="22" name="Own_Emit">Provides its own emittance color, if Emissive Color is #000000, should/can be disabled. (will not absorb light/ambient color?)</option>
         <option bit="23" name="Projected_UV">Used for decalling?</option>
         <option bit="24" name="Multiple_Textures"></option>
         <option bit="25" name="Remappable_Textures"></option>
@@ -6472,14 +6968,14 @@
         <option bit="5" name="Vertex_Colors">Has Vertex Colors.</option>
         <option bit="6" name="Glow_Map">Use Glow Map in the third texture slot.</option>
         <option bit="7" name="Assume_Shadowmask"></option>
-        <option bit="8" name="Packed_Tangent"></option>
+        <option bit="8" name="Character_Lighting"> Required for Actors or the Character Lighting shader looks terrible.  Headparts and Facegen .nifs with BSDynamicTriShape blocks</option>
         <option bit="9" name="Multi_Index_Snow"></option>
         <option bit="10" name="Vertex_Lighting"></option>
         <option bit="11" name="Uniform_Scale"></option>
         <option bit="12" name="Fit_Slope"></option>
         <option bit="13" name="Billboard"></option>
         <option bit="14" name="No_LOD_Land_Blend"></option>
-        <option bit="15" name="EnvMap_Light_Fade"></option>
+        <option bit="15" name="EnvMap_Light_Fade"> Required for Environment, Eye EnvMap, and MultiLayer Parallax shader types</option>
         <option bit="16" name="Wireframe">Wireframe (Seems to only work on particles)</option>
         <option bit="17" name="Weapon_Blood">Used for blood decals on weapons.</option>
         <option bit="18" name="Hide_On_Local_Map">Similar to hide secret, but only for self?</option>
@@ -6489,11 +6985,11 @@
         <option bit="22" name="No_Transparency_Multisampling"></option>
         <option bit="23" name="Unused01">Unused?</option>
         <option bit="24" name="Multi_Layer_Parallax">Use Multilayer (inner-layer) Map</option>
-        <option bit="25" name="Soft_Lighting">Use Soft Lighting Map</option>
-        <option bit="26" name="Rim_Lighting">Use Rim Lighting Map</option>
-        <option bit="27" name="Back_Lighting">Use Back Lighting Map</option>
+        <option bit="25" name="Soft_Lighting">Use Soft Lighting Map, not compatible with Rim Lighting</option>
+        <option bit="26" name="Rim_Lighting">Use Rim Lighting Map, not compatible with Soft Lighting</option>
+        <option bit="27" name="Back_Lighting">Use Back Lighting Map, not compatible with Modelspace Normals + Specular</option>
         <option bit="28" name="Unused02">Unused?</option>
-        <option bit="29" name="Tree_Anim">Enables Vertex Animation, Flutter Animation</option>
+        <option bit="29" name="Tree_Anim">Enables Vertex Animation, Flutter Animation, root block MUST be BSTreeNode or BSLeafAnimNode</option>
         <option bit="30" name="Effect_Lighting"></option>
         <option bit="31" name="HD_LOD_Objects"></option>
     </bitflags>
@@ -6621,6 +7117,15 @@
         <field name="Unknown 2" type="float" default="-1.0" vercond="#BS_GTE_F76#" />
     </struct>
 
+    <struct name="BGSMWetnessParams" abstract="true" module="BSMain" versions="#FO4# #F76#">
+        <field name="Spec Scale" type="float" default="-1.0" />
+        <field name="Spec Power" type="float" default="-1.0" />
+        <field name="Min Var" type="float" default="-1.0" />
+        <field name="Env Map Scale" type="float" default="-1.0" cond="#ARG# #LT# 10" />
+        <field name="Fresnel Power" type="float" default="-1.0" />
+        <field name="Metalness" type="float" default="-1.0" />
+    </struct>
+
     <struct name="BSSPLuminanceParams" module="BSMain" versions="#F76#">
         <field name="Lum Emittance" type="float" default="100.0" range="#F_POS#" />
         <field name="Exposure Offset" type="float" default="13.5" range="#F_POS#" />
@@ -6650,10 +7155,8 @@
 
     <struct name="BSUVStream" abstract="true" module="BSMain" versions="#STF#">
         <field name="Name" type="SizedString" />
-        <field name="U Scale" type="float" default="1.0" />
-        <field name="V Scale" type="float" default="1.0" />
-        <field name="U Offset" type="float" />
-        <field name="V Offset" type="float" />
+        <field name="Scale" type="TexCoord" default="#VEC2_ONE#" />
+        <field name="Offset" type="TexCoord" />
         <field name="Texture Address Mode" type="BSTextureAddressMode" />
         <field name="Channel" type="BSUVStreamChannel" default="One" />
     </struct>
@@ -6674,7 +7177,6 @@
     <struct name="BSTextureSet" abstract="true" module="BSMain" versions="#STF#">
         <field name="Name" type="SizedString" />
         <field name="Normal Intensity" type="float" default="1.0" />
-        <field name="Resolution Hint" type="BSTextureResolutionHint" />
         <field name="Enable Mask" type="uint" />
         <field name="Texture 0" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x000001">Color Texture</field>
         <field name="Texture 1" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x000002">Normal Texture</field>
@@ -6690,13 +7192,15 @@
         <field name="Texture 11" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x000800" />
         <field name="Texture 12" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x001000">Z Offset Texture</field>
         <field name="Texture 13" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x002000" />
-        <field name="Texture 14" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x004000" />
-        <field name="Texture 15" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x008000" />
-        <field name="Texture 16" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x010000" />
+        <field name="Texture 14" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x004000">Overlay Color Texture</field>
+        <field name="Texture 15" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x008000">Overlay Roughness Texture</field>
+        <field name="Texture 16" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x010000">Overlay Metalness Texture</field>
         <field name="Texture 17" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x020000" />
         <field name="Texture 18" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x040000" />
         <field name="Texture 19" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x080000" />
         <field name="Texture 20" type="BSTextureWithReplacement" cond="Enable Mask #BITAND# 0x100000">ID Texture</field>
+        <field name="Resolution Hint" type="BSTextureResolutionHint" />
+        <field name="Disable Mip Bias Hint" type="bool" />
     </struct>
 
     <enum name="BSMaterialColorOverrideMode" storage="byte" versions="#STF#">
@@ -6723,6 +7227,15 @@
         <field name="Material" type="BSMaterial" />
         <field name="UV Stream" type="BSUVStream" />
     </struct>
+
+    <enum name="BSLayerIndex" storage="byte" versions="#STF#">
+        <option name="Layer 1" value="0" />
+        <option name="Layer 2" value="1" />
+        <option name="Layer 3" value="2" />
+        <option name="Layer 4" value="3" />
+        <option name="Layer 5" value="4" />
+        <option name="Layer 6" value="5" />
+    </enum>
 
     <enum name="BSBlenderMode" storage="byte" versions="#STF#">
         <option name="Linear" value="0" />
@@ -6761,6 +7274,14 @@
         <field name="Use Detail Blend Mask" type="bool" />
     </struct>
 
+    <enum name="BSBlenderIndex" storage="byte" versions="#STF#">
+        <option name="Blender 1" value="0" />
+        <option name="Blender 2" value="1" />
+        <option name="Blender 3" value="2" />
+        <option name="Blender 4" value="3" />
+        <option name="Blender 5" value="4" />
+    </enum>
+
     <enum name="BSAlphaBlendMode" storage="byte" versions="#STF#">
         <option name="Linear" value="0" />
         <option name="Additive" value="1" />
@@ -6770,7 +7291,7 @@
 
     <struct name="BSAlphaSettingsComponent" abstract="true" module="BSMain" versions="#STF#">
         <field name="Alpha Test Threshold" type="float" />
-        <field name="Opacity Source Layer" type="byte" />
+        <field name="Opacity Source Layer" type="BSLayerIndex" />
         <field name="Alpha Blender Mode" type="BSAlphaBlendMode" />
         <field name="Use Detail Blend Mask" type="bool" />
         <field name="Use Vertex Color" type="bool" />
@@ -6796,14 +7317,14 @@
     </enum>
 
     <struct name="BSOpacityComponent" abstract="true" module="BSMain" versions="#STF#">
-        <field name="First Layer Index" type="byte" />
+        <field name="First Layer Index" type="BSLayerIndex" />
         <field name="Second Layer Active" type="bool" />
-        <field name="Second Layer Index" type="byte" />
-        <field name="First Blender Index" type="byte" />
+        <field name="Second Layer Index" type="BSLayerIndex" />
+        <field name="First Blender Index" type="BSBlenderIndex" />
         <field name="First Blender Mode" type="BSOpacityBlenderMode" />
         <field name="Third Layer Active" type="bool" />
-        <field name="Third Layer Index" type="byte" />
-        <field name="Second Blender Index" type="byte" />
+        <field name="Third Layer Index" type="BSLayerIndex" />
+        <field name="Second Blender Index" type="BSBlenderIndex" />
         <field name="Second Blender Mode" type="BSOpacityBlenderMode" />
         <field name="Specular Opacity Override" type="float" />
     </struct>
@@ -6856,6 +7377,7 @@
         <field name="Depth MV Fixup" type="bool" />
         <field name="Depth MV Fixup Edges Only" type="bool" />
         <field name="Force Render Before OIT" type="bool" />
+        <field name="Force Render Before Clouds" type="bool" />
         <field name="Depth Bias In Ulp" type="ushort" />
     </struct>
 
@@ -6871,6 +7393,12 @@
     <enum name="BSProjectedDecalRenderLayer" storage="byte" versions="#STF#">
         <option name="Top" value="0" />
         <option name="Middle" value="1" />
+        <option name="Bottom" value="2" />
+    </enum>
+
+    <enum name="BSDecalBlendMode" storage="byte" versions="#STF#">
+        <option name="None" value="0" />
+        <option name="Additive" value="1" />
     </enum>
 
     <struct name="BSDecalSettingsComponent" abstract="true" module="BSMain" versions="#STF#">
@@ -6882,10 +7410,10 @@
         <field name="Surface Height Map" type="SizedString" cond="Is Projected" />
         <field name="Parallax Occlusion Scale" type="float" cond="Is Projected" />
         <field name="Parallax Occlusion Shadows" type="bool" cond="Is Projected" />
-        <field name="Max Parralax Occlusion Steps" type="byte" cond="Is Projected" />
+        <field name="Max Parallax Occlusion Steps" type="byte" cond="Is Projected" />
         <field name="Render Layer" type="BSProjectedDecalRenderLayer" cond="Is Projected" />
         <field name="Use G Buffer Normals" type="bool" cond="Is Projected" />
-        <field name="Blend Mode" type="BSAlphaBlendMode" />
+        <field name="Blend Mode" type="BSDecalBlendMode" />
         <field name="Animated Decal Ignores TAA" type="bool" />
     </struct>
 
@@ -6895,34 +7423,26 @@
         <field name="Water Edge Normal Falloff" type="float" />
         <field name="Water Depth Blur" type="float" />
         <field name="Water Refraction Magnitude" type="float" />
-        <field name="Phytoplankton Reflectance Color R" type="float" />
-        <field name="Phytoplankton Reflectance Color G" type="float" />
-        <field name="Phytoplankton Reflectance Color B" type="float" />
-        <field name="Sediment Reflectance Color R" type="float" />
-        <field name="Sediment Reflectance Color G" type="float" />
-        <field name="Sediment Reflectance Color B" type="float" />
-        <field name="Yellow Matter Reflectance Color R" type="float" />
-        <field name="Yellow Matter Reflectance Color G" type="float" />
-        <field name="Yellow Matter Reflectance Color B" type="float" />
+        <field name="Phytoplankton Reflectance Color" type="Vector3" />
+        <field name="Sediment Reflectance Color" type="Vector3" />
+        <field name="Yellow Matter Reflectance Color" type="Vector3" />
         <field name="Max Concentration Plankton" type="float" />
         <field name="Max Concentration Sediment" type="float" />
         <field name="Max Concentration Yellow Matter" type="float" />
-        <field name="Reflectance R" type="float" />
-        <field name="Reflectance G" type="float" />
-        <field name="Reflectance B" type="float" />
+        <field name="Reflectance Color" type="Vector3" />
         <field name="Low LOD" type="bool" />
         <field name="Placed Water" type="bool" />
     </struct>
 
     <enum name="BSMaskSourceBlender" storage="byte" versions="#STF#">
         <option name="None" value="0" />
-        <option name="Blender 0" value="1" />
-        <option name="Blender 1" value="2" />
-        <option name="Blender 2" value="3" />
+        <option name="Blender 1" value="1" />
+        <option name="Blender 2" value="2" />
+        <option name="Blender 3" value="3" />
     </enum>
 
     <struct name="BSEmissiveSettingsComponent" abstract="true" module="BSMain" versions="#STF#">
-        <field name="Emissive Source Layer" type="byte" />
+        <field name="Emissive Source Layer" type="BSLayerIndex" />
         <field name="Emissive Tint" type="Color4" />
         <field name="Emissive Mask Source Blender" type="BSMaskSourceBlender" />
         <field name="Emissive Clip Threshold" type="float" />
@@ -6935,20 +7455,20 @@
     </struct>
 
     <struct name="BSLayeredEmissivityComponent" abstract="true" module="BSMain" versions="#STF#">
-        <field name="First Layer Index" type="byte" />
+        <field name="First Layer Index" type="BSLayerIndex" />
         <field name="First Layer Tint" type="Color4" />
         <field name="First Layer Mask Source" type="BSMaskSourceBlender" />
         <field name="Second Layer Active" type="bool" />
-        <field name="Second Layer Index" type="byte" cond="Second Layer Active" />
+        <field name="Second Layer Index" type="BSLayerIndex" cond="Second Layer Active" />
         <field name="Second Layer Tint" type="Color4" cond="Second Layer Active" />
         <field name="Second Layer Mask Source" type="BSMaskSourceBlender" cond="Second Layer Active" />
-        <field name="First Blender Index" type="byte" cond="Second Layer Active" />
+        <field name="First Blender Index" type="BSBlenderIndex" cond="Second Layer Active" />
         <field name="First Blender Mode" type="BSOpacityBlenderMode" cond="Second Layer Active" />
         <field name="Third Layer Active" type="bool" />
-        <field name="Third Layer Index" type="byte" cond="Third Layer Active" />
+        <field name="Third Layer Index" type="BSLayerIndex" cond="Third Layer Active" />
         <field name="Third Layer Tint" type="Color4" cond="Third Layer Active" />
         <field name="Third Layer Mask Source" type="BSMaskSourceBlender" cond="Third Layer Active" />
-        <field name="Second Blender Index" type="byte" cond="Third Layer Active" />
+        <field name="Second Blender Index" type="BSBlenderIndex" cond="Third Layer Active" />
         <field name="Second Blender Mode" type="BSOpacityBlenderMode" cond="Third Layer Active" />
         <field name="Emissive Clip Threshold" type="float" />
         <field name="Adaptive Emittance" type="bool" />
@@ -6970,7 +7490,44 @@
         <field name="Transmittance Width" type="float" />
         <field name="Spec Lobe 0 Roughness Scale" type="float" />
         <field name="Spec Lobe 1 Roughness Scale" type="float" />
-        <field name="Transmittance Source Layer" type="byte" />
+        <field name="Transmittance Source Layer" type="BSLayerIndex" />
+    </struct>
+
+    <struct name="BSHairSettingsComponent" abstract="true" module="BSMain" versions="#STF#">
+        <field name="Is Spiky Hair" type="bool" />
+        <field name="Spec Scale" type="float" />
+        <field name="Specular Transmission Scale" type="float" />
+        <field name="Direct Transmission Scale" type="float" />
+        <field name="Diffuse Transmission Scale" type="float" />
+        <field name="Roughness" type="float" />
+        <field name="Contact Shadow Softening" type="float" />
+        <field name="Backscatter Strength" type="float" />
+        <field name="Backscatter Wrap" type="float" />
+        <field name="Variation Strength" type="float" />
+        <field name="Indirect Specular Scale" type="float" />
+        <field name="Indirect Specular Transmission Scale" type="float" />
+        <field name="Indirect Spec Roughness" type="float" />
+        <field name="Edge Mask Contrast" type="float" />
+        <field name="Edge Mask Min" type="float" />
+        <field name="Edge Mask Distance Min" type="float" />
+        <field name="Edge Mask Distance Max" type="float" />
+        <field name="Max Depth Offset" type="float" />
+        <field name="Dither Scale" type="float" />
+        <field name="Dither Distance Min" type="float" />
+        <field name="Dither Distance Max" type="float" />
+        <field name="Tangent" type="Vector3" />
+        <field name="Tangent Bend" type="float" />
+        <field name="Depth Offset Mask Vertex Color Channel" type="BSColorChannel" />
+        <field name="AO Vertex Color Channel" type="BSColorChannel" />
+    </struct>
+
+    <struct name="BSVegetationSettingsComponent" abstract="true" module="BSMain" versions="#STF#">
+        <field name="Leaf Frequency" type="float" />
+        <field name="Leaf Amplitude" type="float" />
+        <field name="Branch Flexibility" type="float" />
+        <field name="Trunk Flexibility" type="float" />
+        <field name="Terrain Blend Strength (Deprecated)" type="float" />
+        <field name="Terrain Blend Gradient Factor (Deprecated)" type="float" />
     </struct>
 
     <enum name="BSShaderRoute" storage="byte" versions="#STF#">
@@ -6994,23 +7551,19 @@
 
     <struct name="BSLayeredMaterial" abstract="true" module="BSMain" versions="#STF#">
         <field name="Name" type="SizedString" />
-        <field name="Layer 0 Enabled" type="bool" />
-        <field name="Layer 0" type="BSLayer" cond="Layer 0 Enabled" />
-        <field name="Layer 1 Enabled" type="bool" />
-        <field name="Layer 1" type="BSLayer" cond="Layer 1 Enabled" />
-        <field name="Blender 0" type="BSBlender" cond="Layer 1 Enabled" />
-        <field name="Layer 2 Enabled" type="bool" />
-        <field name="Layer 2" type="BSLayer" cond="Layer 2 Enabled" />
-        <field name="Blender 1" type="BSBlender" cond="Layer 2 Enabled" />
-        <field name="Layer 3 Enabled" type="bool" />
-        <field name="Layer 3" type="BSLayer" cond="Layer 3 Enabled" />
-        <field name="Blender 2" type="BSBlender" cond="Layer 3 Enabled" />
-        <field name="Layer 4 Enabled" type="bool" />
-        <field name="Layer 4" type="BSLayer" cond="Layer 4 Enabled" />
-        <field name="Blender 3" type="BSBlender" cond="Layer 4 Enabled" />
-        <field name="Layer 5 Enabled" type="bool" />
-        <field name="Layer 5" type="BSLayer" cond="Layer 5 Enabled" />
-        <field name="Blender 4" type="BSBlender" cond="Layer 5 Enabled" />
+        <field name="Layer Enable Mask" type="uint" />
+        <field name="Layer 1" type="BSLayer" cond="Layer Enable Mask #BITAND# 1" />
+        <field name="Layer 2" type="BSLayer" cond="Layer Enable Mask #BITAND# 2" />
+        <field name="Blender Enable Mask" type="uint" />
+        <field name="Blender 1" type="BSBlender" cond="Blender Enable Mask #BITAND# 1" />
+        <field name="Layer 3" type="BSLayer" cond="Layer Enable Mask #BITAND# 4" />
+        <field name="Blender 2" type="BSBlender" cond="Blender Enable Mask #BITAND# 2" />
+        <field name="Layer 4" type="BSLayer" cond="Layer Enable Mask #BITAND# 8" />
+        <field name="Blender 3" type="BSBlender" cond="Blender Enable Mask #BITAND# 4" />
+        <field name="Layer 5" type="BSLayer" cond="Layer Enable Mask #BITAND# 16" />
+        <field name="Blender 4" type="BSBlender" cond="Blender Enable Mask #BITAND# 8" />
+        <field name="Layer 6" type="BSLayer" cond="Layer Enable Mask #BITAND# 32" />
+        <field name="Blender 5" type="BSBlender" cond="Blender Enable Mask #BITAND# 16" />
         <field name="Shader Model" type="SizedString" default="BaseMaterial" />
         <field name="Shader Route" type="BSShaderRoute" />
         <field name="Two Sided" type="bool" />
@@ -7035,6 +7588,11 @@
         <field name="Layered Emissivity Settings" type="BSLayeredEmissivityComponent" cond="Layered Emissivity" />
         <field name="Is Translucent" type="bool" />
         <field name="Translucency Settings" type="BSTranslucencySettingsComponent" cond="Is Translucent" />
+        <field name="Is Hair" type="bool" />
+        <field name="Hair Settings" type="BSHairSettingsComponent" cond="Is Hair" />
+        <field name="Is Vegetation" type="bool" />
+        <field name="Vegetation Settings" type="BSVegetationSettingsComponent" cond="Is Vegetation" />
+        <field name="Is Modified" type="bool" />
     </struct>
 
     <struct name="BSLightingShaderPropertyDataGTEFO76" module="BSMain" versions="#BS_GTE_F76#">
@@ -7066,9 +7624,9 @@
         <field name="Has Texture Arrays" type="byte" vercond="#BS_F76#" />
         <field name="Num Texture Arrays" type="uint" vercond="#BS_F76#" cond="Has Texture Arrays" />
         <field name="Texture Arrays" type="BSTextureArray" length="Num Texture Arrays" vercond="#BS_F76#" cond="Has Texture Arrays" />
-        <field name="Unk Float 1" type="float" vercond="#BS_GTE_STF#"/>
-        <field name="Unk Float 2" type="float" vercond="#BS_GTE_STF#"/>
-        <field name="Unk Short 1" type="ushort" vercond="#BS_GTE_STF#"/>
+        <field name="Unk Float 1" type="float" vercond="#BS_GTE_STF#" />
+        <field name="Unk Float 2" type="float" vercond="#BS_GTE_STF#" />
+        <field name="Unk Short 1" type="ushort" vercond="#BS_GTE_STF#" />
         <field name="Skin Tint Color" type="Color4" cond="Shader Type == 4" />
         <field name="Hair Tint Color" type="Color3" cond="Shader Type == 5" />
         <field name="Max Passes" type="float" default="4.0" range="1.0:320.0" cond="Shader Type == 7" />
@@ -7130,6 +7688,11 @@
         <option bit="22" name="Tessellate" />
         <option bit="23" name="Skew_Specular_Alpha" />
         <option bit="24" name="Terrain" />
+        <option bit="25" name="Rim_Lighting" />
+        <option bit="26" name="Subsurface_Lighting" />
+        <option bit="27" name="Back_Lighting" />
+        <option bit="28" name="Window_Environment_Mapping" />
+        <option bit="29" name="Eye_Environment_Mapping" />
     </bitflags>
 
     <bitflags name="Fallout76MaterialPropertyFlags3" storage="ushort" versions="#F76#">
@@ -7146,8 +7709,8 @@
         <option bit="9" name="Glass_Enabled" />
     </bitflags>
 
-    <struct name="BSShaderMaterialDataFO76" abstract="true" module="BSMain" versions="#BS_F76#">
-        Bethesda material file (.bgsm) for Fallout 76.
+    <struct name="BSMaterialDataBGSM" abstract="true" module="BSMain" versions="#FO4# #F76#">
+        Bethesda material file (.bgsm) for Fallout 4 and 76.
         <field name="Version" type="uint" />
         <field name="Shader Flags 1" type="Fallout76MaterialPropertyFlags1" />
         <field name="Shader Flags 2" type="Fallout76MaterialPropertyFlags2" />
@@ -7158,43 +7721,52 @@
         <field name="Alpha Destination Blend Mode" type="AlphaFunction" />
         <field name="Alpha Test Threshold" type="byte" />
         <field name="Refraction Power" type="float" />
-        <field name="Write Mask" type="byte" />
+        <field name="Environment Map Scale" type="float" default="1.0" range="#F0_10#" cond="Version #LT# 10">Scales the intensity of the environment/cube map.</field>
+        <field name="Write Mask" type="byte" cond="Version #GTE# 6" />
         <field name="Texture 0" type="SizedString">Diffuse Texture</field>
         <field name="Texture 1" type="SizedString">Normal Map Texture</field>
-        <field name="Texture 2" type="SizedString" />
+        <field name="Texture 2" type="SizedString">FO4 Specular Map Texture</field>
         <field name="Texture 3" type="SizedString">Grayscale To Palette Texture</field>
-        <field name="Texture 4" type="SizedString">Glow Map Texture</field>
-        <field name="Texture 5" type="SizedString" />
-        <field name="Texture 6" type="SizedString">Reflectance Texture</field>
-        <field name="Texture 7" type="SizedString">Lighting Texture</field>
+        <field name="Texture 4" type="SizedString">FO4 Cube Map or FO76 Glow Map Texture</field>
+        <field name="Texture 5" type="SizedString">FO4 Glow Map or Environment Mask Texture</field>
+        <field name="Texture 6" type="SizedString">FO76 Reflectance Texture</field>
+        <field name="Texture 7" type="SizedString">FO76 Lighting Texture</field>
         <field name="Texture 8" type="SizedString" />
-        <field name="Texture 9" type="SizedString" />
-        <field name="Translucency Subsurface Color" type="Color3" />
-        <field name="Translucency Transmissive Scale" type="float" />
-        <field name="Translucency Turbulence" type="float" />
+        <field name="Texture 9" type="SizedString" cond="Version #GTE# 17" />
+        <field name="Rimlight Power" type="float" default="#FLT_MAX#" cond="Version #LT# 8" />
+        <field name="Backlight Power" type="float" range="#F0_1000#" cond="Version #LT# 8" />
+        <field name="Subsurface Rolloff" type="float" default="0.0" range="#F0_10#" cond="Version #LT# 8" />
+        <field name="Translucency Subsurface Color" type="Color3" cond="Version #GTE# 8" />
+        <field name="Translucency Transmissive Scale" type="float" cond="Version #GTE# 8" />
+        <field name="Translucency Turbulence" type="float" cond="Version #GTE# 8" />
         <field name="Specular Color" type="Color3" default="#VEC3_ONE#">Adds a colored highlight.</field>
         <field name="Specular Strength" type="float" default="1.0" range="#F0_10#">Brightness of specular highlight. (0=not visible)</field>
         <field name="Smoothness" type="float" default="1.0" range="#F0_10#">The base roughness, multiplied by the smoothness map.</field>
         <field name="Fresnel Power" type="float" default="5.0" range="#F_PNZ#" />
-        <field name="Wetness" type="BSSPWetnessParams" />
-        <field name="Porosity Value" type="float" />
+        <field name="Wetness" type="BGSMWetnessParams" arg="Version" />
+        <field name="Porosity Value" type="float" cond="Version #GTE# 9" />
         <field name="Root Material" type="SizedString" />
         <field name="Emissive Color" type="Color3" default="#VEC3_ZERO#" cond="Shader Flags 2 #BITAND# 0x0100">Glow color</field>
         <field name="Emissive Multiple" type="float" default="1.0" range="#F0_10#">Multiplied emissive colors</field>
-        <field name="Luminance" type="BSSPLuminanceParams" />
+        <field name="Luminance" type="BSSPLuminanceParams" cond="Version #GTE# 12" />
         <field name="Hair Tint Color" type="Color3" />
+        <field name="Displacement Texture Bias" type="float" cond="Version #LT# 3" />
+        <field name="Displacement Texture Scale" type="float" cond="Version #LT# 3" />
+        <field name="Tessellation Pn Scale" type="float" cond="Version #LT# 3" />
+        <field name="Tessellation Base Factor" type="float" cond="Version #LT# 3" />
+        <field name="Tessellation Fade Distance" type="float" cond="Version #LT# 3" />
         <field name="Grayscale to Palette Scale" type="float" default="1.0" range="#F0_1#" />
         <field name="Terrain Threshold Falloff" type="float" cond="Shader Flags 2 #BITAND# 0x01000000" />
         <field name="Terrain Tiling Distance" type="float" cond="Shader Flags 2 #BITAND# 0x01000000" />
         <field name="Terrain Rotation Angle" type="float" cond="Shader Flags 2 #BITAND# 0x01000000" />
+        <field name="Is Modified" type="bool" />
     </struct>
 
     <niobject name="BSLightingShaderProperty" inherit="BSShaderProperty" module="BSMain" versions="#SKY_AND_LATER#">
         Bethesda shader property for Skyrim and later.
         <field name="Material" type="BSLayeredMaterial" abstract="true" vercond="#BS_GTE_STF#" cond="$Name">Starfield material (.mat).</field>
-        <field name="Shader Property Data" type="BSLightingShaderPropertyDataGTEFO76" vercond="#BS_F76#" cond="!$Name" />
-        <field name="Material" type="BSShaderMaterialDataFO76" abstract="true" vercond="#BS_F76#" cond="$Name" />
-        <field name="Shader Property Data (Deprecated)" type="BSLightingShaderPropertyDataGTEFO76" vercond="#BS_GTE_STF#" cond="!$Name" />
+        <field name="Material" type="BSMaterialDataBGSM" abstract="true" vercond="#BS_FO4_F76#" cond="$Name">Fallout 4 or 76 material (.bgsm).</field>
+        <field name="Shader Property Data" type="BSLightingShaderPropertyDataGTEFO76" vercond="#BS_GTE_F76#" cond="!$Name">Shader property data when not using a material file, deprecated after Fallout 76.</field>
         <field name="Shader Flags 1" suffix="SK" type="SkyrimShaderPropertyFlags1" vercond="#NI_BS_LT_FO4#" default="0x82400301">Skyrim Shader Flags for setting render/shader options.</field>
         <field name="Shader Flags 2" suffix="SK" type="SkyrimShaderPropertyFlags2" vercond="#NI_BS_LT_FO4#" default="0x8021">Skyrim Shader Flags for setting render/shader options.</field>
         <field name="Shader Flags 1" suffix="FO4" type="Fallout4ShaderPropertyFlags1" vercond="#BS_FO4#" default="0x80400201">Fallout 4 Shader Flags. Mostly overridden if "Name" is a path to a BGSM/BGEM file.</field>
@@ -7250,11 +7822,12 @@
         <field name="UV Scale" type="TexCoord" default="#VEC2_ONE#">Offset UV Scale to repeat tiling textures</field>
         <field name="Source Texture"  type="SizedString">points to an external texture.</field>
         <field name="Unk Float" type="float" vercond="#BS_GTE_STF#" />
+        <field name="Unk Float 2" type="float" vercond="#BS_GTE_STF#" />
         <!-- TODO: Next 4 bytes requires bitfield, read as single int -->
-        <field name="Texture Clamp Mode" type="byte" default="3">How to handle texture borders.</field>
-        <field name="Lighting Influence" type="byte" default="255" />
-        <field name="Env Map Min LOD" type="byte" range="0:16" />
-        <field name="Unused Byte" type="byte" />
+        <field name="Texture Clamp Mode" type="TexClampModeB" default="WRAP_S_WRAP_T" vercond="#NI_BS_LT_STF#">How to handle texture borders.</field>
+        <field name="Lighting Influence" type="byte" default="255" vercond="#NI_BS_LT_STF#" />
+        <field name="Env Map Min LOD" type="byte" range="0:16" vercond="#NI_BS_LT_STF#" />
+        <field name="Unused Byte" type="byte" vercond="#NI_BS_LT_STF#" />
         <field name="Falloff Start Angle" type="float" default="1.0" range="#F_NRM#">At this cosine of angle falloff will be equal to Falloff Start Opacity</field>
         <field name="Falloff Stop Angle" type="float" default="1.0" range="#F_NRM#">At this cosine of angle falloff will be equal to Falloff Stop Opacity</field>
         <field name="Falloff Start Opacity" type="float" range="#F0_1#">Alpha falloff multiplier at start angle</field>
@@ -7278,8 +7851,8 @@
         <field name="Unknown Byte" type="byte" vercond="#BS_GTE_STF#" />
     </struct>
 
-    <struct name="BSEffectMaterialDataFO76" abstract="true" module="BSMain" versions="#BS_F76#">
-        Bethesda material file (.bgem) for Fallout 76.
+    <struct name="BSMaterialDataBGEM" abstract="true" module="BSMain" versions="#FO4# #F76#">
+        Bethesda material file (.bgem) for Fallout 4 and 76.
         <field name="Version" type="uint" />
         <field name="Shader Flags 1" type="Fallout76MaterialPropertyFlags1" />
         <field name="Shader Flags 2" type="Fallout76MaterialPropertyFlags3" />
@@ -7290,20 +7863,21 @@
         <field name="Alpha Destination Blend Mode" type="AlphaFunction" />
         <field name="Alpha Test Threshold" type="byte" />
         <field name="Refraction Power" type="float" />
-        <field name="Write Mask" type="byte" />
+        <field name="Write Mask" type="byte" cond="Version #GTE# 6" />
         <field name="Texture 0" type="SizedString">Source Texture</field>
         <field name="Texture 1" type="SizedString">Grayscale To Palette Texture</field>
         <field name="Texture 2" type="SizedString">Cube Map Texture</field>
         <field name="Texture 3" type="SizedString">Normal Map Texture</field>
         <field name="Texture 4" type="SizedString">Environment Mask Texture</field>
-        <field name="Texture 5" type="SizedString">Reflectance Texture</field>
-        <field name="Texture 6" type="SizedString">Lighting Texture</field>
-        <field name="Texture 7" type="SizedString">Emit Gradient Texture</field>
+        <field name="Texture 5" type="SizedString" cond="Version #GTE# 10">Reflectance Texture</field>
+        <field name="Texture 6" type="SizedString" cond="Version #GTE# 10">Lighting Texture</field>
+        <field name="Texture 7" type="SizedString" cond="Version #GTE# 10">Emit Gradient Texture</field>
         <field name="Texture 8" type="SizedString" cond="Version #GTE# 21">Glass Roughness and Scratch Texture</field>
         <field name="Texture 9" type="SizedString" cond="Version #GTE# 21">Glass Dirt Overlay Texture</field>
         <field name="Glass Fresnel Color" type="Color3" cond="Shader Flags 2 #BITAND# 0x0200" />
         <field name="Glass Refraction Scale" type="float" cond="Shader Flags 2 #BITAND# 0x0200" />
-        <field name="Glass Blur Scale" type="float" cond="Shader Flags 2 #BITAND# 0x0200" />
+        <field name="Glass Blur Scale Base" type="float" cond="Shader Flags 2 #BITAND# 0x0200" />
+        <field name="Glass Blur Scale Factor" type="float" cond="(Shader Flags 2 #BITAND# 0x0200) #AND# (Version #GTE# 22)" />
         <field name="Environment Map Scale" type="float" default="1.0" range="0.01:20.0" />
         <field name="Base Color" type="Color3" default="#VEC3_ONE#">Base color</field>
         <field name="Base Color Scale" type="float" default="1.0" range="0.0:360.0">Multiplier for Base Color (RGB part)</field>
@@ -7314,18 +7888,18 @@
         <field name="Lighting Influence" type="float" />
         <field name="Env Map Min LOD" type="byte" range="0:16" />
         <field name="Soft Falloff Depth" type="float" default="100.0" range="0.0:9999.0" />
-        <field name="Emittance Color" type="Color3" />
-        <field name="Adaptive Emissive Exposure Offset" type="float" />
-        <field name="Adaptive Emissive Exposure Min" type="float" />
-        <field name="Adaptive Emissive Exposure Max" type="float" />
+        <field name="Emittance Color" type="Color3" cond="Version #GTE# 11" />
+        <field name="Adaptive Emissive Exposure Offset" type="float" cond="Version #GTE# 15" />
+        <field name="Adaptive Emissive Exposure Min" type="float" cond="Version #GTE# 15" />
+        <field name="Adaptive Emissive Exposure Max" type="float" cond="Version #GTE# 15" />
+        <field name="Is Modified" type="bool" />
     </struct>
 
     <niobject name="BSEffectShaderProperty" inherit="BSShaderProperty" module="BSMain" versions="#SKY_AND_LATER#">
         Bethesda effect shader property for Skyrim and later.
-        <field name="Material" type="BSLayeredMaterial" abstract="true" vercond="#BS_GTE_STF#">Starfield material (.mat).</field>
-        <field name="Shader Property Data" type="BSEffectShaderPropertyDataGTEFO76" vercond="#BS_F76#" cond="!$Name" />
-        <field name="Material" type="BSEffectMaterialDataFO76" abstract="true" vercond="#BS_F76#" cond="$Name" />
-        <field name="Shader Property Data (Deprecated)" type="BSEffectShaderPropertyDataGTEFO76" vercond="#BS_GTE_STF#" cond="!$Name" />
+        <field name="Material" type="BSLayeredMaterial" abstract="true" vercond="#BS_GTE_STF#" cond="$Name">Starfield material (.mat).</field>
+        <field name="Material" type="BSMaterialDataBGEM" abstract="true" vercond="#BS_FO4_F76#" cond="$Name">Fallout 4 or 76 material (.bgem).</field>
+        <field name="Shader Property Data" type="BSEffectShaderPropertyDataGTEFO76" vercond="#BS_GTE_F76#" cond="!$Name">Shader property data when not using a material file, deprecated after Fallout 76.</field>
         <field name="Shader Flags 1" suffix="SK" type="SkyrimShaderPropertyFlags1" default="0x80000000" vercond="#NI_BS_LT_FO4#" />
         <field name="Shader Flags 2" suffix="SK" type="SkyrimShaderPropertyFlags2" default="0x20" vercond="#NI_BS_LT_FO4#" />
         <field name="Shader Flags 1" suffix="FO4" type="Fallout4ShaderPropertyFlags1" default="0x80000000" vercond="#BS_FO4#" />
@@ -7336,7 +7910,7 @@
         <field name="UV Scale" type="TexCoord" default="#VEC2_ONE#" vercond="#NI_BS_LTE_FO4#">Offset UV Scale to repeat tiling textures</field>
         <field name="Source Texture"  type="SizedString" vercond="#NI_BS_LTE_FO4#">points to an external texture.</field>
         <!-- TODO: Next 4 bytes requires bitfield, read as single int -->
-        <field name="Texture Clamp Mode" type="byte" default="3" vercond="#NI_BS_LTE_FO4#">How to handle texture borders.</field>
+        <field name="Texture Clamp Mode" type="TexClampModeB" default="WRAP_S_WRAP_T" vercond="#NI_BS_LTE_FO4#">How to handle texture borders.</field>
         <field name="Lighting Influence" type="byte" default="255" vercond="#NI_BS_LTE_FO4#" />
         <field name="Env Map Min LOD" type="byte" range="0:16" vercond="#NI_BS_LTE_FO4#" />
         <field name="Unused Byte" type="byte" vercond="#NI_BS_LTE_FO4#" />
@@ -7405,7 +7979,7 @@
         <field name="Partitions" type="BodyPartList" length="Num Partitions" />
     </niobject>
 
-    <niobject name="BSDecalPlacementVectorExtraData" inherit="NiFloatExtraData" module="BSMain" versions="#FO3_AND_LATER#">
+    <niobject name="BSDecalPlacementVectorExtraData" inherit="NiIntegerExtraData" module="BSMain" versions="#FO3_AND_LATER#">
         Bethesda-specific extra data. Lists locations and normals on a mesh that are appropriate for decal placement.
         <field name="Num Vector Blocks" type="ushort" />
         <field name="Vector Blocks" type="DecalVectorArray" length="Num Vector Blocks" />
@@ -7570,9 +8144,8 @@
         <field name="Anim Notes" type="Ref" template="BSAnimNote" length="Num Anim Notes">BSAnimNote objects.</field>
     </niobject>
 
-    <niobject name="bhkLiquidAction" inherit="bhkAction" module="BSHavok" versions="#FO3_AND_LATER#">
+    <niobject name="bhkLiquidAction" inherit="bhkUnaryAction" module="BSHavok" versions="#FO3_AND_LATER#">
         Bethesda custom bhkUnaryAction. Does not hold a link to the body like other bhkUnaryActions however.
-        <field name="Unused 01" type="byte" length="12" binary="true" />
         <field name="Initial Stick Force" type="float" default="25.0" />
         <field name="Stick Strength" type="float" default="100.0" />
         <field name="Neighbor Distance" type="float" default="128.0" />
@@ -8961,11 +9534,11 @@
 
     <!-- Fallout 4 Physics -->
 
-    <niobject name="bhkSystem" abstract="true" inherit="NiObject" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkSystem" abstract="true" inherit="NiObject" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Physics System
     </niobject>
 
-    <niobject name="bhkNPCollisionObject" inherit="NiCollisionObject" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkNPCollisionObject" inherit="NiCollisionObject" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Collision Object
         <field name="Flags" type="bhkCOFlags" default="0x80">
             Note: The CK Preview scenegraph reports these bits incorrectly.
@@ -8974,28 +9547,28 @@
         <field name="Body ID" type="uint" />
     </niobject>
 
-    <niobject name="bhkPhysicsSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkPhysicsSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Collision System
         <field name="Binary Data" type="ByteArray" />
     </niobject>
 
-    <niobject name="bhkRagdollSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4# #F76#">
+    <niobject name="bhkRagdollSystem" inherit="bhkSystem" module="BSHavok" versions="#FO4_AND_LATER#">
         Fallout 4 Ragdoll System
         <field name="Binary Data" type="ByteArray" />
     </niobject>
 
-    <niobject name="BSExtraData" inherit="NiExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSExtraData" inherit="NiExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Extra Data
     </niobject>
 
-    <niobject name="BSClothExtraData" inherit="BSExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSClothExtraData" inherit="BSExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Cloth data
         <field name="Binary Data" type="ByteArray" />
     </niobject>
 
     <!-- Fallout 4 Skeleton -->
 
-    <struct name="BSSkinBoneTrans" size="68" module="BSMain" versions="#FO4# #F76#">
+    <struct name="BSSkinBoneTrans" size="68" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Bone Transform
         <field name="Bounding Sphere" type="NiBound" />
         <field name="Rotation" type="Matrix33" />
@@ -9003,7 +9576,7 @@
         <field name="Scale" type="float" />
     </struct>
 
-    <niobject name="BSSkin::Instance" inherit="NiObject" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSSkin::Instance" inherit="NiObject" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Skin Instance
         <field name="Skeleton Root" type="Ptr" template="NiAVObject" />
         <field name="Data" type="Ref" template="BSSkin::BoneData" />
@@ -9013,7 +9586,7 @@
         <field name="Scales" type="Vector3" length="Num Scales" />
     </niobject>
 
-    <niobject name="BSSkin::BoneData" inherit="NiObject" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSSkin::BoneData" inherit="NiObject" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Bone Data
         <field name="Num Bones" type="uint" />
         <field name="Bone List" type="BSSkinBoneTrans" length="Num Bones" />
@@ -9025,7 +9598,7 @@
         <field name="Data" type="hfloat" length="Num Data" />
     </niobject>
 
-    <struct name="BSConnectPoint" module="BSMain" versions="#FO4# #F76#">
+    <struct name="BSConnectPoint" module="BSMain" versions="#FO4_AND_LATER#">
         <field name="Parent" type="SizedString" default="WorkshopConnectPoints" />
         <field name="Name" type="SizedString" />
         <field name="Rotation" type="Quaternion" />
@@ -9033,13 +9606,13 @@
         <field name="Scale" type="float" default="1.0" />
     </struct>
 
-    <niobject name="BSConnectPoint::Parents" inherit="NiExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSConnectPoint::Parents" inherit="NiExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Item Slot Parent
         <field name="Num Connect Points" type="uint" default="1" />
         <field name="Connect Points" type="BSConnectPoint" length="Num Connect Points" />
     </niobject>
 
-    <niobject name="BSConnectPoint::Children" inherit="NiExtraData" module="BSMain" versions="#FO4# #F76#">
+    <niobject name="BSConnectPoint::Children" inherit="NiExtraData" module="BSMain" versions="#FO4_AND_LATER#">
         Fallout 4 Item Slot Child
         <field name="Skinned" type="bool" />
         <field name="Num Points" type="uint" default="1" />
@@ -9183,33 +9756,42 @@
     <!-- Starfield -->
 
     <struct name="UnknownMaterialStruct" module="BSMain" versions="#STF#">
-        <field name="Unknown Int 1" type="uint" />
+        <field name="Biome Form ID" type="uint" />
         <field name="Directory Hash" type="uint" />
         <field name="File Hash" type="uint" />
         <field name="Material Extension" type="char" length="4" />
     </struct>
 
     <struct name="BSWeakReference" module="BSMain" versions="#STF#">
+        <field name="Form ID" type="uint" vercond="#BSVER# #GTE# 173" />
         <field name="Resource ID" type="BSResourceID" />
         <field name="Num Transforms" type="uint" />
         <field name="Transforms" type="Matrix44" length="Num Transforms" />
-        <field name="Unknown Int 1" type="uint" />
-        <field name="Unknown Material Struct" type="UnknownMaterialStruct" length="Unknown Int 1" />
+        <field name="Num Materials" type="uint" />
+        <field name="Unknown Material Struct" type="UnknownMaterialStruct" length="Num Materials" />
     </struct>
 
-    <struct name="UnknownWeakReferenceStruct" module="BSMain" versions="#STF#">
+    <struct name="BSWaterReferenceStruct" module="BSMain" versions="#STF#">
         <field name="Transform" type="Matrix44" />
         <field name="Resource ID" type="BSResourceID" />
-        <field name="Unknown Int 1" type="uint" />
+        <field name="Water Form ID" type="uint" />
         <field name="Material" type="SizedString" />
+    </struct>
+
+    <struct name="BSWeakRefUnknownStruct" module="BSMain" versions="#STF#">
+        <field name="Unknown Short" type="ushort" />
+        <field name="Unknown Int 1" type="uint" />
+        <field name="Unknown Int 2" type="uint" />
     </struct>
 
     <niobject name="BSWeakReferenceNode" inherit="NiNode" module="BSMain" versions="#STF#">
         <field name="Num Refs" type="uint" />
         <field name="Ref" type="BSWeakReference" length="Num Refs" />
+        <field name="Num Unknown Structs" type="ushort" default="0" vercond="#BSVER# #GTE# 175" cond="Num Refs #GT# 0" />
+        <field name="Unknown Structs" type="BSWeakRefUnknownStruct" length="Num Unknown Structs" cond="Num Unknown Structs #GT# 0" />
         <field name="Unknown Int 1" type="uint" />
-        <field name="Num Unknown 1" type="uint" />
-        <field name="Unknown Structs" type="UnknownWeakReferenceStruct" length="Num Unknown 1" />
+        <field name="Num Water Refs" type="uint" />
+        <field name="Water Refs" type="BSWaterReferenceStruct" length="Num Water Refs" />
     </niobject>
 
     <struct name="BSMeshTriangles" module="BSMain" versions="#STF#">
@@ -9306,6 +9888,14 @@
     </niobject>
 
     <niobject name="CsNiNode" inherit="NiNode" />
+
+    <niobject name="BSFaceFX" module="BSMain" versions="#STF#">
+        <field name="Name" type="string" />
+    </niobject>
+
+    <niobject name="BoneModifierExtra" module="BSMain" versions="#STF#">
+        <field name="Name" type="string" />
+    </niobject>
 
     <!-- QQSpeed -->
 

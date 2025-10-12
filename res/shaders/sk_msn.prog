@@ -1,8 +1,8 @@
 # model space normal mapping
 
 # Skyrim
-check HEADER/BS Header/BS Version >= 83
-check HEADER/BS Header/BS Version <= 130
+check BSVersion >= 83
+check BSVersion <= 130
 
 checkgroup begin or
 	# Skyrim
@@ -18,7 +18,5 @@ checkgroup begin or
 		check not BSTriShape/Vertex Desc & 0x800000000000
 	checkgroup end
 checkgroup end
-
-texcoords 0 base
 
 shaders sk_msn.vert sk_msn.frag

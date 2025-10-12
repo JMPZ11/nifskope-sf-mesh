@@ -41,10 +41,10 @@ private:
 
 		AmbientMin = 0,
 		AmbientMax = BRIGHT,
-		DeclinationMin = -POS,
-		DeclinationMax = POS,
-		PlanarAngleMin = -POS,
-		PlanarAngleMax = POS,
+		EnvMapRotationMin = -POS,
+		EnvMapRotationMax = POS,
+		GlowScaleMin = 0,
+		GlowScaleMax = BRIGHT,
 
 		LightScaleMin = 0,
 		LightScaleMax = BRIGHT,
@@ -54,8 +54,8 @@ private:
 		DirDefault = DirMax / 2,
 		LightColorDefault = POS,
 		AmbientDefault = AmbientMax / 2,
-		DeclinationDefault = (DeclinationMax + DeclinationMin),
-		PlanarAngleDefault = (PlanarAngleMax + PlanarAngleMin),
+		EnvMapRotationDefault = 0,
+		GlowScaleDefault = GlowScaleMax / 2,
 		LightScaleDefault = POS,
 		ToneMappingDefault = POS
 	};

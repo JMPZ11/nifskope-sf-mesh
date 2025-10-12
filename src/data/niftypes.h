@@ -814,7 +814,7 @@ inline Vector3::Vector3( const Vector4 & v4 )
 class ByteVector4 : public Vector4
 {
 public:
-	ByteVector4() : Vector4( FloatVector4( 0.0f, 0.0f, 1.0f, 1.0f ) )
+	ByteVector4( FloatVector4 v = FloatVector4( 0.0f, 0.0f, 1.0f, 1.0f ) ) : Vector4( v )
 	{
 	}
 
@@ -831,7 +831,7 @@ public:
 class UDecVector4 : public Vector4
 {
 public:
-	UDecVector4() : Vector4( FloatVector4( 0.0f, 0.0f, 1.0f, 1.0f ) )
+	UDecVector4( FloatVector4 v = FloatVector4( 0.0f, 0.0f, 1.0f, 1.0f ) ) : Vector4( v )
 	{
 	}
 
@@ -854,7 +854,7 @@ public:
 	//! Default constructor
 	Quat()
 	{
-		memcpy( wxyz, identity, 16 );
+		std::memcpy( wxyz, identity, sizeof(Quat) );
 	}
 	//! Constructor
 	Quat( float w, float x, float y, float z )
@@ -977,14 +977,14 @@ inline QDataStream & operator>>( QDataStream & ds, Quat & q )
 	return ds;
 }
 
-//! A 3 by 3 matrix
+//! A 3 by 3 matrix in row-major order
 class Matrix
 {
 public:
 	//! Constructor
-	Matrix()
+	inline Matrix( const float * m2 = identity )
 	{
-		memcpy( m, identity, 36 );
+		std::memcpy( m, m2, sizeof(Matrix) );
 	}
 	//! Times operator for a matrix
 	Matrix operator*( const Matrix & m2 ) const
@@ -1078,39 +1078,32 @@ protected:
 	friend class NifOStream;
 };
 
-//! A 4 by 4 matrix
+class Transform;
+
+//! A 4 by 4 matrix in column-major order
 class Matrix4
 {
 public:
 	//! Constructor
-	Matrix4()
+	inline Matrix4( const float * m2 = identity )
 	{
-		memcpy( m, identity, 64 );
+		std::memcpy( m, m2, sizeof(Matrix4) );
 	}
 	//! Times operator for a matrix
-	Matrix4 operator*( const Matrix4 & m2 ) const
-	{
-		Matrix4 m3;
-
-		for ( int r = 0; r < 4; r++ ) {
-			for ( int c = 0; c < 4; c++ ) {
-				m3.m[r][c] = m[r][0] * m2.m[0][c]
-				           + m[r][1] * m2.m[1][c]
-				           + m[r][2] * m2.m[2][c]
-				           + m[r][3] * m2.m[3][c];
-			}
-		}
-
-		return m3;
-	}
+	Matrix4 operator*( const Matrix4 & m2 ) const;
+	//! Times operator for a transform
+	Matrix4 operator*( const Transform & t ) const;
+	//! Times operator for a matrix, the last row of m2 is assumed to be 0 0 0 1
+	Matrix4 & multiply4x3( const Matrix4 & m2 );
 	//! Times operator for a vector
-	Vector3 operator*( const Vector3 & v ) const
+	inline FloatVector4 operator*( FloatVector4 v ) const
 	{
-		return Vector3(
-			m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2] + m[0][3],
-			m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2] + m[1][3],
-			m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2] + m[2][3]
-		);
+		return ( FloatVector4( &(m[0][0]) ) * v[0] ) + ( FloatVector4( &(m[1][0]) ) * v[1] )
+				+ ( FloatVector4( &(m[2][0]) ) * v[2] ) + ( FloatVector4( &(m[3][0]) ) * v[3] );
+	}
+	inline Vector3 operator*( const Vector3 & v ) const
+	{
+		return Vector3( *this * FloatVector4( v ).blendValues( FloatVector4( 1.0f ), 0x08 ) );
 	}
 	//! %Element operator
 	float & operator()( unsigned int c, unsigned int d )
@@ -1156,6 +1149,9 @@ public:
 	//! %Data accessor
 	const float * data() const { return (float *)m; }
 
+	static Matrix4 fromFrustum( double left, double right, double bottom, double top, double nearVal, double farVal );
+	static Matrix4 fromOrtho( double left, double right, double bottom, double top, double nearVal, double farVal );
+
 protected:
 	float m[4][4];
 	static const float identity[16];
@@ -1175,13 +1171,22 @@ public:
 	 */
 	Transform( const NifModel * nif, const QModelIndex & transform );
 	//! Default constructor
-	Transform() { scale = 1.0; }
+	Transform() { scale = 1.0f; }
+	//! Construct from translation and scale
+	Transform( const Vector3 & t, float s ) : translation( t ), scale( s ) {}
+	//! Construct from translation and non-uniform scale
+	Transform( const Vector3 & t, const Vector3 & s ) : translation( t ), scale( 1.0f )
+	{
+		rotation( 0, 0 ) = s[0]; rotation( 1, 1 ) = s[1]; rotation( 2, 2 ) = s[2];
+	}
 
 	//! Tests if a transform can be constructed
 	static bool canConstruct( const NifModel * nif, const QModelIndex & parent );
 
 	//! Writes a transform back to a NIF index
 	void writeBack( NifModel * nif, const QModelIndex & transform ) const;
+
+	Transform inverted() const;
 
 	//! Times operator
 	friend Transform operator*( const Transform & t1, const Transform & t2 );
@@ -1601,7 +1606,7 @@ class ByteColor4 : public Color4
 {
 public:
 	//! Default constructor
-	ByteColor4() { rgba[0] = rgba[1] = rgba[2] = rgba[3] = 1.0; }
+	ByteColor4( FloatVector4 c = FloatVector4( 1.0f ) ) : Color4( c ) {}
 	ByteColor4( const std::uint32_t & c )
 		: Color4( FloatVector4(c) / 255.0f )
 	{
@@ -1616,7 +1621,7 @@ class ByteColor4BGRA : public Color4
 {
 public:
 	//! Default constructor
-	ByteColor4BGRA() { rgba[0] = rgba[1] = rgba[2] = rgba[3] = 1.0; }
+	ByteColor4BGRA( FloatVector4 c = FloatVector4( 1.0f ) ) : Color4( c ) {}
 	ByteColor4BGRA( const std::uint32_t & c )
 		: Color4( FloatVector4(c).shuffleValues(0xC6) / 255.0f )
 	{
@@ -1675,7 +1680,7 @@ public:
 	FixedMatrix( int length1, int length2 )
 	{
 		int length = length1 * length2;
-		v_ = (T *)malloc( sizeof(T) * length );
+		v_ = (T *)std::malloc( sizeof(T) * length );
 		len0 = length1;
 		len1 = length2;
 	}
@@ -1686,14 +1691,14 @@ public:
 		int datalen = other.count();
 		len0 = other.count( 0 );
 		len1 = other.count( 1 );
-		v_ = (T *)malloc( sizeof(T) * datalen );
-		memcpy( array(), other.array(), datalen );
+		v_ = (T *)std::malloc( sizeof(T) * datalen );
+		std::memcpy( array(), other.array(), datalen );
 	}
 
 	//! Default Destructor
 	~FixedMatrix()
 	{
-		free( v_ );
+		std::free( v_ );
 	}
 
 	//! Copy Assignment
@@ -1830,18 +1835,17 @@ enum VertexFlags : ushort
 	VF_FULLPREC = 0x400
 };
 
-const uint64_t DESC_MASK_VERT = 0xFFFFFFFFFFFFFFF0;
-const uint64_t DESC_MASK_UVS = 0xFFFFFFFFFFFFFF0F;
-const uint64_t DESC_MASK_NBT = 0xFFFFFFFFFFFFF0FF;
-const uint64_t DESC_MASK_SKCOL = 0xFFFFFFFFFFFF0FFF;
-const uint64_t DESC_MASK_DATA = 0xFFFFFFFFFFF0FFFF;
-const uint64_t DESC_MASK_OFFSET = 0xFFFFFF0000000000;
-const uint64_t DESC_MASK_FLAGS = ~(DESC_MASK_OFFSET);
-
 class BSVertexDesc
 {
-
 public:
+	static constexpr uint64_t DESC_MASK_VERT = 0xFFFFFFFFFFFFFFF0ull;
+	static constexpr uint64_t DESC_MASK_UVS = 0xFFFFFFFFFFFFFF0Full;
+	static constexpr uint64_t DESC_MASK_NBT = 0xFFFFFFFFFFFFF0FFull;
+	static constexpr uint64_t DESC_MASK_SKCOL = 0xFFFFFFFFFFFF0FFFull;
+	static constexpr uint64_t DESC_MASK_DATA = 0xFFFFFFFFFFF0FFFFull;
+	static constexpr uint64_t DESC_MASK_OFFSET = 0xFFFFFF0000000000ull;
+	static constexpr uint64_t DESC_MASK_FLAGS = ~(DESC_MASK_OFFSET);
+
 	BSVertexDesc()
 	{
 	}
@@ -1922,7 +1926,7 @@ public:
 	void SetAttributeOffset( VertexAttribute attr, uint offset )
 	{
 		if ( attr != VA_POSITION ) {
-			desc = ((uint64_t)offset << (4 * (uchar)attr + 2)) | (desc & ~(15 << (4 * (uchar)attr + 4)));
+			desc = ((uint64_t)offset << (4 * (uchar)attr + 2)) | (desc & ~(15ull << (4 * (uchar)attr + 4)));
 		}
 	}
 
@@ -1972,10 +1976,6 @@ public:
 		}
 
 		SetSize( vertexSize );
-
-		// SetFlags must be called again because SetAttributeOffset
-		// appears to clear part of the byte ahead of it
-		SetFlags( vf );
 	}
 
 	void ClearAttributeOffsets()
@@ -2077,6 +2077,8 @@ Q_DECLARE_TYPEINFO( Triangle,    Q_MOVABLE_TYPE );
 Q_DECLARE_TYPEINFO( Quat,        Q_MOVABLE_TYPE );
 Q_DECLARE_TYPEINFO( Matrix,      Q_MOVABLE_TYPE );
 Q_DECLARE_TYPEINFO( Transform,   Q_MOVABLE_TYPE );
+Q_DECLARE_TYPEINFO( Matrix4,     Q_MOVABLE_TYPE );
+Q_DECLARE_TYPEINFO( FloatVector4, Q_MOVABLE_TYPE );
 
 
 namespace NiMesh {
@@ -2246,53 +2248,8 @@ typedef enum {
 	HAS_TANGENT_BP   = 1 << E_TANGENT_BP,
 } SemanticFlags;
 
-#define SEM(string) {#string, E_##string},
+extern const QMap<QString, Semantic> semanticStrings;
 
-const QMap<QString, Semantic> semanticStrings = {
-	// Vertex semantics
-	SEM( POSITION )
-	SEM( NORMAL )
-	SEM( BINORMAL )
-	SEM( TANGENT )
-	SEM( TEXCOORD )
-	SEM( BLENDWEIGHT )
-	SEM( BLENDINDICES )
-	SEM( COLOR )
-	SEM( PSIZE )
-	SEM( TESSFACTOR )
-	SEM( DEPTH )
-	SEM( FOG )
-	SEM( POSITIONT )
-	SEM( SAMPLE )
-	SEM( DATASTREAM )
-	SEM( INDEX )
-
-	// Skinning semantics
-	SEM( BONEMATRICES )
-	SEM( BONE_PALETTE )
-	SEM( UNUSED0 )
-	SEM( POSITION_BP )
-	SEM( NORMAL_BP )
-	SEM( BINORMAL_BP )
-	SEM( TANGENT_BP )
-
-	// Morph weights semantics
-	SEM( MORPHWEIGHTS )
-
-	// Normal sharing semantics, for use in runtime normal calculation
-	SEM( NORMALSHAREINDEX )
-	SEM( NORMALSHAREGROUP )
-
-	// Instancing Semantics
-	SEM( TRANSFORMS )
-	SEM( INSTANCETRANSFORMS )
-
-	// Display list semantics
-	SEM( DISPLAYLIST )
-};
-#undef SEM
-#undef UN
-
-};
+}	// namespace NiMesh
 
 #endif

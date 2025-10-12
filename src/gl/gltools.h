@@ -36,12 +36,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data/niftypes.h"
 #include "filebuf.hpp"
 
-#include <QOpenGLContext>
 #include <QPair>
 
 
-//! @file gltools.h BoundSphere, VertexWeight, BoneWeights, SkinPartition
-
+//! @file gltools.h BoundSphere, VertexWeight, BoneData, SkinPartition
 
 using TriStrip = QVector<quint16>;
 Q_DECLARE_TYPEINFO(TriStrip, Q_MOVABLE_TYPE);
@@ -118,12 +116,12 @@ public:
 	float weight;
 };
 
-//! A set of vertices weighted to a bone
-class BoneWeights
+//! A bone transform and bounds
+class BoneData
 {
 public:
-	BoneWeights() {}
-	BoneWeights( const NifModel * nif, const QModelIndex & index, int b, int vcnt = 0 );
+	BoneData() {}
+	BoneData( const NifModel * nif, const QModelIndex & index, int b );
 
 	void setTransform( const NifModel * nif, const QModelIndex & index );
 
@@ -132,16 +130,6 @@ public:
 	float radius = 0;
 	Vector3 tcenter;
 	int bone = 0;
-	QVector<VertexWeight> weights;
-};
-
-class BoneWeightsUNorm : public BoneWeights
-{
-public:
-	BoneWeightsUNorm() {}
-	BoneWeightsUNorm(QVector<QPair<quint16, quint16>> weights, int v);
-
-	QVector<BoneWeightUNORM16> weightsUNORM;
 };
 
 //! A skin partition
@@ -173,98 +161,7 @@ Transform bhkBodyTrans( const NifModel * nif, const QModelIndex & index );
 QModelIndex bhkGetEntity( const NifModel * nif, const QModelIndex & index, const QString & name );
 QModelIndex bhkGetRBInfo( const NifModel * nif, const QModelIndex & index, const QString & name );
 
-QVector<int> sortAxes( QVector<float> axesDots );
-
-void drawAxes( const Vector3 & c, float axis, bool color = true );
-void drawAxesOverlay( const Vector3 & c, float axis, QVector<int> axesOrder = {2, 1, 0} );
-void drawGrid( float s, int lines, int sub );
-void drawBox( const Vector3 & a, const Vector3 & b );
-void drawCircle( const Vector3 & c, const Vector3 & n, float r, int sd = 16 );
-void drawArc( const Vector3 & c, const Vector3 & x, const Vector3 & y, float an, float ax, int sd = 8 );
-void drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & x, const Vector3 & y, float an, float ax, float r, int sd = 8 );
-void drawCone( const Vector3 & c, Vector3 n, float a, int sd = 16 );
-void drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane, float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd = 16 );
-void drawSphereSimple( const Vector3 & c, float r, int sd = 36 );
-void drawSphere( const Vector3 & c, float r, int sd = 8 );
-void drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
-void drawDashLine( const Vector3 & a, const Vector3 & b, int sd = 15 );
-void drawConvexHull( const NifModel * nif, const QModelIndex & iShape, float scale, bool solid = false );
-void drawNiTSS( const NifModel * nif, const QModelIndex & iShape, bool solid = false );
-void drawCMS( const NifModel * nif, const QModelIndex & iShape, bool solid = false );
-void drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd = 16, bool solid = false );
-void drawRail( const Vector3 & a, const Vector3 & b );
-
-inline void glTranslate( const Vector3 & v )
-{
-	glTranslatef( v[0], v[1], v[2] );
-}
-
-inline void glScale( const Vector3 & v )
-{
-	glScalef( v[0], v[1], v[2] );
-}
-
-inline void glVertex( const Vector2 & v )
-{
-	glVertex2fv( v.data() );
-}
-
-inline void glVertex( const Vector3 & v )
-{
-	glVertex3fv( v.data() );
-}
-
-inline void glVertex( const Vector4 & v )
-{
-	glVertex3fv( v.data() );
-}
-
-inline void glNormal( const Vector3 & v )
-{
-	glNormal3fv( v.data() );
-}
-
-inline void glTexCoord( const Vector2 & v )
-{
-	glTexCoord2fv( v.data() );
-}
-
-inline void glColor( const Color3 & c )
-{
-	glColor3fv( c.data() );
-}
-
-inline void glColor( const Color4 & c )
-{
-	glColor4fv( c.data() );
-}
-
-inline void glMaterial( GLenum x, GLenum y, const Color4 & c )
-{
-	glMaterialfv( x, y, c.data() );
-}
-
-inline void glLoadMatrix( const Matrix4 & m )
-{
-	glLoadMatrixf( m.data() );
-}
-
-inline void glMultMatrix( const Matrix4 & m )
-{
-	glMultMatrixf( m.data() );
-}
-
-inline void glLoadMatrix( const Transform & t )
-{
-	glLoadMatrix( t.toMatrix4() );
-}
-
-inline void glMultMatrix( const Transform & t )
-{
-	glMultMatrix( t.toMatrix4() );
-}
-
-
+#if 0	// unused function
 inline GLuint glClosestMatch( GLuint * buffer, GLint hits )
 {
 	// a little helper function, returns the closest matching hit from the name buffer
@@ -280,15 +177,11 @@ inline GLuint glClosestMatch( GLuint * buffer, GLint hits )
 
 	return choose;
 }
+#endif
 
-void renderText( double x, double y, double z, const QString & str );
-void renderText( const Vector3 & c, const QString & str );
-
-static inline void setColorKeyFromID( int id )
+static inline FloatVector4 getColorKeyFromID( int id )
 {
-	GLubyte	idBuf[4];
-	FileBuffer::writeUInt32Fast( idBuf, std::uint32_t( id + 1 ) );
-	glColor4ubv( idBuf );
+	return FloatVector4( std::uint32_t( id + 1 ) ) * ( 1.0f / 255.0f ) + ( 1.0f / 1024.0f );
 }
 
 static inline int getIDFromColorKey( std::uint32_t rgba )

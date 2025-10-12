@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data/niftypes.h"
 #include "material.hpp"
 #include "model/nifmodel.h"
+#include "gl/glcontext.hpp"
 
 #include <QHash>
 #include <QPersistentModelIndex>
@@ -178,14 +179,15 @@ public:
 
 	GLfloat alphaThreshold = 0;
 
-	friend void glProperty( AlphaProperty * );
+	static void glProperty( AlphaProperty * p, NifSkopeOpenGLContext::Program * prog );
 
 protected:
 	void setController( const NifModel * nif, const QModelIndex & controller ) override final;
 	void updateImpl( const NifModel * nif, const QModelIndex & block ) override final;
 
 	bool alphaBlend = false, alphaTest = false, alphaSort = false;
-	GLenum alphaSrc = 0, alphaDst = 0, alphaFunc = 0;
+	std::int8_t alphaFunc = -1;
+	GLenum alphaSrc = 0, alphaDst = 0;
 };
 
 REGISTER_PROPERTY( AlphaProperty, Alpha )
@@ -202,7 +204,7 @@ public:
 	bool test() const { return depthTest; }
 	bool mask() const { return depthMask; }
 
-	friend void glProperty( ZBufferProperty * );
+	static void glProperty( ZBufferProperty * p );
 
 protected:
 	bool depthTest = false;
@@ -248,12 +250,11 @@ public:
 	Type type() const override final { return Texturing; }
 	QString typeId() const override final { return "NiTexturingProperty"; }
 
-	friend void glProperty( TexturingProperty * );
-
+	// ob_default.prog
 	bool bind( int id, const QString & fname = QString() );
 
-	bool bind( int id, const QVector<QVector<Vector2> > & texcoords );
-	bool bind( int id, const QVector<QVector<Vector2> > & texcoords, int stage );
+	// default.prog
+	bool bind( int id, int stage, NifSkopeOpenGLContext::Program * prog );
 
 	QString fileName( int id ) const;
 	int coordSet( int id ) const;
@@ -287,10 +288,7 @@ public:
 	Type type() const override final { return Texture; }
 	QString typeId() const override final { return "NiTextureProperty"; }
 
-	friend void glProperty( TextureProperty * );
-
-	bool bind();
-	bool bind( const QVector<QVector<Vector2> > & texcoords );
+	bool bind( NifSkopeOpenGLContext::Program * prog );
 
 	QString fileName() const;
 
@@ -315,7 +313,7 @@ public:
 	Type type() const override final { return MaterialProp; }
 	QString typeId() const override final { return "NiMaterialProperty"; }
 
-	friend void glProperty( class MaterialProperty *, class SpecularProperty * );
+	static void glProperty( MaterialProperty * p, class SpecularProperty * s, NifSkopeOpenGLContext::Program * prog );
 
 	GLfloat alphaValue() const { return alpha; }
 
@@ -332,13 +330,13 @@ REGISTER_PROPERTY( MaterialProperty, MaterialProp )
 //! A Property that specifies specularity
 class SpecularProperty final : public Property
 {
+	friend class MaterialProperty;
+
 public:
 	SpecularProperty( Scene * scene, const QModelIndex & index ) : Property( scene, index ) {}
 
 	Type type() const override final { return Specular; }
 	QString typeId() const override final { return "NiSpecularProperty"; }
-
-	friend void glProperty( class MaterialProperty *, class SpecularProperty * );
 
 protected:
 	bool spec = false;
@@ -357,7 +355,7 @@ public:
 	Type type() const override final { return Wireframe; }
 	QString typeId() const override final { return "NiWireframeProperty"; }
 
-	friend void glProperty( WireframeProperty * );
+	static bool glProperty( WireframeProperty * p );
 
 protected:
 	bool wire = false;
@@ -376,12 +374,16 @@ public:
 	Type type() const override final { return VertexColor; }
 	QString typeId() const override final { return "NiVertexColorProperty"; }
 
-	friend void glProperty( VertexColorProperty *, bool vertexcolors );
-
-	int lightmode = 0;
-	int vertexmode = 0;
+	// elements of overrideColor greater than zero override vertex color from the mesh data
+	static void glProperty( VertexColorProperty * p, FloatVector4 overrideColor,
+							NifSkopeOpenGLContext::Program * prog );
 
 protected:
+	// bits 0 to 2 = color mode
+	// bit 3 = light mode
+	// bits 4 to 5 = vertex mode
+	int vertexColorFlags = 0;
+
 	void updateImpl( const NifModel * nif, const QModelIndex & index ) override final;
 };
 
@@ -432,7 +434,7 @@ public:
 	Type type() const override final { return Stencil; }
 	QString typeId() const override final { return "NiStencilProperty"; }
 
-	friend void glProperty( StencilProperty * );
+	static void glProperty( StencilProperty * p );
 
 protected:
 	enum
@@ -481,9 +483,9 @@ namespace ShaderFlags
 		SLSF1_Greyscale_To_PaletteAlpha = 1 << 5,  // 5
 		SLSF1_Use_Falloff = 1 << 6,  // 6
 		SLSF1_Environment_Mapping = 1 << 7,  // 7
-		SLSF1_Recieve_Shadows = 1 << 8,  // 8
+		SLSF1_Receive_Shadows = 1 << 8,  // 8
 		SLSF1_Cast_Shadows = 1 << 9,  // 9
-		SLSF1_Facegen_Detail_Map = 1 << 10,  // 10
+		SLSF1_Facegen = 1 << 10,  // 10
 		SLSF1_Parallax = 1 << 11,  // 11
 		SLSF1_Model_Space_Normals = 1 << 12,  // 12
 		SLSF1_Non_Projective_Shadows = 1 << 13,  // 13
@@ -491,10 +493,10 @@ namespace ShaderFlags
 		SLSF1_Refraction = 1 << 15,  // 15!
 		SLSF1_Fire_Refraction = 1 << 16,  // 16
 		SLSF1_Eye_Environment_Mapping = 1 << 17,  // 17
-		SLSF1_Hair_Soft_Lighting = 1 << 18,  // 18
+		SLSF1_Hair_Tint = 1 << 18,  // 18
 		SLSF1_Screendoor_Alpha_Fade = 1 << 19,  // 19
 		SLSF1_Localmap_Hide_Secret = 1 << 20,  // 20
-		SLSF1_FaceGen_RGB_Tint = 1 << 21,  // 21
+		SLSF1_Skin_Tint = 1 << 21,  // 21
 		SLSF1_Own_Emit = 1 << 22,  // 22
 		SLSF1_Projected_UV = 1 << 23,  // 23
 		SLSF1_Multiple_Textures = 1 << 24,  // 24
@@ -517,7 +519,7 @@ namespace ShaderFlags
 		SLSF2_Vertex_Colors = 1 << 5,  // 5
 		SLSF2_Glow_Map = 1 << 6,  // 6
 		SLSF2_Assume_Shadowmask = 1 << 7,  // 7
-		SLSF2_Packed_Tangent = 1 << 8,  // 8
+		SLSF2_Character_Lighting = 1 << 8,  // 8
 		SLSF2_Multi_Index_Snow = 1 << 9,  // 9
 		SLSF2_Vertex_Lighting = 1 << 10,  // 10
 		SLSF2_Uniform_Scale = 1 << 11,  // 11
@@ -549,7 +551,7 @@ namespace ShaderFlags
 		ST_EnvironmentMap,
 		ST_GlowShader,
 		ST_Heightmap,
-		ST_FaceTint,
+		ST_Facegen,
 		ST_SkinTint,
 		ST_HairTint,
 		ST_ParallaxOccMaterial,
@@ -608,44 +610,7 @@ namespace ShaderFlags
 		NO_EXPOSURE = 3707406987
 	};
 
-	static QMap<uint, uint64_t> CRC_TO_FLAG = {
-		// SF1
-		{PBR, SLSF1_Specular},
-		{CAST_SHADOWS, SLSF1_Cast_Shadows},
-		{ZBUFFER_TEST, SLSF1_ZBuffer_Test},
-		{SKINNED, SLSF1_Skinned},
-		{ENVMAP, SLSF1_Environment_Mapping},
-		{VERTEX_ALPHA, SLSF1_Vertex_Alpha},
-		{FACE, SLSF1_Facegen_Detail_Map},
-		{GRAYSCALE_TO_PALETTE_COLOR, SLSF1_Greyscale_To_PaletteColor},
-		{GRAYSCALE_TO_PALETTE_ALPHA, SLSF1_Greyscale_To_PaletteAlpha},
-		{DECAL, SLSF1_Decal},
-		{DYNAMIC_DECAL, SLSF1_Dynamic_Decal},
-		{EMIT_ENABLED, SLSF1_Own_Emit},
-		{REFRACTION, SLSF1_Refraction},
-		{SKIN_TINT, SLSF1_FaceGen_RGB_Tint},
-		{RGB_FALLOFF, SLSF1_Recieve_Shadows},
-		{EXTERNAL_EMITTANCE, SLSF1_External_Emittance},
-		{MODELSPACENORMALS, SLSF1_Model_Space_Normals},
-		{FALLOFF, SLSF1_Use_Falloff},
-		{SOFT_EFFECT, SLSF1_Soft_Effect},
-		// SF2
-		{ZBUFFER_WRITE, (uint64_t)SLSF2_ZBuffer_Write << 32},
-		{GLOWMAP, (uint64_t)SLSF2_Glow_Map << 32},
-		{TWO_SIDED, (uint64_t)SLSF2_Double_Sided << 32},
-		{VERTEXCOLORS, (uint64_t)SLSF2_Vertex_Colors << 32},
-		{NOFADE, (uint64_t)SLSF2_No_Fade << 32},
-		{WEAPON_BLOOD, (uint64_t)SLSF2_Weapon_Blood << 32},
-		{TRANSFORM_CHANGED, (uint64_t)SLSF2_Assume_Shadowmask << 32},
-		{EFFECT_LIGHTING, (uint64_t)SLSF2_Effect_Lighting << 32},
-		{LOD_OBJECTS, (uint64_t)SLSF2_LOD_Objects << 32},
-
-		// TODO
-		{REFRACTION_FALLOFF, 0},
-		{INVERTED_FADE_PATTERN, 0},
-		{HAIRTINT, 0},
-		{NO_EXPOSURE, 0},
-	};
+	extern const QMap<uint, uint64_t> CRC_TO_FLAG;
 }
 
 enum TexClampMode : unsigned int
@@ -692,11 +657,8 @@ public:
 	Type type() const override final { return ShaderLighting; }
 	QString typeId() const override { return "BSShaderLightingProperty"; }
 
-	friend void glProperty( BSShaderLightingProperty * );
-
 	void clear() override;
 
-	bool bind( int id, const QVector<QVector<Vector2> > & texcoords );
 	bool bind( const QStringView & fname, bool forceTexturing, TexClampMode mode = TexClampMode::WRAP_S_WRAP_T );
 	inline bool bind( int id, TexClampMode mode = TexClampMode::WRAP_S_WRAP_T )
 	{
@@ -742,7 +704,8 @@ public:
 		return sf_material_valid;
 	}
 	// textureReplacementMode <= 0: disabled, > 0: enabled, 1: linear, 2: sRGB, 3: normal map (-1.0 to 1.0)
-	bool getSFTexture( int & texunit, int & texUniform, FloatVector4 * replUniform, const std::string_view * texturePath, std::uint32_t textureReplacement, int textureReplacementMode, const CE2Material::UVStream * uvStream );
+	// returns the texture uniform value (0: no texture, -1: use replacement, >= 1: sampler array index)
+	int getSFTexture( int & texunit, FloatVector4 & replUniform, const std::string_view & texturePath, std::uint32_t textureReplacement, int textureReplacementMode, const CE2Material::UVStream * uvStream );
 
 protected:
 	ShaderFlags::SF1 flags1 = ShaderFlags::SLSF1_ZBuffer_Test;
@@ -754,12 +717,14 @@ protected:
 
 	Material * material = nullptr;
 	const CE2Material *	sf_material = nullptr;
-	std::uint64_t	sfMaterialDB_ID = std::uint64_t(-1);
+	std::uint64_t	sfMaterialDB_ID = std::uint64_t(-1);	// -2 when using an edited material
 	bool	sf_material_valid = false;
-	std::string	sfMaterialPath;
-	void setMaterial( Material * newMaterial );
+	QString	materialPath;
+	AllocBuffers	sfMatDataBuf;
+	void setMaterial( const NifModel * nif, const QModelIndex & index, bool isEffect );
 	void setSFMaterial( const QString & mat_name );
 	void loadSFMaterial();
+	const CE2Material * createDefaultSFMaterial();
 
 	void updateImpl( const NifModel * nif, const QModelIndex & block ) override;
 	virtual void resetParams();

@@ -1,39 +1,59 @@
-#version 120
+#version 410 core
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+out vec3 LightDir;
+out vec3 ViewDir;
 
-varying vec4 C;
-varying vec4 D;
-varying vec4 A;
-varying float toneMapScale;
+out vec2 texCoord;
 
-varying vec3 N;
-varying vec3 t;
-varying vec3 b;
-varying vec3 v;
+flat out vec4 A;
+out vec4 C;
+flat out vec4 D;
 
-void main( void )
+out mat3 reflMatrix;
+
+#include "uniforms.glsl"
+
+uniform mat3 normalMatrix;			// in row-major order
+uniform mat4 modelViewMatrix;
+
+uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
+
+layout ( location = 0 ) in vec3	vertexPosition;
+layout ( location = 1 ) in vec4	vertexColor;
+layout ( location = 2 ) in vec3	normalVector;
+layout ( location = 3 ) in vec3	tangentVector;
+layout ( location = 4 ) in vec3	bitangentVector;
+layout ( location = 7 ) in vec2	multiTexCoord0;
+
+#include "bonetransform.glsl"
+
+void main()
 {
-	gl_Position = ftransform();
-	gl_TexCoord[0] = gl_MultiTexCoord0;
+	vec4	v = vec4( vertexPosition, 1.0 );
+	vec3	n = normalVector;
+	vec3	t = tangentVector;
+	vec3	b = bitangentVector;
 
-	N = normalize(gl_NormalMatrix * gl_Normal);
-	t = normalize(gl_NormalMatrix * gl_MultiTexCoord1.xyz);
-	b = normalize(gl_NormalMatrix * gl_MultiTexCoord2.xyz);
+	if ( boneWeights[0].x > 0.0 && doSkinning )
+		boneTransform( v, n, t, b );
+
+	v = modelViewMatrix * v;
+	gl_Position = projectionMatrix * v;
+	texCoord = multiTexCoord0;
 
 	// NOTE: b<->t
-	mat3 tbnMatrix = mat3(b.x, t.x, N.x,
-						  b.y, t.y, N.y,
-						  b.z, t.z, N.z);
+	mat3 btnMatrix = mat3( normalize(b * normalMatrix), normalize(t * normalMatrix), normalize(n * normalMatrix) );
+	btnMatrix = transpose( btnMatrix );
 
-	v = vec3(gl_ModelViewMatrix * gl_Vertex);
+	reflMatrix = btnMatrix * envMapRotation;
 
-	ViewDir = tbnMatrix * -v.xyz;
-	LightDir = tbnMatrix * gl_LightSource[0].position.xyz;
+	if ( projectionMatrix[3][3] == 1.0 )
+		ViewDir = btnMatrix * vec3(0.0, 0.0, 1.0);	// orthographic view
+	else
+		ViewDir = btnMatrix * -v.xyz;
+	LightDir = btnMatrix * lightSourcePosition[0].xyz;
 
-	C = gl_Color;
-	D = vec4( sqrt(gl_LightSource[0].diffuse.rgb), 1.0 );
-	A = vec4( sqrt(gl_LightSource[0].ambient.rgb) * 0.375, 1.0 );
-	toneMapScale = gl_LightSource[0].ambient.a;
+	A = vec4( sqrt(lightSourceAmbient.rgb) * 0.375, toneMapScale );
+	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
+	D = vec4( sqrt(lightSourceDiffuse[0].rgb), brightnessScale );
 }

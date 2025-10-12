@@ -34,9 +34,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gl/controllers.h"
 #include "gl/glscene.h"
+#include "gl/renderer.h"
+#include "glview.h"
 #include "model/nifmodel.h"
-
-#include <math.h>
 
 
 /*
@@ -49,7 +49,7 @@ void Particles::clear()
 
 	verts.clear();
 	colors.clear();
-	transVerts.clear();
+	sizes.clear();
 }
 
 void Particles::updateImpl( const NifModel * nif, const QModelIndex & index )
@@ -110,13 +110,6 @@ void Particles::transform()
 void Particles::transformShapes()
 {
 	Node::transformShapes();
-
-	Transform vtrans = viewTrans();
-
-	transVerts.resize( verts.count() );
-
-	for ( int v = 0; v < verts.count(); v++ )
-		transVerts[v] = vtrans * verts[v];
 }
 
 BoundSphere Particles::bounds() const
@@ -128,8 +121,10 @@ BoundSphere Particles::bounds() const
 
 void Particles::drawShapes( NodeList * secondPass )
 {
-	if ( isHidden() || Node::SELECTING )
+	if ( isHidden() || scene->selecting > (unsigned char) Scene::SelObject || !scene->renderer || !scene->nifModel
+		|| verts.isEmpty() || active < 1 ) {
 		return;
+	}
 
 	AlphaProperty * aprop = findProperty<AlphaProperty>();
 
@@ -138,88 +133,97 @@ void Particles::drawShapes( NodeList * secondPass )
 		return;
 	}
 
-	// Disable texturing,  texturing properties will reenable if applicable
-	glDisable( GL_TEXTURE_2D );
+	auto	prog = scene->renderer->useProgram( !scene->selecting ? "particles.prog" : "selection.prog" );
+	if ( !prog )
+		return;
 
-	// setup blending
+	prog->uni4m( "modelViewMatrix", viewTrans().toMatrix4() );
 
-	glProperty( findProperty<AlphaProperty>() );
+	if ( scene->selecting ) {
+		prog->uni1i( "selectionFlags", 0x0001 );
+		prog->uni1i( "selectionParam", scene->nifModel->getBlockNumber( iBlock ) );
+		glPointSize( GLView::Settings::vertexSelectPointSize );
+		glDisable( GL_BLEND );
 
-	// setup vertex colors
+	} else {
+		float	s2 = size * worldTrans().scale;
+		prog->uni2f( "particleScale", s2, s2 );
 
-	glProperty( findProperty<VertexColorProperty>(), ( colors.count() >= transVerts.count() ) );
+		// setup blending
 
-	// setup material
+		AlphaProperty::glProperty( aprop, prog );
 
-	glProperty( findProperty<MaterialProperty>(), findProperty<SpecularProperty>() );
+		// setup vertex colors
 
-	// setup texturing
+		VertexColorProperty::glProperty( nullptr, FloatVector4( colors.size() < verts.size() ? 1.0f : 0.0f ), prog );
 
-	glProperty( findProperty<TexturingProperty>() );
+		// setup material
 
-	// setup texturing
+		MaterialProperty::glProperty( findProperty<MaterialProperty>(), findProperty<SpecularProperty>(), prog );
+		prog->uni4f( "frontMaterialEmission", FloatVector4( 0.0f ) );
 
-	glProperty( findProperty<BSShaderLightingProperty>() );
+		// setup texturing
+
+		for ( int i = 0; i < TexturingProperty::numTextures; i++ ) {
+			prog->uni1i_l( prog->uniLocation( "textureUnits[%d]", i ), 0 );
+			prog->uni1i_l( prog->uniLocation( "textures[%d].textureUnit", i ), 0 );
+		}
+
+		int	stage = 0;
+
+		if ( auto p = findProperty<TexturingProperty>(); p )
+			stage += int( p->bind( 0, 0, prog ) );
+
+		if ( auto p = findProperty<BSShaderLightingProperty>(); p ) {
+			if ( p->bind( 0 ) ) {
+				prog->uni1i_l( prog->uniLocation( "textureUnits[%d]", stage ), stage );
+				stage++;
+			}
+			prog->uni2f_l( prog->uniLocation( "textures[%d].uvCenter", 0 ), 0.5f, 0.5f );
+			prog->uni2f_l( prog->uniLocation( "textures[%d].uvScale", 0 ), 1.0f, 1.0f );
+			prog->uni2f_l( prog->uniLocation( "textures[%d].uvOffset", 0 ), 0.0f, 0.0f );
+			prog->uni1f_l( prog->uniLocation( "textures[%d].uvRotation", 0 ), 0.0f );
+			prog->uni1i_l( prog->uniLocation( "textures[%d].coordSet", 0 ), 0 );
+			prog->uni1i_l( prog->uniLocation( "textures[%d].textureUnit", 0 ), stage );
+		}
+
+		if ( !stage ) {
+			static const QString	defaultTexture = "#FFFFFFFF";
+			scene->textures->activateTextureUnit( 0 );
+			scene->textures->bind( defaultTexture, scene->nifModel );
+		}
+	}
 
 	// setup z buffer
 
-	glProperty( findProperty<ZBufferProperty>() );
+	ZBufferProperty::glProperty( findProperty<ZBufferProperty>() );
 
 	// setup stencil
 
-	glProperty( findProperty<StencilProperty>() );
+	StencilProperty::glProperty( findProperty<StencilProperty>() );
 
 	// wireframe ?
 
-	glProperty( findProperty<WireframeProperty>() );
-
-	// normalize
-
-	glEnable( GL_NORMALIZE );
-	glNormal3f( 0.0, 0.0, -1.0 );
+#if 0
+	WireframeProperty::glProperty( findProperty<WireframeProperty>() );
+#endif
 
 	// render the particles
 
-	/*
-	 * Goal: get multitexturing happening
-	 *
-	 * Mesh uses Renderer::setupProgram which calls
-	 * Renderer::setupFixedFunction
-	 *
-	 * setupFixedFunction calls TexturingProperty::bind( id, coords, stage )
-	 * bind calls activateTextureUnit
-	 *
-	 * Mesh also draws using glDrawElements and glVertexPointer
-	 *
-	 */
-
-	static const Vector2 tex[4] = {
-		Vector2( 1.0, 1.0 ), Vector2( 0.0, 1.0 ), Vector2( 1.0, 0.0 ), Vector2( 0.0, 0.0 )
-	};
-
-	int p = 0;
-	for ( Vector3 v : transVerts ) {
-		if ( p >= active )
-			break;
-
-		GLfloat s2 = ( sizes.count() > p ? sizes[ p ] * size : size );
-		s2 *= worldTrans().scale;
-
-		glBegin( GL_TRIANGLE_STRIP );
-
-		if ( p < colors.count() )
-			glColor( colors[ p ] );
-
-		glTexCoord( tex[0] );
-		glVertex( v + Vector3( +s2, +s2, 0 ) );
-		glTexCoord( tex[1] );
-		glVertex( v + Vector3( -s2, +s2, 0 ) );
-		glTexCoord( tex[2] );
-		glVertex( v + Vector3( +s2, -s2, 0 ) );
-		glTexCoord( tex[3] );
-		glVertex( v + Vector3( -s2, -s2, 0 ) );
-		glEnd();
-
-		p++;
+	qsizetype	numVerts = verts.size();
+	const float *	attrData[5] = { &( verts.constFirst()[0] ), nullptr, nullptr, nullptr, nullptr };
+	unsigned int	attrMask = 0x03;
+	if ( colors.size() >= numVerts ) {
+		attrData[1] = &( colors.constFirst()[0] );
+		attrMask = 0x43;
 	}
+	if ( sizes.size() >= numVerts ) {
+		attrData[4] = sizes.constData();
+		attrMask = attrMask | 0x00010000;
+	}
+	scene->renderer->bindShape( (unsigned int) numVerts, attrMask, 0, attrData, nullptr );
+
+	if ( active < numVerts )
+		numVerts = active;
+	scene->renderer->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
 }

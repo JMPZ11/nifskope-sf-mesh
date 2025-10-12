@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "gamemanager.h"
 
 //! @file settingspane.h SettingsPane, SettingsGeneral, SettingsRender, SettingsResources
 
@@ -80,6 +81,7 @@ public slots:
 	void clearCubeCache();
 	void selectF76CubeMap();
 	void selectSTFCubeMap();
+	void detectMSAAMaxSamples();
 
 private:
 	std::unique_ptr<Ui::SettingsRender> ui;
@@ -108,6 +110,8 @@ public slots:
 	void on_btnFolderDown_clicked();
 	void on_btnFolderUp_clicked();
 	void on_btnFolderAutoDetect_clicked();
+	void on_btnSubfoldersAdd_clicked();
+	void on_btnRemoveInvalidPaths_clicked();
 
 	void setFolderList();
 
@@ -116,7 +120,8 @@ public slots:
 private:
 	std::unique_ptr<Ui::SettingsResources> ui;
 
-	QString currentFolderItem();
+	// returns Game::OTHER if nothing is selected
+	Game::GameMode currentFolderItem();
 
 	QStringListModel * folders;
 

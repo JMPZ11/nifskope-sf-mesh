@@ -35,16 +35,16 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data/niftypes.h"
 #include "model/nifmodel.h"
 
-#include <QtXml> // QXmlDefaultHandler Inherited
 #include <QCoreApplication>
+#include <QDir>
 #include <QMessageBox>
-#include <QXmlDefaultHandler>
+#include <QXmlStreamReader>
 
 
 //! \file nifxml.cpp NifXmlHandler, NifModel XML
 
 //! Set NifXmlHandler::errorStr and return
-#define err( X ) { errorStr = X; return false; }
+#define err( X ) { errorStr = X; return; }
 
 QReadWriteLock             NifModel::XMLlock;
 QList<quint32>             NifModel::supportedVersions;
@@ -60,7 +60,7 @@ QString attrlist;
 QMap<QString, QVector<QPair<QString, QString>>> tokens;
 
 //! Parses nif.xml
-class NifXmlHandler final : public QXmlDefaultHandler
+class NifXmlHandler final
 {
 //	Q_DECLARE_TR_FUNCTIONS(NifXmlHandler)
 
@@ -161,9 +161,9 @@ public:
 		return stack[--depth];
 	}
 
-	QString token_replace( const QXmlAttributes & list, const QString & attr )
+	QString token_replace( const QXmlStreamAttributes & list, const QString & attr )
 	{
-		QString str = list.value(attr);
+		QString str = list.value( attr ).toString();
 		if ( tokens.contains( attr ) ) {
 			for ( const auto& p : tokens[attr] )
 				if ( p.second == "INFINITY" )
@@ -174,14 +174,11 @@ public:
 		return str;
 	}
 
-	//! Reimplemented from QXmlContentHandler
 	/*!
-	 * \param Namespace (unused)
-	 * \param localName (unused)
 	 * \param tagid Qualified name
 	 * \param list Attributes
 	 */
-	bool startElement( const QString &, const QString &, const QString & tagid, const QXmlAttributes & list ) override final
+	void startElement( const QString & tagid, const QXmlStreamAttributes & list )
 	{
 		if ( depth >= 8 )
 			err( tr( "error maximum nesting level exceeded" ) );
@@ -194,7 +191,7 @@ public:
 		};
 
 		if ( x == tagToken )
-			tags.insert( list.value( "name" ), tagTokenTag );
+			tags.insert( list.value( QLatin1StringView("name") ).toString(), tagTokenTag );
 
 		if ( x == tagNone ) {
 			x = tags.value( tagid );
@@ -207,7 +204,7 @@ public:
 				err( tr( "this is not a niftoolsxml file" ) );
 
 			push( x );
-			return true;
+			return;
 		}
 
 		switch ( current() ) {
@@ -218,7 +215,7 @@ public:
 			case tagCompound:
 			case tagBlock:
 				{
-					QString name = list.value( "name" );
+					QString name = list.value( QLatin1StringView("name") ).toString();
 
 					if ( NifValue::type( name ) != NifValue::tNone ) {
 						// Internal Type
@@ -228,7 +225,7 @@ public:
 						QString id = name;
 
 						if ( x == tagCompound && NifValue::isValid( NifValue::type( id ) ) )
-							err( tr( "struct %1 is already registered as internal type" ).arg( list.value( "name" ) ) );
+							err( tr( "struct %1 is already registered as internal type" ).arg( list.value( QLatin1StringView("name") ) ) );
 
 						if ( id.isEmpty() )
 							err( tr( "struct and niblocks must have a name" ) );
@@ -240,10 +237,11 @@ public:
 							blk = NifBlockPtr( new NifBlock );
 
 						blk->id = id;
-						blk->abstract = (list.value( "abstract" ) == "1" || list.value( "abstract" ) == "true");
+						if ( auto v = list.value( QLatin1StringView("abstract") ); true )
+							blk->abstract = ( v == QLatin1StringView("1") || v == QLatin1StringView("true") );
 
 						if ( x == tagBlock ) {
-							blk->ancestor = list.value( "inherit" );
+							blk->ancestor = list.value( QLatin1StringView("inherit") ).toString();
 
 							if ( !blk->ancestor.isEmpty() ) {
 								if ( !NifModel::blocks.contains( blk->ancestor ) )
@@ -251,7 +249,7 @@ public:
 							}
 						}
 
-						QString externalCond = list.value( "externalcond" );
+						QString externalCond = list.value( QLatin1StringView("externalcond") ).toString();
 						if ( externalCond == "1" || blk->id.startsWith( "BSVertexData" ) ) {
 							NifModel::fixedCompounds.insert( blk->id, blk );
 						}
@@ -260,7 +258,7 @@ public:
 				break;
 			case tagBasic:
 				{
-					QString name = list.value( "name" );
+					QString name = list.value( QLatin1StringView("name") ).toString();
 
 					if ( NifValue::type( name ) == NifValue::tNone )
 						err( tr( "basic definition %1 must have an internal NifSkope type" ).arg( name ) );
@@ -272,9 +270,9 @@ public:
 			case tagEnum:
 			case tagBitFlag:
 				{
-					typId  = list.value( "name" );
+					typId  = list.value( QLatin1StringView("name") ).toString();
 					typTxt = QString();
-					QString storage = list.value( "storage" );
+					QString storage = list.value( QLatin1StringView("storage") ).toString();
 
 					if ( typId.isEmpty() || storage.isEmpty() )
 						err( tr( "enum definition must have a name and a known storage type" ) );
@@ -288,9 +286,9 @@ public:
 				break;
 			case tagBitfield:
 				{
-					typId = list.value( "name" );
+					typId = list.value( QLatin1StringView("name") ).toString();
 					typTxt = QString();
-					QString storage = list.value( "storage" );
+					QString storage = list.value( QLatin1StringView("storage") ).toString();
 
 					if ( typId.isEmpty() || storage.isEmpty() )
 						err( tr( "bitfield definition must have a name and a known storage type" ) );
@@ -301,9 +299,9 @@ public:
 				break;
 			case tagVersion:
 				{
-					int v = NifModel::version2number( list.value( "num" ).trimmed() );
+					int v = NifModel::version2number( list.value( QLatin1StringView("num") ).toString().trimmed() );
 
-					if ( v != 0 && !list.value( "num" ).isEmpty() )
+					if ( v != 0 && !list.value( QLatin1StringView("num") ).isEmpty() )
 						NifModel::supportedVersions.append( v );
 					else
 						err( tr( "invalid version tag" ) );
@@ -311,7 +309,7 @@ public:
 				break;
 			case tagToken:
 				{
-					attrlist = list.value( "attrs" );
+					attrlist = list.value( QLatin1StringView("attrs") ).toString();
 				}
 				break;
 			case tagModule:
@@ -337,23 +335,23 @@ public:
 			switch ( x ) {
 			case tagAdd:
 				{
-					QString type = list.value( "type" );
-					QString tmpl = list.value( "template" );
+					QString type = list.value( QLatin1StringView("type") ).toString();
+					QString tmpl = list.value( QLatin1StringView("template") ).toString();
 					QString arg  = get( "arg" );
 					QString arr1 = get( "length" );
 					QString arr2 = get( "width" );
 					QString cond = get( "cond" );
-					QString ver1 = list.value( "since" );
-					QString ver2 = list.value( "until" );
-					QString abs = list.value( "abstract" );
-					QString bin = list.value( "binary" );
+					QString ver1 = list.value( QLatin1StringView("since") ).toString();
+					QString ver2 = list.value( QLatin1StringView("until") ).toString();
+					QString abs = list.value( QLatin1StringView("abstract") ).toString();
+					QString bin = list.value( QLatin1StringView("binary") ).toString();
 					QString vercond = get( "vercond" );
 					QString defval = get( "default" );
 
 					bool hasTypeCondition = false;
 
-					QString onlyT = list.value( "onlyT" );
-					QString excludeT = list.value( "excludeT" );
+					QString onlyT = list.value( QLatin1StringView("onlyT") ).toString();
+					QString excludeT = list.value( QLatin1StringView("excludeT") ).toString();
 					if ( !onlyT.isEmpty() || !excludeT.isEmpty() ) {
 						Q_ASSERT( cond.isEmpty() );
 						Q_ASSERT( onlyT.isEmpty() != excludeT.isEmpty() );
@@ -407,7 +405,7 @@ public:
 
 					// now allocate
 					data = NifData(
-						list.value( "name" ),
+						list.value( QLatin1StringView("name") ).toString(),
 						type,
 						tmpl,
 						NifValue( NifValue::type( type ) ),
@@ -437,9 +435,9 @@ public:
 						quint32 enumVal = NifValue::enumOptionValue( type, defval, &ok );
 
 						if ( ok ) {
-							data.value.setCount( enumVal, nullptr, nullptr );
+							data.setCount( enumVal, nullptr, nullptr );
 						} else {
-							data.value.setFromString( defval, nullptr, nullptr );
+							data.setFromString( defval, nullptr, nullptr );
 						}
 					}
 
@@ -477,9 +475,9 @@ public:
 
 			switch ( x ) {
 			case tagOption:
-				optId  = list.value( "name" );
-				optVal = list.value( "value" );
-				optBit = list.value( "bit" );
+				optId  = list.value( QLatin1StringView("name") ).toString();
+				optVal = list.value( QLatin1StringView("value") ).toString();
+				optBit = list.value( QLatin1StringView("bit") ).toString();
 				if ( !optBit.isEmpty() )
 					optVal = optBit;
 
@@ -514,8 +512,8 @@ public:
 			switch ( x ) {
 			case tagTokenTag:
 				{
-					auto tok = list.value( "token" );
-					auto str = list.value( "string" );
+					auto tok = list.value( QLatin1StringView("token") ).toString();
+					auto str = list.value( QLatin1StringView("string") ).toString();
 					for ( const auto & attr : attrlist.split( " " ) ) {
 						if ( !tokens.contains(attr) )
 							tokens[attr] = {};
@@ -535,17 +533,12 @@ public:
 			err( tr( "error unhandled tag %1" ).arg( tagid ) );
 			break;
 		}
-
-		return true;
 	}
 
-	//! Reimplemented from QXmlContentHandler
 	/*!
-	 * \param Namespace (unused)
-	 * \param localName (unused)
 	 * \param tagid Qualified name
 	 */
-	bool endElement( const QString &, const QString &, const QString & tagid ) override final
+	void endElement( const QString & tagid )
 	{
 		if ( depth <= 0 )
 			err( tr( "mismatching end element tag for element %1" ).arg( tagid ) );
@@ -607,15 +600,12 @@ public:
 		default:
 			break;
 		}
-
-		return true;
 	}
 
-	//! Reimplemented from QXmlContentHandler
 	/*!
 	 * \param s The character data
 	 */
-	bool characters( const QString & s ) override final
+	void characters( const QString & s )
 	{
 		switch ( current() ) {
 		case tagVersion:
@@ -642,8 +632,6 @@ public:
 		default:
 			break;
 		}
-
-		return true;
 	}
 
 	//! Checks that the type of the data is valid
@@ -666,8 +654,7 @@ public:
 		);
 	}
 
-	//! Reimplemented from QXmlContentHandler
-	bool endDocument() override final
+	void endDocument()
 	{
 		// make a rough check of the maps
 		for ( const QString& key : NifModel::compounds.keys() ) {
@@ -701,23 +688,11 @@ public:
 					err( tr( "niobject %1 refers to unknown template type %2" ).arg( key, data.templ() ) );
 			}
 		}
-
-		return true;
 	}
 
-	//! Reimplemented from QXmlContentHandler
-	QString errorString() const override final
+	QString errorString() const
 	{
 		return errorStr;
-	}
-	//! Exception handler
-	bool fatalError( const QXmlParseException & exception ) override final
-	{
-		if ( errorStr.isEmpty() )
-			errorStr = "Syntax error";
-
-		errorStr.prepend( tr( "%1 XML parse error (line %2): " ).arg( "NIF" ).arg( exception.lineNumber() ) );
-		return false;
 	}
 };
 
@@ -772,18 +747,36 @@ QString NifModel::parseXmlDescription( const QString & filename )
 		return tr( "Couldn't open NIF XML description file: %1" ).arg( filename );
 
 	NifXmlHandler handler;
-	QXmlSimpleReader reader;
-	reader.setContentHandler( &handler );
-	reader.setErrorHandler( &handler );
-	QXmlInputSource source( &f );
-	reader.parse( source );
+	QXmlStreamReader reader( &f );
+	while ( !reader.atEnd() && handler.errorStr.isEmpty() ) {
+		reader.readNext();
+		if ( reader.isStartElement() )
+			handler.startElement( reader.name().toString(), reader.attributes() );
+		else if ( reader.isEndElement() )
+			handler.endElement( reader.name().toString() );
+		else if ( reader.isCharacters() )
+			handler.characters( reader.text().toString() );
+		else if ( reader.isEndDocument() )
+			handler.endDocument();
+	}
 
-	if ( !handler.errorString().isEmpty() ) {
+	QString	errorStr;
+	if ( reader.hasError() ) {
+		errorStr = reader.errorString();
+		if ( errorStr.isEmpty() )
+			errorStr = tr( "Syntax error" );
+	} else {
+		errorStr = handler.errorString();
+	}
+
+	if ( !errorStr.isEmpty() ) {
+		errorStr.prepend( tr( "%1 XML parse error (line %2): " ).arg( "NIF" ).arg( reader.lineNumber() ) );
+
 		compounds.clear();
 		blocks.clear();
 		supportedVersions.clear();
 	}
 
-	return handler.errorString();
+	return errorStr;
 }
 

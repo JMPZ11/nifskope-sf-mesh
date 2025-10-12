@@ -110,6 +110,11 @@ public:
 	//! Accessor for the Vector2
 	Vector2 getVector2() const;
 
+	//! Set single step to n (n <= 0.0 enables adaptive step mode)
+	void setStepSize( double n );
+	void setAccelerated( bool n );
+	void setKeyboardTracking( bool n );
+
 signals:
 	//! Signal emitted when the vector is edited
 	/**

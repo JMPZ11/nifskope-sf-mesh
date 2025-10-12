@@ -3,19 +3,20 @@
 
 #include "spellbook.h"
 #include "gl/gltex.h"
-#include "qtcompat.h"
 
 #include "lib/nvtristripwrapper.h"
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
-#include <QFileDialog>
 #include <QMessageBox>
 #include <QSettings>
 #include <QString>
 
 #define tr( x ) QCoreApplication::tr( "3dsImport", x )
+
+// defined in importex.cpp
+QString getImportexFileName( const NifModel * nif, const char * fileType, bool isImport );
 
 struct objPoint
 {
@@ -100,7 +101,7 @@ static void addLink( NifModel * nif, const QModelIndex & iBlock, const QString &
 	int numIndices = nif->get<int>( iSize );
 	nif->set<int>( iSize, numIndices + 1 );
 	nif->updateArraySize( iArray );
-	nif->setLink( QModelIndex_child( iArray, numIndices ), link );
+	nif->setLink( nif->getIndex( iArray, numIndices ), link );
 }
 
 static Color3 GetColorFromChunk( Chunk * cnk )
@@ -239,11 +240,7 @@ void import3ds( NifModel * nif, const QModelIndex & index )
 	QMap<QString, objMaterial> ObjMaterials;
 	QMultiMap<QString, objKfSequence> ObjKeyframes;
 
-	QSettings settings;
-	settings.beginGroup( "Import-Export" );
-	settings.beginGroup( "3DS" );
-
-	QString fname = QFileDialog::getOpenFileName( qApp->activeWindow(), tr( "Choose a .3ds file to import" ), settings.value( tr( "File Name" ) ).toString(), "3DS (*.3ds)" );
+	QString fname = getImportexFileName( nif, "3DS", true );
 
 	if ( fname.isEmpty() ) {
 		return;
@@ -704,8 +701,8 @@ void import3ds( NifModel * nif, const QModelIndex & index )
 			nif->set<int>( iData, "Data Flags", 1 );
 			QModelIndex iTexCo = nif->getIndex( iData, "UV Sets" );
 			nif->updateArraySize( iTexCo );
-			nif->updateArraySize( QModelIndex_child( iTexCo ) );
-			nif->setArray<Vector2>( QModelIndex_child( iTexCo ),  mesh->texcoords );
+			nif->updateArraySize( nif->getIndex( iTexCo, 0 ) );
+			nif->setArray<Vector2>( nif->getIndex( iTexCo, 0 ),  mesh->texcoords );
 
 			nif->set<int>( iData, "Has Triangles", 1 );
 			nif->set<int>( iData, "Num Triangles", triangles.count() );
@@ -736,11 +733,6 @@ void import3ds( NifModel * nif, const QModelIndex & index )
 
 		// set up a controller for animated objects
 	}
-
-	settings.setValue( "File Name", fname );
-
-	settings.endGroup(); // 3DS
-	settings.endGroup(); // Import-Export
 
 	nif->reset();
 	return;

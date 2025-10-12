@@ -36,11 +36,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "basemodel.h" // Inherited
 #include "gamemanager.h"
 
-#include <QHash>
 #include <QReadWriteLock>
-#include <QStack>
-#include <QStringList>
-
 #include <memory>
 
 class SpellBook;
@@ -97,6 +93,8 @@ public:
 	// BaseModel
 
 	void clear() override final;
+	//! Check if a Starfield model uses internal geometry data, and optionally convert meshes. Returns true on success.
+	bool checkInternalGeometry( const QModelIndex & blockIndex );
 	bool load( QIODevice & device, const char* fileName = nullptr ) override final;
 	bool save( QIODevice & device ) const override final;
 
@@ -498,9 +496,33 @@ protected:
 	void loadSFTextureWithReplacement( NifItem * parent, const char * texturePath, bool replacementEnabled, std::uint32_t replacementColor );
 	void loadSFTextureSet( NifItem * parent, const void * o );
 	void loadSFUVStream( NifItem * parent, const void * o );
+	static const std::string_view * copySFMatString( AllocBuffers & bufs, const QString & s );
+	const void * createSFBlender( AllocBuffers & bufs, const NifItem * parent ) const;
+	const void * createSFLayer( AllocBuffers & bufs, const NifItem * parent ) const;
+	const void * createSFMaterial( AllocBuffers & bufs, const NifItem * parent ) const;
+	// returns true if the texture replacement is enabled
+	bool createSFTextureWithReplacement( const std::string_view* & texturePath, std::uint32_t & replacementColor,
+										AllocBuffers & bufs, const NifItem * parent ) const;
+	const void * createSFTextureSet( AllocBuffers & bufs, const NifItem * parent ) const;
+	const void * createSFUVStream( AllocBuffers & bufs, const NifItem * parent ) const;
 public:
+	//! Load shader property data from a Starfield material file ('matPtr' should point to a CE2Material object).
 	void loadSFMaterial( const QModelIndex & parent, const void * matPtr, int lodLevel = 0 );
+	//! Load shader property data from a Fallout 4 or 76 material file ('material' should point to a Material object).
 	void loadFO76Material( const QModelIndex & parent, const void * material );
+	//! Create and return CE2Material object from abstract material data in Starfield shader property block.
+	const void * updateSFMaterial( AllocBuffers & bufs, const QModelIndex & parent ) const;
+
+	//! Set batch processing mode flag (can be used by spells to disable messages).
+	inline void setBatchProcessingMode( bool n )
+	{
+		batchProcessingMode = n;
+	}
+	//! Get batch processing mode flag.
+	inline bool getBatchProcessingMode() const
+	{
+		return batchProcessingMode;
+	}
 
 	// String resolving ("get ex")
 public:
@@ -650,6 +672,8 @@ public:
 	// The size of QVector must match the current size of the array.
 	bool setLinkArray( const QModelIndex & arrayParent, const char * arrayName, const QVector<qint32> & links );
 
+	bool updateChildArraySizes( NifItem * parent );
+
 public slots:
 	void updateSettings();
 
@@ -663,7 +687,6 @@ protected:
 
 	bool updateArraySizeImpl( NifItem * array ) override final;
 	bool updateByteArraySize( NifItem * array );
-	bool updateChildArraySizes( NifItem * parent );
 
 	QString ver2str( quint32 v ) const override final { return version2string( v ); }
 	quint32 str2ver( QString s ) const override final { return version2number( s ); }
@@ -700,13 +723,16 @@ protected:
 
 	//! NIF file version
 	quint32 version;
+	quint32 bsVersion;
 
 	QHash<int, QList<int> > childLinks;
 	QHash<int, QList<int> > parentLinks;
 	QList<int> rootLinks;
 
 	bool lockUpdates;
+	bool batchProcessingMode = false;
 
+public:
 	enum UpdateType
 	{
 		utNone   = 0,
@@ -718,8 +744,7 @@ protected:
 	UpdateType needUpdates;
 
 	void updateModel( UpdateType value = utAll );
-
-	quint32 bsVersion;
+protected:
 	void cacheBSVersion( const NifItem * headerItem );
 
 	QString topItemRepr( const NifItem * item ) const override final;

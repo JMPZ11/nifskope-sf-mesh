@@ -807,7 +807,7 @@
             </widget>
            </item>
            <item>
-            <spacer name="verticalSpacer_3">
+            <spacer name="verticalSpacer">
              <property name="orientation">
               <enum>Qt::Vertical</enum>
              </property>
@@ -843,6 +843,16 @@
             <widget class="QCheckBox" name="chkOtherGamesFallback">
              <property name="text">
               <string>Search Other Games if no match</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="chkIgnoreArchiveErrors">
+             <property name="text">
+              <string>Ignore errors on opening archives and data folders</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
              </property>
             </widget>
            </item>
@@ -960,28 +970,14 @@
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="btnFolderRemove">
+              <widget class="QPushButton" name="btnSubfoldersAdd">
                <property name="text">
-                <string>Remove Path</string>
+                <string>Add Subfolders</string>
                </property>
               </widget>
              </item>
              <item>
-              <widget class="QPushButton" name="btnFolderUp">
-               <property name="text">
-                <string>Move Up</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QPushButton" name="btnFolderDown">
-               <property name="text">
-                <string>Move Down</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <spacer name="verticalSpacer">
+              <spacer name="verticalSpacer_2">
                <property name="orientation">
                 <enum>Qt::Vertical</enum>
                </property>
@@ -997,6 +993,60 @@
               <widget class="QPushButton" name="btnFolderAutoDetect">
                <property name="text">
                 <string>Auto Detect Game Paths</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacer_3">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnFolderRemove">
+               <property name="text">
+                <string>Remo&amp;ve Path</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnFolderUp">
+               <property name="text">
+                <string>Mov&amp;e Up</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnFolderDown">
+               <property name="text">
+                <string>Move &amp;Down</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacer_4">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnRemoveInvalidPaths">
+               <property name="text">
+                <string>Remove Invalid Paths</string>
                </property>
               </widget>
              </item>

@@ -30,24 +30,20 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ***** END LICENCE BLOCK *****/
 
-#ifndef GLVIEW
-#define GLVIEW
+#ifndef GLVIEW_H_INCLUDED
+#define GLVIEW_H_INCLUDED
 
 #include "gl/glscene.h"
 #include "model/nifmodel.h"
 
 #include <QOpenGLWindow> // Inherited
-#include <QGraphicsView>
-#include <QDateTime>
 #include <QPersistentModelIndex>
+#include <chrono>
 
 
 //! @file glview.h GLView
 
 class NifSkope;
-
-class QOpenGLContext;
-class QOpenGLFunctions;
 class QTimer;
 
 
@@ -63,16 +59,17 @@ public:
 	~GLView();
 	QWidget * createWindowContainer( QWidget * parent );
 
-	QOpenGLContext * glContext = nullptr;
-	QOpenGLFunctions * glFuncs = nullptr;
+	NifSkopeOpenGLContext * glContext = nullptr;
 
+	float	toneMapping = 0.23641851f;	// 0.05 to 1.0
 	float	brightnessScale = 1.0f;		// overall brightness
+	float	glowScale = 1.0f;
 	float	ambient = 1.0f;				// environment map / ambient light level
 	float	brightnessL = 1.0f;			// directional light intensity,
 	float	lightColor = 0.0f;			// and color temperature (-1.0 to 1.0)
-	float	toneMapping = 0.23641851f;	// 0.05 to 1.0
 	float	declination = 0.0f;
 	float	planarAngle = 0.0f;
+	float	envMapRotation = 0.0f;
 	bool	frontalLight = true;
 
 	enum AnimationStates
@@ -84,8 +81,6 @@ public:
 		AnimSwitch = 0x8
 	};
 	Q_DECLARE_FLAGS( AnimationState, AnimationStates );
-
-	AnimationState animState;
 
 	enum ViewState : unsigned char
 	{
@@ -125,6 +120,7 @@ public:
 	void center();
 	void move( float, float, float );
 	void rotate( float, float, float );
+	void rotateLight( float, float );
 
 	void setCenter();
 	void setDistance( float );
@@ -144,10 +140,10 @@ public:
 	// older games: 64 units = 1 yard = 0.9144 m
 	float scale() { return (scene->nifModel && scene->nifModel->getBSVersion() >= 170) ? float(1.0 / 64.0) : 1.0f; };
 
-	QColor clearColor() const;
+	Color4 clearColor() const;
 
 
-	QModelIndex indexAt( const QPointF & p, int cycle = 0 );
+	QModelIndex indexAt( const QPointF & p, bool shiftModifier = false );
 
 public slots:
 	void update();
@@ -161,13 +157,14 @@ public slots:
 	void setLightColor( int );
 	void setToneMapping( int );
 	void setAmbient( int );
-	void setDeclination( int );
-	void setPlanarAngle( int );
+	void setEnvMapRotation( int );
+	void setGlowScale( int );
 	void setFrontalLight( bool );
 	void updateScene();
 	void updateAnimationState( bool checked );
 	void setVisMode( Scene::VisMode, bool checked = true );
 	void updateSettings();
+	void update3D();
 	void selectPBRCubeMap();
 	void update_GL( [[maybe_unused]] int tmp ) { update(); }
 
@@ -176,6 +173,7 @@ signals:
 	void paintUpdate();
 	void sceneTimeChanged( float t, float mn, float mx );
 	void viewpointChanged();
+	void frontalLightChanged( bool isFrontal );
 
 	void sequenceStopped();
 	void sequenceChanged( const QString & );
@@ -212,26 +210,29 @@ protected slots:
 	void saveImage();
 
 private:
+	static const Vector3 viewRotations[6];
+
 	NifModel * model;
-	Scene * scene;
+	Scene * scene = nullptr;
 
 	ViewState view;
 	DebugMode debugMode;
 	bool perspectiveMode;
+	bool contextMenuShiftModifier;
+
+	AnimationState animState;
 
 	class TexCache * textures;
 
-	float time;
-	QTime lastTime;
 	QTimer * timer;
+	std::chrono::steady_clock::time_point lastTime;
+	float time;
 
 	float Dist;
 	Vector3 Pos;
 	Vector3 Rot;
 	GLdouble Zoom;
 	GLdouble axis;
-	GLdouble grid;
-	Transform viewTrans;
 
 	GLdouble aspect;
 
@@ -240,15 +241,14 @@ private:
 	QPointF pressPos;
 	Vector3 mouseMov;
 	Vector3 mouseRot;
-	int cycleSelect;
 	std::uint32_t mouseButtonState = 0;
 
 	QPersistentModelIndex iDragTarget;
 	QString fnDragTex, fnDragTexOrg;
 
-	bool isDisabled = true;
-	bool doCompile;
-	bool doCenter;
+	bool isDisabled = false;
+	unsigned char doCompile = 0;
+	bool doCenter = false;
 	unsigned char updatePending = 0;
 
 	QTimer * lightVisTimer;
@@ -276,11 +276,12 @@ private:
 		Key_RotateLeft = 13,
 		Key_RotateRight = 14,
 		Key_RotateUp = 15,
-		Key_ToggleGrid = 16,
-		Key_TopView = 17,
-		Key_Update = 18,
-		Key_ZoomIn = 19,
-		Key_ZoomOut = 20
+		Key_Shift = 16,
+		Key_ToggleGrid = 17,
+		Key_TopView = 18,
+		Key_Update = 19,
+		Key_ZoomIn = 20,
+		Key_ZoomOut = 21
 	};
 
 	int convertKeyCode( int n ) const;
@@ -289,10 +290,10 @@ private:
 public:
 	struct Settings
 	{
-		QColor background;
-		float fov = 45.0;
-		float moveSpd = 350;
-		float rotSpd = 45;
+		Color4 background;
+		float fov = 60.0f;
+		float moveSpd = 350.0f;
+		float rotSpd = 45.0f;
 
 		UpAxis upAxis = ZAxis;
 		ViewState startupDirection = ViewFront;
@@ -304,8 +305,7 @@ public:
 		static float	lineWidthAxes;
 		static float	lineWidthWireframe;
 		static float	lineWidthHighlight;
-		static float	lineWidthGrid1;
-		static float	lineWidthGrid2;
+		static float	lineWidthGrid;
 		static float	lineWidthSelect;
 		static float	zoomInScale;
 		static float	zoomOutScale;
@@ -322,7 +322,13 @@ public:
 		isDisabled = n;
 	}
 
+	inline QOpenGLContext * pushGLContext();
+	inline void popGLContext( QOpenGLContext * prvContext );
 	static const char * getGLErrorString( int err );
+	inline TexCache * getTexCache()
+	{
+		return textures;
+	}
 
 private slots:
 	void advanceGears();
@@ -337,5 +343,21 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( GLView::AnimationState )
+
+inline QOpenGLContext * GLView::pushGLContext()
+{
+	QOpenGLContext *	prvContext = QOpenGLContext::currentContext();
+	if ( context() != prvContext )
+		makeCurrent();
+	return prvContext;
+}
+
+inline void GLView::popGLContext( QOpenGLContext * prvContext )
+{
+	if ( !prvContext )
+		doneCurrent();
+	else if ( prvContext != context() )
+		prvContext->makeCurrent( prvContext->surface() );
+}
 
 #endif

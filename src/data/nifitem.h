@@ -35,11 +35,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "data/nifvalue.h"
 #include "xml/nifexpr.h"
+#include <span>
 
 #include <QSharedData> // Inherited
 #include <QPointer>
-#include <QString>
 #include <QVector>
+#include <QMap>
 
 
 //! @file nifitem.h NifItem, NifBlock, NifData, NifSharedData
@@ -124,13 +125,13 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS( NifSharedData::DataFlags );
 
 //! The data and NifValue stored by a NifItem
-class NifData
+class NifData : public NifValue
 {
 public:
 	NifData( const QString & name, const QString & type, const QString & temp, const NifValue & val, const QString & arg,
 			 const QString & arr1 = QString(), const QString & arr2 = QString(), const QString & cond = QString(),
 			 quint32 ver1 = 0, quint32 ver2 = 0, NifSharedData::DataFlags flag = NifSharedData::None )
-		: d( new NifSharedData( name, type, temp, arg, arr1, arr2, cond, ver1, ver2, flag ) ), value( val )
+		: NifValue( val ), d( new NifSharedData( name, type, temp, arg, arr1, arr2, cond, ver1, ver2, flag ) )
 	{}
 
 	NifData( const QString & name, const QString & type = QString(), const QString & text = QString() )
@@ -188,11 +189,24 @@ public:
 	inline bool hasTypeCondition() const { return d->flags & NifSharedData::TypeCondition; }
 	//! Is the data a mixin. Mixin is a specialized compound which creates no nesting.
 	inline bool isMixin() const { return d->flags & NifSharedData::Mixin; }
+	static bool compareStrings( const QChar * s, const char * t, size_t l );
+	//! Does the name match testName?
+	inline bool hasName( std::string_view testName ) const
+	{
+		size_t	l = size_t( d->name.length() );
+		return ( l == testName.length() && compareStrings( d->name.constData(), testName.data(), l ) );
+	}
+	//! Does the string type match testType?
+	inline bool hasStrType( std::string_view testType ) const
+	{
+		size_t	l = size_t( d->type.length() );
+		return ( l == testType.length() && compareStrings( d->type.constData(), testType.data(), l ) );
+	}
 
 	//! Sets the name of the data.
 	void setName( const QString & name ) { d->name = name; }
 	//! Sets the type of the data.
-	void setType( const QString & type ) { d->type = type; }
+	void setStrType( const QString & type ) { d->type = type; }
 	//! Sets the template type of the data.
 	void setTempl( const QString & templ ) { d->templ = templ; }
 	//! Sets the argument of the data.
@@ -252,53 +266,11 @@ public:
 	inline void setHasTypeCondition( bool flag ) { setFlag( NifSharedData::TypeCondition, flag ); }
 
 	//! Gets the data's value type (NifValue::Type).
-	inline NifValue::Type valueType() const { return value.type(); }
-	//! Check if the type of the data's value is a color type (Color3 or Color4 in xml).
-	inline bool valueIsColor() const { return value.isColor(); }
-	//! Check if the type of the data's value is a count.
-	inline bool valueIsCount() const { return value.isCount(); }
-	//! Check if the type of the data's value is a flag type (Flags in xml).
-	inline bool valueIsFlags() const { return value.isFlags(); }
-	//! Check if the type of the data's value is a float type (Float in xml).
-	inline bool valueIsFloat() const { return value.isFloat(); }
-	//! Check if the type of the data's value is of a link type (Ref or Ptr in xml).
-	inline bool valueIsLink() const { return value.isLink(); }
-	//! Check if the type of the data's value is a 3x3 matrix type (Matrix33 in xml).
-	inline bool valueIsMatrix() const { return value.isMatrix(); }
-	//! Check if the type of the data's value is a 4x4 matrix type (Matrix44 in xml).
-	inline bool valueIsMatrix4() const { return value.isMatrix4(); }
-	//! Check if the type of the data's value is a quaternion type.
-	inline bool valueIsQuat() const { return value.isQuat(); }
-	//! Check if the type of the data's value is a string type.
-	inline bool valueIsString() const { return value.isString(); }
-	//! Check if the type of the data's value is a Vector 4.
-	inline bool valueIsVector4() const { return value.isVector4(); }
-	//! Check if the type of the data's value is a Vector 3.
-	inline bool valueIsVector3() const { return value.isVector3(); }
-	//! Check if the type of the data's value is a Half Vector3.
-	inline bool valueIsHalfVector3() const { return value.isHalfVector3(); }
-	//! Check if the type of the data's value is a Byte Vector3.
-	inline bool valueIsByteVector3() const { return value.isByteVector3(); }
-	//! Check if the type of the data's value is a HalfVector2.
-	inline bool valueIsHalfVector2() const { return value.isHalfVector2(); }
-	//! Check if the type of the data's value is a Vector 2.
-	inline bool valueIsVector2() const { return value.isVector2(); }
-	//! Check if the type of the data's value is a triangle type.
-	inline bool valueIsTriangle() const { return value.isTriangle(); }
-	//! Check if the type of the data's value is a byte array.
-	inline bool valueIsByteArray() const { return value.isByteArray(); }
-	//! Check if the type of the data's value is a File Version.
-	inline bool valueIsFileVersion() const { return value.isFileVersion(); }
-	//! Check if the type of the data's value is a byte matrix.
-	inline bool valueIsByteMatrix() const { return value.isByteMatrix(); }
+	inline NifValue::Type valueType() const { return NifValue::type(); }
 
 protected:
 	//! The internal shared data.
 	QSharedDataPointer<NifSharedData> d;
-
-public:
-	//! The value stored with the data.
-	NifValue value;
 };
 
 //! A block representing a niobject in XML.
@@ -330,7 +302,12 @@ public:
 
 	~NifItem()
 	{
-		qDeleteAll( childItems );
+		if ( childItems ) {
+			deleteChildItems();
+			std::free( childItems );
+		}
+		if ( linkRows )
+			delete[] ( linkRows - 1 );
 	}
 
 	//! Return the parent model.
@@ -348,8 +325,8 @@ public:
 	//! Return the row that this item is at.
 	int row() const
 	{
-		if ( rowIdx < 0 )
-			rowIdx = parentItem ? parentItem->childItems.indexOf( const_cast<NifItem *>(this) ) : 0;
+		if ( rowIdx < 0 ) [[unlikely]]
+			return updateRowIndex();
 
 		return rowIdx;
 	}
@@ -360,47 +337,22 @@ public:
 	 */
 	void prepareInsert( int e )
 	{
-		childItems.reserve( childItems.count() + e );
+		if ( childItemsCapacity < ( childItemsSize + e ) )
+			reserveChildItems( childItemsSize + e );
 	}
 
-	template<typename T> struct _ChildIterator
+	//! Get a span of child items.
+	std::span< NifItem * > children()
 	{
-		using iterator_category = std::forward_iterator_tag;
-		using difference_type   = std::ptrdiff_t;
-
-		_ChildIterator(NifItem * const * ptr) : m_ptr( const_cast<T*>( ptr ) ) {}
-
-		T & operator *() const { return *m_ptr; }
-        T * operator ->() { return m_ptr; }
-		_ChildIterator & operator++() { m_ptr++; return *this; }
-		_ChildIterator operator++( int ) { _ChildIterator tmp = *this; ++(*this); return tmp; }
-        friend bool operator==( const _ChildIterator & a, const _ChildIterator & b ) { return a.m_ptr == b.m_ptr; };
-        friend bool operator!=( const _ChildIterator & a, const _ChildIterator & b ) { return a.m_ptr != b.m_ptr; };
-
-    private:
-		T * m_ptr;
-    };
-
-	template<typename T> struct ChildIterator
+		return std::span< NifItem * >( childItems, size_t( childItemsSize ) );
+	}
+	std::span< const NifItem * const > children() const
 	{
-		ChildIterator( const QVector<NifItem *> & children ) : m_children( children ) {}
-
-		_ChildIterator<T> begin() { return _ChildIterator<T>(&(*(m_children.begin()))); }
-		_ChildIterator<T> end() { return _ChildIterator<T>(&(*(m_children.end()))); }
-
-	private:
-		const QVector<NifItem*> & m_children;
-	};
-
-	const QVector<NifItem *> & childIter() { return childItems; }
-
-	ChildIterator<const NifItem *> childIter() const { return ChildIterator<const NifItem *>(childItems); }
-
-	//! Get QVector of child items.
-	const QVector<NifItem *> & children() { return childItems; }
+		return std::span< const NifItem * const >( childItems, size_t( childItemsSize ) );
+	}
 
 	//! Return the number of child items.
-	int childCount() const { return childItems.count(); }
+	int childCount() const { return childItemsSize; }
 
 	//! Checks if the item is testAncestor itself or its child or a child of a child, etc.
 	bool isDescendantOf( const NifItem * testAncestor ) const;
@@ -494,9 +446,7 @@ public:
 	 */
 	void removeChild( int row )
 	{
-		NifItem * item = unregisterChild( row );
-		if ( item )
-			delete item;
+		delete unregisterChild( row );
 	}
 
 	/*! Remove several child items
@@ -504,44 +454,37 @@ public:
 	 * @param row	The row to start from
 	 * @param count The number of rows to delete
 	 */
-	void removeChildren( int row, int count )
+	void removeChildren( int row, int count );
+
+	//! Return the child item at the specified row
+	NifItem * child( int row )
 	{
-		int iStart = std::max( row, 0 );
-		int iEnd = std::min( row + count, int( childItems.count() ) );
-		if ( iStart < iEnd ) {
-			for ( int i = iStart; i < iEnd; i++ ) {
-				NifItem * item = childItems.at( i );
-				if ( item )
-					delete item;
-			}
-			childItems.remove( iStart, iEnd - iStart );
-			updateChildRows( iStart );
-			updateLinkCache( iStart, true );
-		}
+		if ( (unsigned int) row >= (unsigned int) childItemsSize ) [[unlikely]]
+			return nullptr;
+		return childItems[row];
 	}
 
 	//! Return the child item at the specified row
-	NifItem * child( int row ) { return childItems.value( row ); }
-
-	//! Return the child item at the specified row
-	const NifItem * child( int row ) const { return childItems.value( row ); }
+	const NifItem * child( int row ) const
+	{
+		if ( (unsigned int) row >= (unsigned int) childItemsSize ) [[unlikely]]
+			return nullptr;
+		return childItems[row];
+	}
 
 	//! Remove all child items
 	void killChildren()
 	{
-		qDeleteAll( childItems );
-		childItems.clear();
+		if ( childItemsSize > 0 )
+			deleteChildItems();
 
 		if ( hasChildLinks() ) {
-			linkRows.clear();
-			linkAncestorRows.clear();
+			linkRowsSize = 0;
 			unregisterInParentLinkCache();
 		}
 	}
 
-	const QVector<ushort> & getLinkAncestorRows() const { return linkAncestorRows; }
-	
-	const QVector<ushort> & getLinkRows() const { return linkRows; }
+	std::span< const int > getLinkRows() const { return std::span< const int >( linkRows, linkRowsSize ); }
 
 	//! Cached result of cond expression
 	bool condition() const { return conditionStatus == 1; }
@@ -567,7 +510,7 @@ public:
 		if ( isConditionCached() ) {
 			conditionStatus = -1;
 
-			for ( NifItem * c : childItems )
+			for ( auto c : children() )
 				c->invalidateCondition();
 		}
 	}
@@ -578,7 +521,7 @@ public:
 		if ( isVersionConditionCached() ) {
 			vercondStatus = -1;
 
-			for ( NifItem * c : childItems )
+			for ( auto c : children() )
 				c->invalidateVersionCondition();
 		}
 	}
@@ -587,28 +530,27 @@ private:
 	//! Invalidate the cached at index
 	void invalidateRow() { rowIdx = -1; }
 
-	void updateChildRows( int iStartChild = 0 )
-	{
-		for ( int i = iStartChild; i < childItems.count(); i++ )
-			childItems.at(i)->rowIdx = i;
-	}
-
+	size_t findLinkRow( int n ) const;
+	void insertLinkRow( int n );
 	void registerInParentLinkCache();
-
 	void unregisterInParentLinkCache();
-
-	void updateLinkCache( int iStartChild, bool bDoCleanup );
+	void removeLinkRow( int n );
+	void updateChildRows( int iStartChild = 0 );
+	void updateLinkRows( int iStartChild = 0 );
+	int updateRowIndex() const;
+	void reserveChildItems( int n );
+	void deleteChildItems();
 
 	void onParentItemChange();
 
 public:
 	//! Does the item have any children of link type?
-	bool hasChildLinks() const { return ( linkAncestorRows.count() > 0 ) || ( linkRows.count() > 0 ); }
+	bool hasChildLinks() const { return bool( linkRowsSize ); }
 
 	//! Return the value of the item data (const version)
-	inline const NifValue & value() const { return itemData.value; }
+	inline const NifValue & value() const { return itemData; }
 	//! Return the value of the item data
-	inline NifValue & value() { return itemData.value; }
+	inline NifValue & value() { return itemData; }
 
 	//! Return the name of the data
 	inline const QString & name() const { return itemData.name(); }
@@ -662,23 +604,21 @@ public:
 	//! Does the item's name match testName?
 	inline bool hasName( const QString & testName ) const { return itemData.name() == testName; }
 	//! Does the item's name match testName?
-	inline bool hasName( const QLatin1String & testName ) const { return itemData.name() == testName; }
-	//! Does the item's name match testName?
 	// item->hasName("Foo") is much faster than item->name() == "Foo"
-	inline bool hasName( const char * testName ) const { return itemData.name() == QLatin1String(testName); }
+	inline bool hasName( std::string_view testName ) const { return itemData.hasName( testName ); }
+	inline bool hasName( const char * testName ) const { return itemData.hasName( std::string_view(testName) ); }
 
 	//! Does the item's string type match testType?
 	inline bool hasStrType( const QString & testType ) const { return itemData.type() == testType; }
 	//! Does the item's string type match testType?
-	inline bool hasStrType( const QLatin1String & testType) const { return itemData.type() == testType; }
-	//! Does the item's string type match testType?
-	// item->hasType("Foo") is much faster than item->type() == "Foo"
-	inline bool hasStrType( const char * testType ) const { return itemData.type() == QLatin1String(testType); }
+	// item->hasStrType("Foo") is much faster than item->strType() == "Foo"
+	inline bool hasStrType( std::string_view testType ) const { return itemData.hasStrType( testType ); }
+	inline bool hasStrType( const char * testType ) const { return itemData.hasStrType( std::string_view(testType) ); }
 
 	//! Set the name
 	inline void setName( const QString & name ) {   itemData.setName( name );   }
 	//! Set the string type
-	inline void setStrType( const QString & type ) { itemData.setType( type ); }
+	inline void setStrType( const QString & type ) { itemData.setStrType( type ); }
 	//! Set the template type
 	inline void setTempl( const QString & temp ) { itemData.setTempl( temp ); }
 	//! Set the argument attribute
@@ -713,62 +653,62 @@ public:
 	//! Check if the item's value is of testType.
 	inline bool hasValueType( NifValue::Type testType ) const { return valueType() == testType; }
 	//! Check if the type of the item's value is a color type (Color3 or Color4 in xml).
-	inline bool isColor() const { return itemData.valueIsColor(); }
+	inline bool isColor() const { return itemData.isColor(); }
 	//! Check if the type of the item's value is a count.
-	inline bool isCount() const { return itemData.valueIsCount(); }
+	inline bool isCount() const { return itemData.isCount(); }
 	//! Check if the type of the item's value is a flag type (Flags in xml).
-	inline bool isFlags() const { return itemData.valueIsFlags(); }
+	inline bool isFlags() const { return itemData.isFlags(); }
 	//! Check if the type of the item's value is a float type (Float in xml).
-	inline bool isFloat() const { return itemData.valueIsFloat(); }
+	inline bool isFloat() const { return itemData.isFloat(); }
 	//! Check if the type of the item's value is of a link type (Ref or Ptr in xml).
-	inline bool isLink() const { return itemData.valueIsLink(); }
+	inline bool isLink() const { return itemData.isLink(); }
 	//! Check if the type of the item's value is a 3x3 matrix type (Matrix33 in xml).
-	inline bool isMatrix() const { return itemData.valueIsMatrix(); }
+	inline bool isMatrix() const { return itemData.isMatrix(); }
 	//! Check if the type of the item's value is a 4x4 matrix type (Matrix44 in xml).
-	inline bool isMatrix4() const { return itemData.valueIsMatrix4(); }
+	inline bool isMatrix4() const { return itemData.isMatrix4(); }
 	//! Check if the type of the item's value is a byte matrix.
-	inline bool isByteMatrix() const { return itemData.valueIsByteMatrix(); }
+	inline bool isByteMatrix() const { return itemData.isByteMatrix(); }
 	//! Check if the type of the item's value is a quaternion type.
-	inline bool isQuat() const { return itemData.valueIsQuat(); }
+	inline bool isQuat() const { return itemData.isQuat(); }
 	//! Check if the type of the item's value is a string type.
-	inline bool isString() const { return itemData.valueIsString(); }
+	inline bool isString() const { return itemData.isString(); }
 	//! Check if the type of the item's value is a Vector 2.
-	inline bool isVector2() const { return itemData.valueIsVector2(); }
+	inline bool isVector2() const { return itemData.isVector2(); }
 	//! Check if the type of the item's value is a HalfVector2.
-	inline bool isHalfVector2() const { return itemData.valueIsHalfVector2(); }
+	inline bool isHalfVector2() const { return itemData.isHalfVector2(); }
 	//! Check if the type of the item's value is a Vector 3.
-	inline bool isVector3() const { return itemData.valueIsVector3(); }
+	inline bool isVector3() const { return itemData.isVector3(); }
 	//! Check if the type of the item's value is a Half Vector3.
-	inline bool isHalfVector3() const { return itemData.valueIsHalfVector3(); }
+	inline bool isHalfVector3() const { return itemData.isHalfVector3(); }
 	//! Check if the type of the item's value is a Byte Vector3.
-	inline bool isByteVector3() const { return itemData.valueIsByteVector3(); }
+	inline bool isByteVector3() const { return itemData.isByteVector3(); }
 	//! Check if the type of the item's value is a Vector 4.
-	inline bool isVector4() const { return itemData.valueIsVector4(); }
+	inline bool isVector4() const { return itemData.isVector4(); }
 	//! Check if the type of the item's value is a triangle type.
-	inline bool isTriangle() const { return itemData.valueIsTriangle(); }
+	inline bool isTriangle() const { return itemData.isTriangle(); }
 	//! Check if the type of the item's value is a byte array.
-	inline bool isByteArray() const { return itemData.valueIsByteArray(); }
+	inline bool isByteArray() const { return itemData.isByteArray(); }
 	//! Check if the type of the item's value is a File Version.
-	inline bool isFileVersion() const { return itemData.valueIsFileVersion(); }
+	inline bool isFileVersion() const { return itemData.isFileVersion(); }
 
 	//! Return the item's value as a count if applicable.
-	inline quint64 getCountValue() const { return itemData.value.toCount( parentModel, this ); }
+	inline quint64 getCountValue() const { return itemData.toCount( parentModel, this ); }
 	//! Return the item's value as a float if applicable.
-	inline float getFloatValue() const { return itemData.value.toFloat( parentModel, this ); }
+	inline float getFloatValue() const { return itemData.toFloat( parentModel, this ); }
 	//! Return the item's value as a link if applicable.
-	inline qint32 getLinkValue() const { return itemData.value.toLink( parentModel, this ); }
+	inline qint32 getLinkValue() const { return itemData.toLink( parentModel, this ); }
 	//! Return the item's value as a QColor if applicable.
-	inline QColor getColorValue() const { return itemData.value.toColor( parentModel, this ); }
+	inline QColor getColorValue() const { return itemData.toColor( parentModel, this ); }
 	//! Return the item's value as a file version if applicable.
-	inline quint32 getFileVersionValue() const { return itemData.value.toFileVersion( parentModel, this ); }
+	inline quint32 getFileVersionValue() const { return itemData.toFileVersion( parentModel, this ); }
 
 	//! Return a string which represents the item's value.
-	inline QString getValueAsString() const { return itemData.value.toString(); }
+	inline QString getValueAsString() const { return itemData.toString(); }
 	//! Return the item's value as a QVariant.
-	inline QVariant getValueAsVariant() const { return itemData.value.toVariant(); }
+	inline QVariant getValueAsVariant() const { return itemData.toVariant(); }
 
 	//! Get the value of the item
-	template <typename T> inline T get() const { return itemData.value.get<T>( parentModel, this ); }
+	template <typename T> inline T get() const { return itemData.get<T>( parentModel, this ); }
 	//! Get the value of an item if it's not nullptr
 	template <typename T> static inline T get( const NifItem * item ) { return item ? item->get<T>() : T(); }
 
@@ -776,38 +716,38 @@ public:
 	template <typename T> QVector<T> getArray() const
 	{
 		QVector<T> array;
-		int nSize = childItems.count();
+		qsizetype nSize = childItemsSize;
 		if ( nSize > 0 ) {
 			array.reserve( nSize );
-			for ( const NifItem * child : childItems )
+			for ( auto child : children() )
 				array.append( child->get<T>() );
 		}
 		return array;
 	}
 	//! Get the values of the child items of arrayRoot as an array if arrayRoot is not nullptr.
 	template <typename T> static inline QVector<T> getArray( const NifItem * arrayRoot )
-	{ 
+	{
 		return arrayRoot ? arrayRoot->getArray<T>() : QVector<T>();
 	}
 
 	//! Set the value of the item.
-	template <typename T> inline bool set( const T & v ) { return itemData.value.set<T>( v, parentModel, this ); }
+	template <typename T> inline bool set( const T & v ) { return itemData.set<T>( v, parentModel, this ); }
 	//! Set the value of an item if it's not nullptr.
 	template <typename T> static inline bool set( NifItem * item, const T & v ) { return item ? item->set<T>(v) : false; }
 
 	//! Set the child items' values from an array.
 	template <typename T> bool setArray( const QVector<T> & array )
 	{
-		int nSize = childItems.count();
-		if ( nSize != array.count() ) {
-			reportError( 
+		qsizetype nSize = childItemsSize;
+		if ( array.size() != nSize ) {
+			reportError(
 				__func__,
-				QString( "The input QVector's size (%1) does not match the array's size (%2)." ).arg( array.count() ).arg( nSize ) 
+				QString( "The input QVector's size (%1) does not match the array's size (%2)." ).arg( array.size() ).arg( nSize )
 			);
 			return false;
 		}
-		for ( int i = 0; i < nSize; i++ ) {
-			if ( !childItems.at(i)->set<T>( array.at(i) ) )
+		for ( qsizetype i = 0; i < nSize; i++ ) {
+			if ( !childItems[i]->set<T>( array.at( i ) ) )
 				return false;
 		}
 
@@ -817,7 +757,7 @@ public:
 	//! Set the child items' values from a single value.
 	template <typename T> bool fillArray( const T & val )
 	{
-		for ( NifItem * child : childItems ) {
+		for ( auto child : children() ) {
 			if ( !child->set<T>( val ) )
 				return false;
 		}
@@ -826,21 +766,21 @@ public:
 	}
 
 	//! Set the item's value to a count.
-	inline bool setCountValue( quint64 c ) { return itemData.value.setCount( c, parentModel, this ); }
+	inline bool setCountValue( quint64 c ) { return itemData.setCount( c, parentModel, this ); }
 	//! Set the item's value to a float.
-	inline bool setFloatValue( float f ) { return itemData.value.setFloat( f, parentModel, this ); }
+	inline bool setFloatValue( float f ) { return itemData.setFloat( f, parentModel, this ); }
 	//! Set the item's value to a link (block number).
-	inline bool setLinkValue( qint32 link ) { return itemData.value.setLink( link, parentModel, this ); }
+	inline bool setLinkValue( qint32 link ) { return itemData.setLink( link, parentModel, this ); }
 	//! Set the item's value to a file version.
-	inline bool setFileVersionValue( quint32 v ) { return itemData.value.setFileVersion( v, parentModel, this ); }
+	inline bool setFileVersionValue( quint32 v ) { return itemData.setFileVersion( v, parentModel, this ); }
 
 	//! Set the item's value from a string.
-	inline bool setValueFromString( const QString & str ) { return itemData.value.setFromString( str, parentModel, this ); }
+	inline bool setValueFromString( const QString & str ) { return itemData.setFromString( str, parentModel, this ); }
 	//! Set the item's value from a QVariant.
-	inline bool setValueFromVariant( const QVariant & v ) { return itemData.value.setFromVariant( v ); }
+	inline bool setValueFromVariant( const QVariant & v ) { return itemData.setFromVariant( v ); }
 
 	//! Change the type of value stored.
-	inline void changeValueType( NifValue::Type t ) { itemData.value.changeType( t ); }
+	inline void changeValueType( NifValue::Type t ) { itemData.changeType( t ); }
 
 	//! Return string representation ("path") of an item within its model (e.g., "NiTriShape [0]\Vertex Data [3]\Vertex colors").
 	QString repr() const;
@@ -855,19 +795,20 @@ private:
 	//! The parent of this item
 	NifItem * parentItem = nullptr;
 	//! The child items
-	QVector<NifItem *> childItems;
-
-	//! Rows which have links under them at any level
-	QVector<ushort> linkAncestorRows;
-	//! Rows which are links
-	QVector<ushort> linkRows;
+	NifItem ** childItems = nullptr;
+	int childItemsSize = 0;
+	int childItemsCapacity = 0;
 
 	//! Item's row index, -1 is not cached, otherwise 0+
 	mutable int rowIdx = -1;
 	//! Item's condition status, -1 is not cached, otherwise 0/1
-	mutable char conditionStatus = -1;
+	mutable signed char conditionStatus = -1;
 	//! Item's vercond status, -1 is not cached, otherwise 0/1
-	mutable char vercondStatus = -1;
+	mutable signed char vercondStatus = -1;
+
+	//! Rows which are links or have links under them at any level
+	unsigned short linkRowsSize = 0;
+	int * linkRows = nullptr;	// linkRows[-1] is the capacity of the array
 };
 
 #endif

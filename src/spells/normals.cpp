@@ -1,7 +1,7 @@
 #include "spellbook.h"
-#include "qtcompat.h"
 
 #include "lib/nvtristripwrapper.h"
+#include "spells/mesh.h"
 
 #include <QDialog>
 #include <QDoubleSpinBox>
@@ -46,17 +46,20 @@ public:
 			return iData;
 
 		if ( nif->isNiBlock( index, { "BSTriShape", "BSMeshLODTriShape", "BSSubIndexTriShape", "BSDynamicTriShape" } ) ) {
+			iData = index;
 			auto vf = nif->get<BSVertexDesc>( index, "Vertex Desc" );
 			if ( (vf & VertexFlags::VF_SKINNED) && nif->getBSVersion() == 100 ) {
 				// Skinned SSE
 				auto skinID = nif->getLink( nif->getIndex( index, "Skin" ) );
 				auto partID = nif->getLink( nif->getBlockIndex( skinID, "NiSkinInstance" ), "Skin Partition" );
-				auto iPartBlock = nif->getBlockIndex( partID, "NiSkinPartition" );
-				if ( iPartBlock.isValid() )
-					return nif->getIndex( iPartBlock, "Vertex Data" );
+				if ( auto iPartBlock = nif->getBlockIndex( partID, "NiSkinPartition" ); iPartBlock.isValid() )
+					iData = iPartBlock;
 			}
-
-			return nif->getIndex( index, "Vertex Data" );
+			iData = nif->getIndex( iData, "Vertex Data" );
+			if ( iData.isValid() && nif->rowCount( iData ) > 0
+				&& nif->getIndex( nif->getIndex( iData, 0 ), "Normal" ).isValid() ) {
+				return iData;
+			}
 		}
 
 		return QModelIndex();
@@ -65,7 +68,7 @@ public:
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
-			return ( ( nif->get<quint32>(index, "Flags") & 0x0200 ) != 0 );
+			return true;
 		return getShapeData( nif, index ).isValid();
 	}
 
@@ -74,7 +77,8 @@ public:
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) ) {
-			faceNormalsSFMesh( nif, index );
+			if ( nif->checkInternalGeometry( index ) )
+				faceNormalsSFMesh( nif, index );
 			return index;
 		}
 
@@ -97,7 +101,7 @@ public:
 			}
 		};
 
-		if ( nif->getBSVersion() < 100 ) {
+		if ( !nif->blockInherits( index, "BSTriShape" ) ) {
 			QVector<Vector3> verts = nif->getArray<Vector3>( iData, "Vertices" );
 			QVector<Triangle> triangles;
 			QModelIndex iPoints = nif->getIndex( iData, "Points" );
@@ -106,7 +110,7 @@ public:
 				QVector<QVector<quint16> > strips;
 
 				for ( int r = 0; r < nif->rowCount( iPoints ); r++ )
-					strips.append( nif->getArray<quint16>( QModelIndex_child( iPoints, r ) ) );
+					strips.append( nif->getArray<quint16>( nif->getIndex( iPoints, r ) ) );
 
 				triangles = triangulate( strips );
 			} else {
@@ -137,7 +141,7 @@ public:
 				auto numParts = nif->get<int>( iPart, "Num Partitions" );
 				auto iParts = nif->getIndex( iPart, "Partitions" );
 				for ( int i = 0; i < numParts; i++ )
-					triangles << nif->getArray<Triangle>( QModelIndex_child( iParts, i ), "Triangles" );
+					triangles << nif->getArray<Triangle>( nif->getIndex( iParts, i ), "Triangles" );
 			}
 
 			QVector<Vector3> verts;
@@ -152,7 +156,7 @@ public:
 					verts << Vector3(v);
 			} else {
 				for ( int i = 0; i < numVerts; i++ ) {
-					auto idx = nif->index(i, 0, iData);
+					auto idx = nif->getIndex( iData, i );
 
 					verts += nif->get<Vector3>(idx, "Vertex");
 				}
@@ -163,9 +167,11 @@ public:
 			// Pause updates between model/view
 			nif->setState( BaseModel::Processing );
 			for ( int i = 0; i < numVerts; i++ ) {
-				nif->set<ByteVector3>( nif->index( i, 0, iData ), "Normal", norms[i] );
+				nif->set<ByteVector3>( nif->getIndex( iData, i ), "Normal", norms[i] );
 			}
-			nif->resetState();
+			nif->restoreState();
+
+			spRemoveWasteVertices::updateBSTriShape( nif, index );
 		}
 
 		return index;
@@ -181,9 +187,9 @@ void spFaceNormals::faceNormalsSFMesh( NifModel * nif, const QModelIndex & index
 	if ( !iMeshes.isValid() )
 		return;
 	for ( int i = 0; i <= 3; i++ ) {
-		if ( !nif->get<bool>( QModelIndex_child( iMeshes, i ), "Has Mesh" ) )
+		if ( !nif->get<bool>( nif->getIndex( iMeshes, i ), "Has Mesh" ) )
 			continue;
-		QModelIndex	iMesh = nif->getIndex( QModelIndex_child( iMeshes, i ), "Mesh" );
+		QModelIndex	iMesh = nif->getIndex( nif->getIndex( iMeshes, i ), "Mesh" );
 		if ( !iMesh.isValid() )
 			continue;
 		QModelIndex	iMeshData = nif->getIndex( iMesh, "Mesh Data" );
@@ -268,9 +274,8 @@ public:
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
-			return ( ( nif->get<quint32>(index, "Flags") & 0x0200 ) != 0 );
-		QModelIndex iData = spFaceNormals::getShapeData( nif, index );
-		return ( iData.isValid() && nif->get<bool>( iData, "Has Normals" ) );
+			return true;
+		return spFaceNormals::getShapeData( nif, index ).isValid();
 	}
 
 	static void flipNormalsSFMesh( NifModel * nif, const QModelIndex & index );
@@ -278,18 +283,45 @@ public:
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) ) {
-			flipNormalsSFMesh( nif, index );
+			if ( nif->checkInternalGeometry( index ) )
+				flipNormalsSFMesh( nif, index );
 			return index;
 		}
 
 		QModelIndex iData = spFaceNormals::getShapeData( nif, index );
 
-		QVector<Vector3> norms = nif->getArray<Vector3>( iData, "Normals" );
+		if ( !nif->blockInherits( index, "BSTriShape" ) ) {
+			QVector<Vector3> norms = nif->getArray<Vector3>( iData, "Normals" );
 
-		for ( int n = 0; n < norms.count(); n++ )
-			norms[n] = -norms[n];
+			for ( int n = 0; n < norms.count(); n++ )
+				norms[n] = -norms[n];
 
-		nif->setArray<Vector3>( iData, "Normals", norms );
+			nif->setArray<Vector3>( iData, "Normals", norms );
+
+		} else {
+			int numVerts;
+			auto vf = nif->get<BSVertexDesc>( index, "Vertex Desc" );
+			if ( !((vf & VertexFlags::VF_SKINNED) && nif->getBSVersion() == 100) ) {
+				numVerts = nif->get<int>( index, "Num Vertices" );
+			} else {
+				// Skinned SSE
+				auto iPart = iData.parent();
+				numVerts = nif->get<uint>( iPart, "Data Size" ) / nif->get<uint>( iPart, "Vertex Size" );
+			}
+
+			QVector<Vector3> norms( numVerts );
+
+			for ( int i = 0; i < numVerts; i++ )
+				norms[i] = nif->get<Vector3>( nif->getIndex( iData, i ), "Normal" ) * -1.0f;
+
+			// Pause updates between model/view
+			nif->setState( BaseModel::Processing );
+			for ( int i = 0; i < numVerts; i++ )
+				nif->set<ByteVector3>( nif->getIndex( iData, i ), "Normal", norms[i] );
+			nif->restoreState();
+
+			spRemoveWasteVertices::updateBSTriShape( nif, index );
+		}
 
 		return index;
 	}
@@ -304,9 +336,9 @@ void spFlipNormals::flipNormalsSFMesh( NifModel * nif, const QModelIndex & index
 	if ( !iMeshes.isValid() )
 		return;
 	for ( int i = 0; i <= 3; i++ ) {
-		if ( !nif->get<bool>( QModelIndex_child( iMeshes, i ), "Has Mesh" ) )
+		if ( !nif->get<bool>( nif->getIndex( iMeshes, i ), "Has Mesh" ) )
 			continue;
-		QModelIndex	iMesh = nif->getIndex( QModelIndex_child( iMeshes, i ), "Mesh" );
+		QModelIndex	iMesh = nif->getIndex( nif->getIndex( iMeshes, i ), "Mesh" );
 		if ( !iMesh.isValid() )
 			continue;
 		QModelIndex	iMeshData = nif->getIndex( iMesh, "Mesh Data" );
@@ -336,7 +368,7 @@ public:
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
-			return ( ( nif->get<quint32>(index, "Flags") & 0x0200 ) != 0 );
+			return true;
 		return spFaceNormals::getShapeData( nif, index ).isValid();
 	}
 
@@ -360,7 +392,7 @@ public:
 
 		if ( !isSFMesh )
 			smoothNormals( nif, index, maxa, maxd );
-		else
+		else if ( nif->checkInternalGeometry( index ) )
 			smoothNormalsSFMesh( nif, index, maxa, maxd );
 
 		return index;
@@ -485,8 +517,9 @@ void spSmoothNormals::smoothNormals( NifModel * nif, const QModelIndex & index, 
 	QVector<Vector3> norms;
 
 	int numVerts = 0;
+	bool isBSTriShape = nif->blockInherits( index, "BSTriShape" );
 
-	if ( nif->getBSVersion() < 100 ) {
+	if ( !isBSTriShape ) {
 		verts = nif->getArray<Vector3>( iData, "Vertices" );
 		norms = nif->getArray<Vector3>( iData, "Normals" );
 	} else {
@@ -504,7 +537,7 @@ void spSmoothNormals::smoothNormals( NifModel * nif, const QModelIndex & index, 
 		norms.reserve( numVerts + 1 );
 
 		for ( int i = 0; i < numVerts; i++ ) {
-			auto idx = nif->index( i, 0, iData );
+			auto idx = nif->getIndex( iData, i );
 
 			verts += nif->get<Vector3>( idx, "Vertex" );
 			norms += nif->get<ByteVector3>( idx, "Normal" );
@@ -531,14 +564,16 @@ void spSmoothNormals::smoothNormals( NifModel * nif, const QModelIndex & index, 
 							&( norms[0][0] ), &( verts.constFirst()[0] ), size_t( numVerts ), maxa, maxd );
 	snorms.removeLast();
 
-	if ( nif->getBSVersion() < 100 ) {
+	if ( !isBSTriShape ) {
 		nif->setArray<Vector3>( iData, "Normals", snorms );
 	} else {
 		// Pause updates between model/view
 		nif->setState( BaseModel::Processing );
 		for ( int i = 0; i < numVerts; i++ )
-			nif->set<ByteVector3>( nif->index( i, 0, iData ), "Normal", snorms[i] );
-		nif->resetState();
+			nif->set<ByteVector3>( nif->getIndex( iData, i ), "Normal", snorms[i] );
+		nif->restoreState();
+
+		spRemoveWasteVertices::updateBSTriShape( nif, index );
 	}
 }
 
@@ -548,9 +583,9 @@ void spSmoothNormals::smoothNormalsSFMesh( NifModel * nif, const QModelIndex & i
 	if ( !iMeshes.isValid() )
 		return;
 	for ( int i = 0; i <= 3; i++ ) {
-		if ( !nif->get<bool>( QModelIndex_child( iMeshes, i ), "Has Mesh" ) )
+		if ( !nif->get<bool>( nif->getIndex( iMeshes, i ), "Has Mesh" ) )
 			continue;
-		QModelIndex	iMesh = nif->getIndex( QModelIndex_child( iMeshes, i ), "Mesh" );
+		QModelIndex	iMesh = nif->getIndex( nif->getIndex( iMeshes, i ), "Mesh" );
 		if ( !iMesh.isValid() )
 			continue;
 		QModelIndex	iMeshData = nif->getIndex( iMesh, "Mesh Data" );
@@ -639,7 +674,7 @@ public:
 	{
 		NifValue::Type	t;
 		if ( nif->isArray( index ) )
-			t = nif->getValue( QModelIndex_child( index ) ).type();
+			t = nif->getValue( nif->getIndex( index, 0 ) ).type();
 		else
 			t = nif->getValue( index ).type();
 		return ( t == NifValue::tVector3 || t == NifValue::tUDecVector4 );
@@ -648,7 +683,7 @@ public:
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->isArray( index ) ) {
-			if ( nif->getValue( QModelIndex_child( index ) ).type() == NifValue::tUDecVector4 ) {
+			if ( nif->getValue( nif->getIndex( index, 0 ) ).type() == NifValue::tUDecVector4 ) {
 				QVector<UDecVector4> norms = nif->getArray<UDecVector4>( index );
 
 				for ( auto & n : norms )

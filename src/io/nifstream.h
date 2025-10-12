@@ -80,8 +80,6 @@ private:
 	bool bool32bit = false;
 	//! Whether link adjustment is required.
 	bool linkAdjust = false;
-	//! Whether string adjustment is required.
-	bool stringAdjust = false;
 	//! Whether the model is big-endian
 	bool bigEndian = false;
 
@@ -114,10 +112,6 @@ private:
 	bool bool32bit = false;
 	//! Whether link adjustment is required.
 	bool linkAdjust = false;
-	//! Whether string adjustment is required.
-	bool stringAdjust = false;
-	//! Whether the model is big-endian
-	bool bigEndian = false;
 };
 
 
@@ -139,8 +133,6 @@ private:
 
 	//! Whether booleans are 32-bit or not.
 	bool bool32bit;
-	//! Whether string adjustment is required.
-	bool stringAdjust;
 };
 
 #endif

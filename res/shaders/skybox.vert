@@ -1,41 +1,32 @@
-#version 120
+#version 410 core
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+out vec3 LightDir;
+out vec3 ViewDir;
 
-varying vec4 A;
-varying vec4 D;
+flat out mat3 reflMatrix;
 
-varying mat4 reflMatrix;
+#include "uniforms.glsl"
 
-mat4 rotateEnv( mat4 m, float rz )
+uniform bool invertZAxis;
+
+layout ( location = 0 ) in vec3 vertexPosition;
+
+void main()
 {
-	float	rz_c = cos(rz);
-	float	rz_s = -sin(rz);
-	return mat4(vec4(m[0][0] * rz_c - m[0][1] * rz_s,
-					 m[0][0] * rz_s + m[0][1] * rz_c, m[0][2], m[0][3]),
-				vec4(m[1][0] * rz_c - m[1][1] * rz_s,
-					 m[1][0] * rz_s + m[1][1] * rz_c, m[1][2], m[1][3]),
-				vec4(m[2][0] * rz_c - m[2][1] * rz_s,
-					 m[2][0] * rz_s + m[2][1] * rz_c, m[2][2], m[2][3]),
-				vec4(m[3][0] * rz_c - m[3][1] * rz_s,
-					 m[3][0] * rz_s + m[3][1] * rz_c, m[3][2], m[3][3]));
-}
-
-void main( void )
-{
-	vec3 v = vec3(gl_ModelViewMatrix * gl_Vertex);
-
-	reflMatrix = rotateEnv(mat4(1.0), gl_LightSource[0].position.w * 3.14159265);
+	vec4 v = vec4( viewMatrix * vertexPosition, 1.0 );
 
 	ViewDir = vec3(-v.xy, 1.0);
-	LightDir = gl_LightSource[0].position.xyz;
+	LightDir = lightSourcePosition[0].xyz;
 
-	A = gl_LightSource[0].ambient;
-	D = gl_LightSource[0].diffuse;
+	reflMatrix = envMapRotation;
+	if ( invertZAxis ) {
+		reflMatrix[0][2] *= -1.0;
+		reflMatrix[1][2] *= -1.0;
+		reflMatrix[2][2] *= -1.0;
+	}
 
-	if (gl_ProjectionMatrix[3][3] == 1.0)
+	if ( projectionMatrix[3][3] == 1.0 )
 		gl_Position = vec4(0.0, 0.0, 2.0, 1.0);	// orthographic view is not supported
 	else
-		gl_Position = vec4((gl_ModelViewProjectionMatrix * gl_Vertex).xy, 1.0, 1.0);
+		gl_Position = vec4( ( projectionMatrix * v ).xy / clamp( projectionMatrix[0][0], 0.001, 1.0 ), 1.0, 1.0 );
 }

@@ -1,8 +1,27 @@
-﻿# NifSkope 2.0.dev9 Meshageddon Edition
+﻿# NifSkope 2.0.dev11 Meshageddon Edition
 
 NifSkope is a tool for opening and editing the NetImmerse file format (NIF). NIF is used by video games such as Morrowind, Oblivion, Skyrim, Fallout 3/NV/4/76, Starfield, Civilization IV, and more.
 
-This is an experimental fork of 2.0.dev9 with many improvements to Starfield support, and a number of fixes to issues related to older games. See [CHANGELOG.md](https://github.com/fo76utils/nifskope/blob/develop/CHANGELOG.md) for details.
+This is an experimental fork of 2.0.dev9 with many fixes and improvements, including:
+
+* Rendering support for Starfield materials.
+* Updates for file format changes in the current versions of Fallout 4, Fallout 76 and Starfield.
+* glTF export and import for Skyrim SE, Fallout 4, Fallout 76 and Starfield. Import is limited to geometry only (no textures), and does not support Skyrim skin partitions.
+* Resource (texture and material) files can be extracted, either the textures and materials used by the model, or files selected in an archive browser.
+* Material and texture choosers, with texture preview.
+* Support for saving screenshots with transparency in DDS or PNG format.
+* Improved archive browser, all mesh archives in a game folder can be opened and browsed at once.
+* Triangle selection with Shift-clicking.
+* Improvements to the UV editor and lighting widget.
+* Fallout 4, Fallout 76 and (with limitations) Starfield material editing.
+* Shading has been implemented again for Oblivion and Fallout 3/New Vegas (it was removed in 2.0.dev7), and improved for many of the games.
+* Fallout 76 and Starfield rendering can use cube maps or Radiance HDR files for image based lighting, and as background (skybox).
+* Several mesh spells and OBJ import now support BSTriShape geometry, and new spells (including a mesh simplifier) have been added.
+* Batch processing of multiple NIF files, with a limited selection of spells (update bounds, remove unused/duplicate vertices, etc.).
+* The source code has been updated to use Qt 6 and core profile OpenGL 4, but it can still be compiled with Qt 5.15.
+* DPI scaling on high resolution displays.
+
+See [CHANGELOG.md](https://github.com/fo76utils/nifskope/blob/develop/CHANGELOG.md) for details.
 
 ### Meshageddon Edition
 
@@ -27,12 +46,12 @@ Running NifSkope under Wayland on Linux may require setting the QT\_QPA\_PLATFOR
 
 The resource manager in this version of NifSkope is optimized for PCs with solid-state drives. While hard disk drives generally also work, if the number of loose resources is large, load times can be significantly shorter on an SSD when the data is not cached yet by the operating system.
 
-#### Building from source code
+#### Building from source code (Qt 6)
 
-Compiling NifSkope requires Qt 6.2 or newer. On Windows, [MSYS2](https://www.msys2.org/) can be used for building. After running the MSYS2 installer, use the following commands in the MSYS2-UCRT64 shell to install required packages:
+Compiling NifSkope requires Qt 6.4 or newer, or Qt 5.15. On Windows, [MSYS2](https://www.msys2.org/) can be used for building. After running the MSYS2 installer, use the following commands in the MSYS2-UCRT64 shell to install required packages:
 
     pacman -S base-devel mingw-w64-ucrt-x86_64-gcc
-    pacman -S mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-qt6-3d mingw-w64-ucrt-x86_64-qt6-5compat
+    pacman -S mingw-w64-ucrt-x86_64-qt6-base
     pacman -S mingw-w64-ucrt-x86_64-qt6-imageformats mingw-w64-ucrt-x86_64-qt6-tools
     pacman -S git
 
@@ -51,6 +70,10 @@ Finally, run '**qmake6**' and then '**make**' in MSYS2-UCRT64 to build the sourc
 By default, code is generated for Intel Haswell or compatible CPUs, including the AMD Zen series or newer. Running qmake with the **noavx2=1** option reduces the requirement to Intel Ivy Bridge or AMD FX CPUs, and **nof16c=1** to Sandy Bridge. To build for even older hardware, use **noavx=1** or edit the compiler flags in NifSkope.pro.
 
 Adding the **debug=1** option to the qmake command enables compiling a debug build of NifSkope.
+
+##### Building from source code (Qt 5)
+
+Compiling with Qt 5 is needed on Windows versions older than 10. The steps are similar to above, but **qt6** is replaced with **qt5** in all package names, and **qmake** should be run instead of **qmake6**.
 
 ### Issues
 

@@ -30,8 +30,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ***** END LICENCE BLOCK *****/
 
-#ifndef GLMARKER_H
-#define GLMARKER_H
+#ifndef GLMARKER_H_INCLUDED
+#define GLMARKER_H_INCLUDED
+
+class Scene;
 
 struct GLMarker
 {
@@ -39,8 +41,52 @@ struct GLMarker
 	int nf;
 	const float * verts;
 	const unsigned short * faces;
-};
 
-void drawMarker( const GLMarker * marker );
+	void drawMarker( Scene * scene, bool solid = false ) const;
+
+	static const float FurnitureMarker01Verts[288];
+	static const unsigned short FurnitureMarker01Faces[198];
+	static const GLMarker FurnitureMarker01;
+
+	static const float FurnitureMarker03Verts[228];
+	static const unsigned short FurnitureMarker03Faces[168];
+	static const GLMarker FurnitureMarker03;
+
+	static const float FurnitureMarker04Verts[228];
+	static const unsigned short FurnitureMarker04Faces[168];
+	static const GLMarker FurnitureMarker04;
+
+	static const float FurnitureMarker11Verts[324];
+	static const unsigned short FurnitureMarker11Faces[228];
+	static const GLMarker FurnitureMarker11;
+
+	static const float FurnitureMarker13Verts[324];
+	static const unsigned short FurnitureMarker13Faces[228];
+	static const GLMarker FurnitureMarker13;
+
+	static const float FurnitureMarker14Verts[324];
+	static const unsigned short FurnitureMarker14Faces[228];
+	static const GLMarker FurnitureMarker14;
+
+	static const float BedLeftVerts[288];
+	static const unsigned short BedLeftFaces[198];
+	static const GLMarker BedLeft;
+
+	static const float ChairLeftVerts[324];
+	static const unsigned short ChairLeftFaces[228];
+	static const GLMarker ChairLeft;
+
+	static const float ChairFrontVerts[324];
+	static const unsigned short ChairFrontFaces[228];
+	static const GLMarker ChairFront;
+
+	static const float ChairBehindVerts[324];
+	static const unsigned short ChairBehindFaces[228];
+	static const GLMarker ChairBehind;
+
+	static const float BumperMarker01Verts[288];
+	static const unsigned short BumperMarker01Faces[432];
+	static const GLMarker BumperMarker01;
+};
 
 #endif

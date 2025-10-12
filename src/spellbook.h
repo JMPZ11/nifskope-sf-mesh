@@ -131,8 +131,8 @@ public:
 
 	//! Locate spell by name
 	static SpellPtr lookup( const QString & id );
-	//! Locate spell by hotkey
-	static SpellPtr lookup( const QKeySequence & hotkey );
+	//! Locate spell(s) by hotkey
+	static QList<SpellPtr> lookup( const QKeySequence & hotkey );
 	//! Locate instant spells by datatype
 	static SpellPtr instant( const NifModel * nif, const QModelIndex & index );
 

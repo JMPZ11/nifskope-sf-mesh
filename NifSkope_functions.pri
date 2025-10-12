@@ -19,37 +19,11 @@ defineReplace(getSed) {
 	sedbin = ""
 
 	win32 {
-		PROG = C:/Program Files (x86)
-		!exists($$PROG) {
-			PROG = C:/Program Files
-		}
-
-		GNUWIN32 = $${PROG}/GnuWin32/bin
-		CYGWIN = C:/cygwin64/bin
-		MSYS64 = C:/msys64/usr/bin
-		SEDPATH = /sed.exe
-
-		exists($${MSYS64}$${SEDPATH}) {
-			sedbin = $${MSYS64}$${QMAKE_DIR_SEP}
-		} else:exists($${GNUWIN32}$${SEDPATH}) {
-			sedbin = $${GNUWIN32}$${QMAKE_DIR_SEP}
-		} else:exists($${CYGWIN}$${SEDPATH}) {
-			sedbin = $${CYGWIN}$${QMAKE_DIR_SEP}
-		} else {
-			#message(Neither GnuWin32 or Cygwin were found)
-			SEDSYS = $$system(where sed 2> NUL)
-			SEDLIST = $$split(SEDSYS, "sed.exe")
-			SEDBIN = $$member(SEDLIST, 0)
-			sedbin = $$syspath($${SEDBIN})
-		}
-
-		!isEmpty(sedbin) {
-			sedbin = \"$${sedbin}sed.exe\"
-		}
+		sedbin = "sed.exe"
 	}
 
 	unix {
-		sedbin = sed
+		sedbin = "sed"
 	}
 
 	return($$sedbin)
@@ -160,7 +134,11 @@ defineReplace(QtHex) {
 
 # Format string for Qt DLL
 
-DLLSTRING = $$quote(Qt6%1)
+contains(QT_VERSION, ^5\\..*) {
+	DLLSTRING = $$quote(Qt5%1)
+} else {
+	DLLSTRING = $$quote(Qt6%1)
+}
 CONFIG(debug, debug|release) {
 	DLLEXT = $$quote(d.dll)
 } else {
@@ -177,43 +155,45 @@ defineReplace(QtBins) {
 	}
 
 	*-g++ {
-        # Copies libgcc*-*, libstdc++-*, libwinpthread-*
-        #   Note: As of Qt 5.5, changed `lib*` to `lib*-*` in order to avoid unneeded libs.
+		# Copies libgcc*-*, libstdc++-*, libwinpthread-*
+		#   Note: As of Qt 5.5, changed `lib*` to `lib*-*` in order to avoid unneeded libs.
+		contains(QT_VERSION, ^6\\..*) {
+			list += $$[QT_INSTALL_BINS]/libb2-1.dll
+		}
 		list += \
-            # $$[QT_INSTALL_BINS]/SDL2.dll \
-            $$[QT_INSTALL_BINS]/libb2-1.dll \
-            $$[QT_INSTALL_BINS]/libbrotlicommon.dll \
-            $$[QT_INSTALL_BINS]/libbrotlidec.dll \
-            $$[QT_INSTALL_BINS]/libbz2-1.dll \
-            $$[QT_INSTALL_BINS]/libdouble-conversion.dll \
-            $$[QT_INSTALL_BINS]/libfreetype-6.dll \
-            $$[QT_INSTALL_BINS]/libglib-2.*.dll \
-            $$[QT_INSTALL_BINS]/libgraphite2.dll \
-            $$[QT_INSTALL_BINS]/libharfbuzz-0.dll \
-            $$[QT_INSTALL_BINS]/libiconv-2.dll \
-            $$[QT_INSTALL_BINS]/libicudt*.dll \
-            $$[QT_INSTALL_BINS]/libicuin*.dll \
-            $$[QT_INSTALL_BINS]/libicuuc*.dll \
-            $$[QT_INSTALL_BINS]/libintl-8.dll \
-            $$[QT_INSTALL_BINS]/libjpeg-8.dll \
-            $$[QT_INSTALL_BINS]/libmd4c.dll \
-            $$[QT_INSTALL_BINS]/libpcre2-16*.dll \
-            $$[QT_INSTALL_BINS]/libpcre2-8*.dll \
-            $$[QT_INSTALL_BINS]/libpng16-*.dll \
-            $$[QT_INSTALL_BINS]/libsharpyuv-*.dll \
-            $$[QT_INSTALL_BINS]/libwebp-*.dll \
-            $$[QT_INSTALL_BINS]/libwebpdemux-*.dll \
-            $$[QT_INSTALL_BINS]/libwebpmux-*.dll \
-            $$[QT_INSTALL_BINS]/libzstd.dll \
-            $$[QT_INSTALL_BINS]/zlib1.dll
+			# $$[QT_INSTALL_BINS]/SDL2.dll \
+			$$[QT_INSTALL_BINS]/libbrotlicommon.dll \
+			$$[QT_INSTALL_BINS]/libbrotlidec.dll \
+			$$[QT_INSTALL_BINS]/libbz2-1.dll \
+			$$[QT_INSTALL_BINS]/libdouble-conversion.dll \
+			$$[QT_INSTALL_BINS]/libfreetype-6.dll \
+			$$[QT_INSTALL_BINS]/libglib-2.*.dll \
+			$$[QT_INSTALL_BINS]/libgraphite2.dll \
+			$$[QT_INSTALL_BINS]/libharfbuzz-0.dll \
+			$$[QT_INSTALL_BINS]/libiconv-2.dll \
+			$$[QT_INSTALL_BINS]/libicudt*.dll \
+			$$[QT_INSTALL_BINS]/libicuin*.dll \
+			$$[QT_INSTALL_BINS]/libicuuc*.dll \
+			$$[QT_INSTALL_BINS]/libintl-8.dll \
+			$$[QT_INSTALL_BINS]/libjpeg-8.dll \
+			$$[QT_INSTALL_BINS]/libmd4c.dll \
+			$$[QT_INSTALL_BINS]/libpcre2-16*.dll \
+			$$[QT_INSTALL_BINS]/libpcre2-8*.dll \
+			$$[QT_INSTALL_BINS]/libpng16-*.dll \
+			$$[QT_INSTALL_BINS]/libsharpyuv-*.dll \
+			$$[QT_INSTALL_BINS]/libwebp-*.dll \
+			$$[QT_INSTALL_BINS]/libwebpdemux-*.dll \
+			$$[QT_INSTALL_BINS]/libwebpmux-*.dll \
+			$$[QT_INSTALL_BINS]/libzstd.dll \
+			$$[QT_INSTALL_BINS]/zlib1.dll
 
 		*-clang-g++ {
 			list += $$[QT_INSTALL_BINS]/libc++.dll
 		} else {
 			list += \
-                $$[QT_INSTALL_BINS]/libgcc_s_seh-1.dll \
-                $$[QT_INSTALL_BINS]/libstdc++-6.dll \
-                $$[QT_INSTALL_BINS]/libwinpthread-1.dll
+				$$[QT_INSTALL_BINS]/libgcc_s_seh-1.dll \
+				$$[QT_INSTALL_BINS]/libstdc++-6.dll \
+				$$[QT_INSTALL_BINS]/libwinpthread-1.dll
 		}
 	}
 

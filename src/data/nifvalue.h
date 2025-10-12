@@ -99,15 +99,6 @@ public:
 		tLink,
 		tUpLink,
 		tFloat,
-		// all string types should come between tSizedString and tChar8String
-		tSizedString,
-		tSizedString16,
-		tText,
-		tShortString,
-		tHeaderString,
-		tLineString,
-		tChar8String,
-		// all string types should come between tSizedString and tChar8String
 		// all color types should come between tColor3 and tByteColor4BGRA
 		tColor3,
 		tColor4,
@@ -121,8 +112,6 @@ public:
 		tByteVector3,
 		tQuat,
 		tQuatXYZW,
-		tMatrix,
-		tMatrix4,
 		tVector2,
 		// all vector4 types should come between tVector4 and tUDecVector4
 		tVector4,
@@ -130,17 +119,27 @@ public:
 		tUDecVector4,
 		tTriangle,
 		tFileVersion,
-		tByteArray,
-		tStringPalette,
-		tString,   //!< not a regular string: an integer for nif versions 20.1.0.3 and up
-		tFilePath, //!< not a string: requires special handling for slash/backslash etc.
-		tByteMatrix,
-		tBlob,
 		tHfloat,
 		tHalfVector2,
 		tBSVertexDesc,
 		tNormbyte,
-		tNone= 0xff
+		// all types that require allocating data should come between tSizedString and tNone
+		//   all string types should come between tSizedString and tChar8String
+		tSizedString,
+		tSizedString16,
+		tText,
+		tShortString,
+		tHeaderString,
+		tLineString,
+		tChar8String,
+		//   all string types should come between tSizedString and tChar8String
+		tMatrix,
+		tMatrix4,
+		tByteArray,
+		tStringPalette,
+		tByteMatrix,
+		tBlob,
+		tNone = 0xff
 	};
 
 	enum EnumType
@@ -273,7 +272,7 @@ public:
 	//! Check if the type of the data is a quaternion type.
 	bool isQuat() const { return typ == tQuat || typ == tQuatXYZW; }
 	//! Check if the type of the data is a string type.
-	bool isString() const { return (typ >= tSizedString && typ <= tChar8String) || typ == tString; }
+	bool isString() const { return (typ >= tSizedString && typ <= tChar8String); }
 	//! Check if the type of the data is a Vector 4.
 	bool isVector4() const { return typ == tVector4; }
 	//! Check if the type of the data is ByteVector4.
@@ -300,6 +299,8 @@ public:
 	bool isFileVersion() const { return typ == tFileVersion; }
 	//! Check if the type of the data is a byte matrix.
 	bool isByteMatrix() const { return typ == tByteMatrix; }
+	//! Check if the type uses allocated data (val.data is valid).
+	bool isAllocated() const { return typ >= tSizedString && typ < tNone; }
 
 	//! Return the value of the data as a QColor, if applicable.
 	QColor toColor( const BaseModel * model, const NifItem * item ) const;
@@ -359,9 +360,6 @@ public:
 	template <typename T> bool set( const T & x, const BaseModel * model, const NifItem * item );
 
 protected:
-	//! The type of this data.
-	Type typ = tNone;
-
 	//! The structure containing the data.
 	union Value
 	{
@@ -372,11 +370,26 @@ protected:
 		quint64 u64;
 		qint64 i64;
 		float f32;
+		FloatVector4 f32v4;
+		Triangle t;
+		// for types that are not trivially copyable or require more space than 4 floats
 		void * data;
+		// should not be used on types with allocated data
+		inline void clear()
+		{
+			std::memset( &( f32v4[0] ), 0, sizeof( FloatVector4 ) );
+		}
 	};
 
 	//! The data value.
 	Value val = {0};
+
+	//! The type of this data.
+	Type typ = tNone;
+
+	//! Check the value type, and if it is not compatible with 't', report the error and return false.
+	inline bool checkGetType( Type t, const BaseModel * model, const NifItem * item ) const;
+	inline bool checkSetType( Type t, const BaseModel * model, const NifItem * item ) const;
 
 	/*! Get the data as an object of type T.
 	 *
@@ -517,26 +530,46 @@ inline bool NifValue::setFileVersion( quint32 v, const BaseModel * model, const 
 
 // Templates
 
-template <typename T> inline T NifValue::getType( Type t, const BaseModel * model, const NifItem * item ) const
+inline bool NifValue::checkGetType( Type t, const BaseModel * model, const NifItem * item ) const
 {
-	if ( typ == t )
-		return *static_cast<T *>( val.data ); // WARNING: this throws an exception if the type of v is not the original type by which val.data was initialized; the programmer must make sure that T matches t.
-
+	if ( typ == t ) [[likely]]
+		return true;
 	if ( model )
 		reportConvertToError( model, item, getTypeDebugStr( t ) );
-	return T();
+	return false;
+}
+
+inline bool NifValue::checkSetType( Type t, const BaseModel * model, const NifItem * item ) const
+{
+	if ( typ == t ) [[likely]]
+		return true;
+	if ( model )
+		reportConvertFromError( model, item, getTypeDebugStr( t ) );
+	return false;
+}
+
+template <typename T> inline T NifValue::getType( Type t, const BaseModel * model, const NifItem * item ) const
+{
+	if ( !checkGetType( t, model, item ) )
+		return T();
+	// WARNING: this throws an exception if the type of v is not the original type by which val.data was initialized;
+	// the programmer must make sure that T matches t.
+	if ( t >= tSizedString && t < tNone )
+		return *( static_cast<const T *>( val.data ) );
+	return *( reinterpret_cast<const T *>( &(val.u08) ) );
 }
 
 template <typename T> inline bool NifValue::setType( Type t, T v, const BaseModel * model, const NifItem * item )
 {
-	if ( typ == t ) {
-		*static_cast<T *>( val.data ) = v; // WARNING: this throws an exception if the type of v is not the original type by which val.data was initialized; the programmer must make sure that T matches t.
-		return true;
-	}
-
-	if ( model )
-		reportConvertFromError( model, item, getTypeDebugStr(t) );
-	return false;
+	if ( !checkSetType( t, model, item ) )
+		return false;
+	// WARNING: this throws an exception if the type of v is not the original type by which val.data was initialized;
+	// the programmer must make sure that T matches t.
+	if ( t >= tSizedString && t < tNone )
+		*( static_cast<T *>( val.data ) ) = v;
+	else
+		*( reinterpret_cast<T *>( &(val.u08) ) ) = v;
+	return true;
 }
 
 template <> inline bool NifValue::get( const BaseModel * model, const NifItem * item ) const
@@ -594,7 +627,7 @@ template <> inline Matrix4 NifValue::get( const BaseModel * model, const NifItem
 template <> inline Vector4 NifValue::get( const BaseModel * model, const NifItem * item ) const
 {
 	if ( typ >= tVector4 && typ <= tUDecVector4 )
-		return *static_cast<Vector4 *>(val.data);
+		return Vector4( val.f32v4 );
 
 	if ( model )
 		reportConvertToError( model, item, "a Vector4" );
@@ -610,8 +643,8 @@ template <> inline UDecVector4 NifValue::get( const BaseModel * model, const Nif
 }
 template <> inline Vector3 NifValue::get( const BaseModel * model, const NifItem * item ) const
 {
-	if ( typ >= tVector3 && typ <= tByteVector3 )
-		return *static_cast<Vector3 *>(val.data);
+	if ( typ >= tVector3 && typ <= tByteVector3 ) [[likely]]
+		return Vector3( val.f32v4 );
 
 	if ( model )
 		reportConvertToError( model, item, "a Vector3" );
@@ -640,7 +673,7 @@ template <> inline HalfVector2 NifValue::get( const BaseModel * model, const Nif
 template <> inline Vector2 NifValue::get( const BaseModel * model, const NifItem * item ) const
 {
 	if ( typ == tVector2 || typ == tHalfVector2 )
-		return *static_cast<Vector2 *>(val.data);
+		return Vector2( val.f32v4[0], val.f32v4[1] );
 
 	if ( model )
 		reportConvertToError( model, item, "a Vector2" );
@@ -661,7 +694,7 @@ template <> inline ByteColor4BGRA NifValue::get( const BaseModel * model, const 
 template <> inline Color4 NifValue::get( const BaseModel * model, const NifItem * item ) const
 {
 	if ( typ >= tColor4 && typ <= tByteColor4BGRA )
-		return *static_cast<Color4 *>(val.data);
+		return Color4( val.f32v4 );
 
 	if ( model )
 		reportConvertToError( model, item, "a Color4" );
@@ -701,7 +734,7 @@ template <> inline QByteArray * NifValue::get( const BaseModel * model, const Ni
 template <> inline Quat NifValue::get( const BaseModel * model, const NifItem * item ) const
 {
 	if ( isQuat() )
-		return *static_cast<Quat *>( val.data );
+		return Quat( val.f32v4[0], val.f32v4[1], val.f32v4[2], val.f32v4[3] );
 
 	if ( model )
 		reportConvertToError( model, item, "Quat" );
@@ -878,7 +911,7 @@ template <> inline bool NifValue::set( const QByteArray & x, const BaseModel * m
 template <> inline bool NifValue::set( const Quat & x, const BaseModel * model, const NifItem * item )
 {
 	if ( isQuat() ) {
-		*static_cast<Quat *>( val.data ) = x;
+		val.f32v4 = FloatVector4( x[0], x[1], x[2], x[3] );
 		return true;
 	}
 
@@ -889,7 +922,7 @@ template <> inline bool NifValue::set( const Quat & x, const BaseModel * model, 
 //! Set the data from a BSVertexDesc. Return true if successful.
 template <> inline bool NifValue::set( const BSVertexDesc & x, const BaseModel * model, const NifItem * item )
 {
-	return setCount(x.Value(), model, item );
+	return setCount( x.Value(), model, item );
 }
 
 #endif

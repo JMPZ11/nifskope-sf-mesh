@@ -31,39 +31,6 @@ enum GameMode : int
 	NUM_GAMES
 };
 
-enum BSVersion
-{
-	BSSTREAM_1 = 1,
-	BSSTREAM_3 = 3,
-	BSSTREAM_4 = 4,
-	BSSTREAM_5 = 5,
-	BSSTREAM_6 = 6,
-	BSSTREAM_7 = 7,
-	BSSTREAM_8 = 8,
-	BSSTREAM_9 = 9,
-	BSSTREAM_11 = 11,
-	BSSTREAM_14 = 14,
-	BSSTREAM_16 = 16,
-	BSSTREAM_21 = 21,
-	BSSTREAM_24 = 24,
-	BSSTREAM_25 = 25,
-	BSSTREAM_26 = 26,
-	BSSTREAM_27 = 27,
-	BSSTREAM_28 = 28,
-	BSSTREAM_30 = 30,
-	BSSTREAM_31 = 31,
-	BSSTREAM_32 = 32,
-	BSSTREAM_33 = 33,
-	BSSTREAM_34 = 34,
-	BSSTREAM_83 = 83,
-	BSSTREAM_100 = 100,
-	BSSTREAM_130 = 130,
-	BSSTREAM_155 = 155,
-	BSSTREAM_170 = 170,
-	BSSTREAM_172 = 172,
-	BSSTREAM_173 = 173
-};
-
 QString StringForMode(GameMode game);
 GameMode ModeForString(QString game);
 
@@ -113,6 +80,7 @@ public:
 	static GameResources * addNIFResourcePath( const NifModel * nif, const QString & dataPath );
 	static void removeNIFResourcePath( const NifModel * nif );
 	static inline GameResources & getNIFResources( const NifModel * nif );
+	static inline GameResources & getGameResources( const GameMode game );
 
 	//! Convert 'name' to lower case, replace backslashes with forward slashes, and make sure that the path
 	// begins with 'archive_folder' and ends with 'extension' (e.g. "textures" and ".dds").
@@ -146,25 +114,25 @@ public:
 	static QStringList get_archive_list( const QString & dataPath );
 	//! Find applicable data folders and archives at the game installation path
 	static QStringList find_paths( const GameMode game );
+	//! Find applicable data folders and archives under dataPath
+	static QStringList find_paths( const GameMode game, const QString & dataPath );
+	//! Remove invalid paths (if game is valid) and duplicates
+	static void remove_invalid_paths( QStringList & dataPaths, const GameMode game = NUM_GAMES );
 
 	//! Game installation path
 	static inline QString path( const QString & game );
-	//! Game data path
-	static inline QString data( const QString & game );
 	//! Game folders managed by the GameManager
 	static inline QStringList folders( const QString & game );
 	//! Game enabled status in the GameManager
 	static inline bool status( const QString & game );
-	//! Find applicable data folders and archives at the game installation path
-	static inline QStringList find_paths( const QString & game );
 
 	static inline void update_game( const GameMode game, const QString & path );
 	static inline void update_game( const QString & game, const QString & path );
 	static inline void update_folders( const GameMode game, const QStringList & list );
-	static inline void update_folders( const QString & game, const QStringList & list );
 	static inline void update_status( const GameMode game, bool status );
 	static inline void update_status( const QString & game, bool status );
 	static inline void update_other_games_fallback( bool status );
+	static inline void update_ignore_archive_errors( bool status );
 
 	static void init_settings( int & manager_version, QProgressDialog * dlg = nullptr );
 	static void update_settings( int & manager_version, QProgressDialog * dlg = nullptr );
@@ -188,6 +156,7 @@ private:
 	static QString	gamePaths[NUM_GAMES];
 	static bool	gameStatus[NUM_GAMES];
 	static bool	otherGamesFallback;
+	static bool ignoreArchiveErrors;
 };
 
 inline GameManager::GameResources & GameManager::getNIFResources( const NifModel * nif )
@@ -198,14 +167,16 @@ inline GameManager::GameResources & GameManager::getNIFResources( const NifModel
 	return archives[get_game(nif)];
 }
 
+inline GameManager::GameResources & GameManager::getGameResources( const GameMode game )
+{
+	if ( !( game > OTHER && game < NUM_GAMES ) ) [[unlikely]]
+		return archives[OTHER];
+	return archives[game];
+}
+
 QString GameManager::path( const QString & game )
 {
 	return path( ModeForString(game) );
-}
-
-QString GameManager::data( const QString & game )
-{
-	return data( ModeForString(game) );
 }
 
 QStringList GameManager::folders( const QString & game )
@@ -216,11 +187,6 @@ QStringList GameManager::folders( const QString & game )
 bool GameManager::status( const QString & game )
 {
 	return status( ModeForString(game) );
-}
-
-QStringList GameManager::find_paths( const QString & game )
-{
-	return find_paths( ModeForString(game) );
 }
 
 void GameManager::update_game( const GameMode game, const QString & path )
@@ -238,11 +204,6 @@ void GameManager::update_folders( const GameMode game, const QStringList & list 
 	insert_folders( game, list );
 }
 
-void GameManager::update_folders( const QString & game, const QStringList & list )
-{
-	update_folders( ModeForString(game), list );
-}
-
 void GameManager::update_status( const GameMode game, bool status )
 {
 	insert_status( game, status );
@@ -256,6 +217,11 @@ void GameManager::update_status( const QString & game, bool status )
 void GameManager::update_other_games_fallback( bool status )
 {
 	otherGamesFallback = status;
+}
+
+void GameManager::update_ignore_archive_errors( bool status )
+{
+	ignoreArchiveErrors = status;
 }
 
 } // end namespace Game

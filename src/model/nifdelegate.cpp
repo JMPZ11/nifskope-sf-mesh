@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "model/undocommands.h"
 #include "ui/widgets/valueedit.h"
 #include "ui/widgets/nifcheckboxlist.h"
+#include "qt5compat.hpp"
 
 #include <QItemDelegate> // Inherited
 #include <QComboBox>
@@ -85,7 +86,7 @@ public:
 				if ( spell && !spell->icon().isNull() ) {
 					// Spell Icon click
 					if ( event->type() == QEvent::MouseButtonRelease ) {
-						NifModel * nif = 0;
+						NifModel * nif = nullptr;
 						QModelIndex buddy = index;
 
 						if ( model->inherits( "NifModel" ) ) {
@@ -113,6 +114,34 @@ public:
 		case QEvent::MouseButtonDblClick:
 
 			if ( static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton ) {
+				if ( model->inherits( "NifModel" ) ) {
+					NifModel *	nif = static_cast< NifModel * >( model );
+					if ( nif->getBSVersion() >= 130 ) {
+						const NifItem *	item = nif->getItem( index );
+						for ( const NifItem * i = item; i; i = i->parent() ) {
+							if ( i->isAbstract() && i->hasName( "Material" ) ) {
+								if ( !nif->blockInherits( i, "BSShaderProperty" ) )
+									break;
+								const QString &	t = i->strType();
+								if ( !( t == "BSLayeredMaterial" || t.startsWith( QLatin1StringView( "BSMaterialData" ) ) ) )
+									continue;
+								if ( !item->hasName( "Is Modified" ) || !nif->get<bool>( item ) ) {
+									if ( !nif->get<bool>( i, "Is Modified" ) ) {
+										if ( !item->hasName( "Is Modified" ) )
+											nif->set<bool>( i, "Is Modified", true );
+										QMessageBox::warning( nullptr, "NifSkope warning", QString( "Changes to material data are not saved automatically, use the spell 'Material/Save Edited Material...'" ) );
+									}
+									break;
+								} else {
+									if ( QMessageBox::question( nullptr, "NifSkope warning", QString( "Revert changes to material data?" ) ) == QMessageBox::Yes )
+										break;
+								}
+								return true;
+							}
+						}
+					}
+				}
+
 				QVariant v = model->data( index, Qt::EditRole );
 
 				if ( v.canConvert<NifValue>() ) {
@@ -205,20 +234,6 @@ public:
 		if ( !index.isValid() )
 			return nullptr;
 
-		if ( index.model() && index.model()->inherits( "NifModel" ) ) {
-			const NifModel *	nif = NifModel::fromValidIndex( index );
-			if ( nif && nif->getBSVersion() >= 151 ) {
-				for ( const NifItem * i = nif->getItem( index ); i; i = i->parent() ) {
-					if ( i->isAbstract() ) {
-						if ( !nif->blockInherits( i, "BSShaderProperty" ) )
-							break;
-						QMessageBox::warning( nullptr, "NifSkope warning", QString( "Abstract material data cannot be edited" ) );
-						return nullptr;
-					}
-				}
-			}
-		}
-
 		QVariant v  = index.data( Qt::EditRole );
 		QWidget * w = 0;
 
@@ -239,7 +254,7 @@ public:
 
 			if ( !w && ValueEdit::canEdit( nv.type() ) )
 				w = new ValueEdit( parent );
-		} else if ( v.typeId() == QMetaType::QString ) {
+		} else if ( getQVariantMetaType( v ) == QMetaType::QString ) {
 			QLineEdit * le = new QLineEdit( parent );
 			le->setFrame( false );
 			w = le;

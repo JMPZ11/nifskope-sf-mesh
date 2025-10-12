@@ -32,7 +32,7 @@ public:
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( index.isValid() && nif->getBlockIndex( index, "NiGeometryData" ).isValid() ) {
-			nif->set<int>( index, "Unknown ID", 0 );
+			nif->set<int>( index, "Group ID", 0 );
 		} else {
 			// set all blocks
 			for ( int n = 0; n < nif->getBlockCount(); n++ ) {

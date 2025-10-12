@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gl/glnode.h" // Inherited
 #include "gl/gltools.h"
+#include "gl/glcontext.hpp"
 
 #include <QPersistentModelIndex>
 #include <QVector>
@@ -49,6 +50,7 @@ class Shape : public Node
 	friend class MorphController;
 	friend class UVController;
 	friend class Renderer;
+	friend class GltfStore;
 
 public:
 	Shape( Scene * s, const QModelIndex & b );
@@ -60,8 +62,24 @@ public:
 
 	// end IControllable
 
-	virtual void drawVerts() const {};
-	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); };
+	void updateBoneTransforms();
+	void convertTriangleStrip( const void * indicesData, size_t numIndices );
+	void removeInvalidIndices();
+	void drawVerts( float pointSize, int vertexSelected ) const;
+	// btnMask & 1 = draw bitangents, btnMask & 2 = draw tangents, btnMask & 4 = draw normals
+	void drawNormals( int btnMask = 4, int vertexSelected = -1, float lineLength = 0.25f ) const;
+	void drawWireframe( FloatVector4 color ) const;
+	// i = first triangle, n = number of triangles to draw
+	void drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const;
+	void drawWeights( int vertexSelected ) const;
+	void drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const;
+	void drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const;
+	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
+	bool bindShape() const;
+
+	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); }
+	virtual QModelIndex triangleAt( int ) const { return QModelIndex(); }
+	virtual void updateLodLevel() { lodTriangleCount = triangles.size(); }
 
 protected:
 	int shapeNumber;
@@ -88,8 +106,6 @@ protected:
 
 	void resetSkinning();
 
-	int numVerts = 0;
-
 	//! Vertices
 	QVector<Vector3> verts;
 	//! Normals
@@ -104,39 +120,36 @@ protected:
 	QVector<TexCoords> coords;
 	//! Triangles
 	QVector<Triangle> triangles;
-	//! Strip points
-	QVector<TriStrip> tristrips;
-	//! Sorted triangles
-	QVector<Triangle> sortedTriangles;
+	//! Number of triangles to render at the current level of detail
+	qsizetype lodTriangleCount = 0;
+	//! Offsets and lengths of converted triangle strips in triangles
+	QVector< std::pair<qsizetype, qsizetype> > tristripOffsets;
+
+	bool isLOD = false;
 
 	void resetVertexData();
 
-	//! Is the transform rigid or weighted?
-	bool transformRigid = true;
-	//! Transformed vertices
-	QVector<Vector3> transVerts;
-	//! Transformed normals
-	QVector<Vector3> transNorms;
-	//! Transformed colors (alpha blended)
-	QVector<Color4> transColors;
-	//! Transformed tangents
-	QVector<Vector3> transTangents;
-	//! Transformed bitangents
-	QVector<Vector3> transBitangents;
-
 	//! Toggle for skinning
 	bool isSkinned = false;
+	//! Is the transform rigid or weighted?
+	bool transformRigid = true;
+
+	//! Bone transforms as 4x3 matrices in row-major order
+	std::vector<FloatVector4> boneTransforms;
+	//! Bone weights 0 to 3 (integer part = bone index, fractional part = weight * 65535.0 / 65536.0), terminated by 0.0
+	std::vector<FloatVector4> boneWeights0;
+	//! Bone weights 4 to 7 (may be empty if the maximum number of weights per vertex is 4 or less)
+	std::vector<FloatVector4> boneWeights1;
 
 	int skeletonRoot = 0;
-	Transform skeletonTrans;
 	QVector<int> bones;
-	QVector<BoneWeights> weights;
+	QVector<BoneData> boneData;
 	QVector<SkinPartition> partitions;
 
 	void resetSkeletonData();
 
-	//! Holds the name of the shader, or "" if no shader
-	QString shader = "";
+	//! Holds the shader program used by this shape
+	NifSkopeOpenGLContext::Program * shader = nullptr;
 
 	//! Shader property
 	BSShaderLightingProperty * bssp = nullptr;
@@ -161,10 +174,16 @@ protected:
 
 	void updateShader();
 
-	mutable BoundSphere boundSphere;
 	mutable bool needUpdateBounds = false;
+	mutable BoundSphere boundSphere;
 
-	bool isLOD = false;
+	mutable NifSkopeOpenGLContext::ShapeDataHash	dataHash;
+
+public:
+	inline void clearHash()
+	{
+		dataHash.attrMask = 0;
+	}
 };
 
 #endif

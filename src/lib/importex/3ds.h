@@ -4,7 +4,11 @@
 #include <QFile>
 #include <QList>
 #include <QMultiMap>
-#include <QMultiMapIterator>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#  include <QMapIterator>
+#else
+#  include <QMultiMapIterator>
+#endif
 #include <QString>
 
 // Chunk Type definitions
@@ -492,7 +496,11 @@ private:
 			f->seek( q + k.l );
 		}
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+		QMapIterator<ChunkType, Chunk *> tempIter( temp );
+#else
 		QMultiMapIterator<ChunkType, Chunk *> tempIter( temp );
+#endif
 
 		while ( tempIter.hasNext() ) {
 			tempIter.next();

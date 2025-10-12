@@ -45,6 +45,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 class NifModel;
+class NifSkopeOpenGLContext;
 class TexCache;
 
 class QActionGroup;
@@ -137,8 +138,13 @@ public slots:
 	void scaleSelection();
 	//! Rotate the selection
 	void rotateSelection();
+	void rotate_Selection( float r );
 	//! Export Starfield .mesh file
 	void exportSFMesh();
+	//! Copy selected vertices to the clipboard in text format
+	void copyTexCoord();
+	//! Paste data from clipboard
+	void pasteTexCoord();
 
 	void updateSettings();
 	void update_Blend( [[maybe_unused]] bool tmp ) { update(); }
@@ -165,37 +171,40 @@ private:
 
 	QRect selectRect;
 	QList<QPoint> selectPoly;
-	int selectCycle;
-
-	//! A UV face
-	struct face
-	{
-		int index = -1;
-
-		int tc[3] = {0};
-
-		bool contains( int v ) { return ( tc[0] == v || tc[1] == v || tc[2] == v ); }
-
-		face() {}
-		face( int idx, int tc1, int tc2, int tc3 ) : index( idx ) { tc[0] = tc1; tc[1] = tc2; tc[2] = tc3; }
-	};
+	unsigned int selectCycle = 0;
 
 	QVector<Vector2> texcoords;
-	QVector<face> faces;
+	QVector<Triangle> faces;
 	QMultiMap<int, int> texcoords2faces;
+	QVector<Vector3> vertexPosBuf;
+	QVector<FloatVector4> vertexColorBuf;
 
 	QSize sHint;
 
+	struct TextureInfo {
+		QString	name;
+		int	clampMode;	// 0 = wrap, 1 = clamp, 2 = mirror, 3 = border
+		int	colorMode;	// 0 = linear, 1 = sRGB, 2 = BC5_UNORM, 3 = BC5_SNORM
+		FloatVector4	scaleAndOffset;
+		TextureInfo()
+			: clampMode( 0 ), colorMode( 0 ), scaleAndOffset( 1.0f, 1.0f, 0.0f, 0.0f )
+		{
+		}
+		TextureInfo( const NifModel * nif, const QString & texturePath );
+		TextureInfo( const NifModel * nif, const std::string_view * texturePath, const void * uvStream );
+		~TextureInfo()
+		{
+		}
+	};
+	NifSkopeOpenGLContext * cx;
 	TexCache * textures;
-	QStringList texfiles;
+	QVector<TextureInfo>	texfiles;
 	QModelIndex texsource;
-	QString texfilePath;
 
 	void drawTexCoords();
 
-	void setupViewport();
 	void updateViewRect( int width, int height );
-	bool bindTexture( const QString & filename );
+	bool bindTexture( const TextureInfo & t );
 	bool bindTexture( const QModelIndex & iSource );
 
 	QVector<int> indices( const QPoint & p ) const;
@@ -216,34 +225,35 @@ private:
 	QMenu * menuTexSelect;
 	//! Group that holds texture slot selection actions
 	QActionGroup * texSlotGroup;
-	//! List of valid textures
-	QStringList validTexs;
+	//! List of valid texture slots in texnames
+	QVector<int> validTexs;
 
 	//! Names of texture slots
 	static QStringList texnames;
 
-	//! Texture slot currently being operated on
-	int currentTexSlot = 0;
+	//! Texture file currently being operated on
+	int currentTexFile = 0;
 	//! Read texcoords from the nif
 	bool setTexCoords( const QVector<Triangle> * triangles = nullptr );
 	//! Coordinate set currently in use
 	int currentCoordSet = 0;
 
 	//! Submenu for coordinate set selection
-	QMenu * coordSetSelect;
+	QMenu * coordSetSelect = nullptr;
 	//! Group that holds coordinate set actions
 	QActionGroup * coordSetGroup;
 	//! Action to trigger duplication of current coordinate set
 	QAction * aDuplicateCoords;
 
-	GLdouble glViewRect[4];
-
-	QPointF pos;
+	// scale and offset to map viewport coordinates (0.0,0.0 = top left, 1.0,1.0 = bottom right) to texture coordinates
+	FloatVector4 viewScaleAndOffset;
+	// texture coordinate offset, the texture is centered with pos = 0.0,0.0
+	double pos[2];
 
 	QPoint mousePos;
 	QHash<int, bool> kbd;
 
-	GLdouble zoom;
+	double zoom;
 
 	QUndoStack * undoStack;
 
@@ -258,9 +268,9 @@ private:
 
 	struct Settings
 	{
-		QColor background;
-		QColor highlight;
-		QColor wireframe;
+		Color4 background;
+		Color4 highlight;
+		Color4 wireframe;
 	} cfg;
 };
 

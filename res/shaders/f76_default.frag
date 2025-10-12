@@ -1,5 +1,6 @@
-#version 120
-#extension GL_ARB_shader_texture_lod : require
+#version 410 core
+
+#include "uniforms.glsl"
 
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
@@ -11,7 +12,6 @@ uniform sampler2D EnvironmentMap;	// environment BRDF LUT
 uniform samplerCube CubeMap;	// pre-filtered cube maps (specular, diffuse)
 uniform samplerCube CubeMap2;
 
-uniform vec4 solidColor;
 uniform vec3 specColor;
 uniform bool hasSpecular;
 uniform float specStrength;
@@ -23,6 +23,8 @@ uniform vec3 glowColor;
 uniform float glowMult;
 
 uniform float alpha;
+uniform int alphaFlags;			// bits 0 to 2: alpha test mode, bit 3: alpha blending enabled
+uniform float alphaThreshold;
 
 uniform vec3 tintColor;
 
@@ -37,25 +39,22 @@ uniform bool hasCubeMap;
 uniform bool hasSpecularMap;
 uniform bool greyscaleColor;
 
-uniform float subsurfaceRolloff;
-uniform float rimPower;
-uniform float backlightPower;
+// RGB = subsurface tint color, A = transmissive scale (> 0: translucency enabled)
+uniform vec4 translucencyColorAndScale;
 
 uniform float envReflection;
 
-uniform bool isWireframe;
-uniform bool isSkinned;
-uniform mat4 worldMatrix;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec2 texCoord;
 
-varying vec4 A;
-varying vec4 C;
-varying vec4 D;
+in vec4 C;
 
-varying mat3 btnMatrix;
-varying mat4 reflMatrix;
+in mat3 btnMatrix;
+flat in mat3 reflMatrix;
+
+out vec4 fragColor;
 
 vec3 ViewDir_norm = normalize( ViewDir );
 mat3 btnMatrix_norm = mat3( normalize( btnMatrix[0] ), normalize( btnMatrix[1] ), normalize( btnMatrix[2] ) );
@@ -66,19 +65,18 @@ mat3 btnMatrix_norm = mat3( normalize( btnMatrix[0] ), normalize( btnMatrix[1] )
 
 #define FLT_EPSILON 1.192092896e-07F // smallest such that 1.0 + FLT_EPSILON != 1.0
 
-vec3 LightingFuncGGX_REF(float NdotL, float LdotR, float NdotV, float roughness)
+vec3 LightingFuncGGX_REF(float NdotL, float NdotH, float NdotV, float roughness)
 {
 	float alpha = roughness * roughness;
 	// D (GGX normal distribution)
 	float alphaSqr = alpha * alpha;
-	// denom = NdotH * NdotH * (alphaSqr - 1.0) + 1.0,
-	// LdotR = NdotH * NdotH * 2.0 - 1.0
-	float denom = LdotR * alphaSqr + alphaSqr + (1.0 - LdotR);
-	float D = alphaSqr / (denom * denom);
+	float denom = NdotH * NdotH;
+	denom = ( denom * alphaSqr ) + ( 1.0 - denom );
+	float D = alphaSqr / ( denom * denom * 4.0 );
 	// no pi because BRDF -> lighting
-	// G (remapped hotness, see Unreal Shading)
-	float	k = (alpha + 2 * roughness + 1) / 8.0;
-	float	G = NdotL / (mix(NdotL, 1, k) * mix(NdotV, 1, k));
+	// G (roughness is not remapped)
+	float	k = alpha * 0.5;
+	float	G = NdotL / (mix(NdotL, 1.0, k) * mix(NdotV, 1.0, k));
 
 	return vec3(D * G);
 }
@@ -103,21 +101,30 @@ float srgbCompress(float x)
 	return (((y * -0.18732371 + 0.59302883) * y - 0.79095451) * y + 1.42598062) * y - 0.04110602;
 }
 
-void main(void)
+void main()
 {
-	if ( isWireframe ) {
-		gl_FragColor = solidColor;
-		return;
-	}
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
+	vec2 offset = texCoord.st * uvScale + uvOffset;
 
-	vec4	baseMap = texture2D(BaseMap, offset);
-	vec4	normalMap = texture2D(NormalMap, offset);
+	vec4	baseMap = texture(BaseMap, offset);
+
+	vec4 color = vec4( baseMap.rgb, 1.0 );
+
+	if ( alphaFlags > 0 ) {
+		float	a = C.a * baseMap.a * alpha;
+		// 0: always, 1: <, 2: ==, 3: <=, 4: >, 5: !=, 6: >=, 7: never
+		int	m = ( a < alphaThreshold ? 0x2B2B : ( a > alphaThreshold ? 0x7171 : 0x4D4D ) );
+		if ( ( m & ( 1 << alphaFlags ) ) == 0 )
+			discard;
+		if ( ( alphaFlags & 8 ) != 0 )
+			color.a = a;
+	}
+
+	vec4	normalMap = texture(NormalMap, offset);
 	vec4	lightingMap = vec4(0.25, 1.0, 0.0, 1.0);
 	if ( hasSpecularMap )
-		lightingMap = texture2D(LightingMap, offset);
-	vec4	reflMap = texture2D(ReflMap, offset);
-	vec4	glowMap = texture2D(GlowMap, offset);
+		lightingMap = texture(LightingMap, offset);
+	vec4	reflMap = texture(ReflMap, offset);
+	vec4	glowMap = texture(GlowMap, offset);
 
 	vec3 normal = normalMap.rgb;
 	// Calculate missing blue channel
@@ -129,21 +136,21 @@ void main(void)
 	vec3 L = normalize(LightDir);
 	vec3 V = ViewDir_norm;
 	vec3 R = reflect(-V, normal);
+	vec3 H = normalize(L + V);
 
 	float NdotL = dot(normal, L);
 	float NdotL0 = max(NdotL, 0.0);
-	float LdotR = dot(L, R);
+	float NdotH = clamp(dot(normal, H), 0.0, 1.0);
 	float NdotV = abs(dot(normal, V));
-	float LdotV = dot(L, V);
+	float LdotH = dot(L, H);
 
-	vec3	reflectedWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(R, 0.0))) * vec3(1.0, 1.0, -1.0);
-	vec3	normalWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(normal, 0.0))) * vec3(1.0, 1.0, -1.0);
+	vec3	reflectedWS = reflMatrix * R;
+	vec3	normalWS = reflMatrix * normal;
 
-	vec4 color;
 	vec3 albedo = baseMap.rgb * C.rgb;
 	if ( greyscaleColor ) {
 		// work around incorrect format used by Fallout 76 grayscale textures
-		albedo = texture2DLod(GreyscaleMap, vec2(srgbCompress(baseMap.g), paletteScale * C.r), 0.0).rgb;
+		albedo = textureLod(GreyscaleMap, vec2(srgbCompress(baseMap.g), paletteScale * C.r), 0.0).rgb;
 	}
 
 	// Emissive
@@ -156,36 +163,35 @@ void main(void)
 	} else if ( hasGlowMap ) {
 		emissive += glowMap.rgb * glowMult;
 	}
-	emissive *= lightingMap.a;
+	emissive *= lightingMap.a * glowScale;
 
 	vec3	f0 = max(reflMap.rgb, vec3(0.02));
 
 	// Specular
 	float	roughness = 1.0 - lightingMap.r;
-	vec3	spec = LightingFuncGGX_REF(NdotL0, LdotR, NdotV, max(roughness, 0.02)) * D.rgb;
+	vec3	spec = LightingFuncGGX_REF(NdotL0, NdotH, NdotV, max(roughness, 0.02)) * lightSourceDiffuse[0].rgb;
 
 	// Diffuse
 	vec3	diffuse = vec3(NdotL0);
-	float	LdotH = sqrt(max(LdotV * 0.5 + 0.5, 0.0));
 	// Fresnel
-	vec2	fDirect = texture2DLod(EnvironmentMap, vec2(LdotH, NdotL0), 0.0).ba;
+	vec2	fDirect = textureLod(EnvironmentMap, vec2(LdotH, NdotL0), 0.0).ba;
 	spec *= mix(f0, vec3(1.0), fDirect.x);
-	vec4	envLUT = texture2DLod(EnvironmentMap, vec2(NdotV, roughness), 0.0);
+	vec4	envLUT = textureLod(EnvironmentMap, vec2(NdotV, roughness), 0.0);
 	vec2	fDiff = vec2(fDirect.y, envLUT.b);
 	fDiff = fDiff * (LdotH * LdotH * roughness * 2.0 - 0.5) + 1.0;
 	diffuse *= (vec3(1.0) - f0) * fDiff.x * fDiff.y;
 
 	// Environment
 	vec3	refl = vec3(0.0);
-	vec3	ambient = A.rgb;
+	vec3	ambient = lightSourceAmbient.rgb;
 	if ( hasCubeMap ) {
 		float	m = roughness * (roughness * -4.0 + 10.0);
-		refl = textureCubeLod(CubeMap, reflectedWS, max(m, 0.0)).rgb;
+		refl = textureLod(CubeMap, reflectedWS, max(m, 0.0)).rgb;
 		refl *= envReflection * specStrength;
 		refl *= ambient;
-		ambient *= textureCubeLod(CubeMap2, normalWS, 0.0).rgb;
+		ambient *= textureLod(CubeMap2, normalWS, 0.0).rgb;
 	} else {
-		ambient /= 15.0;
+		ambient *= 0.06666667;
 		refl = ambient;
 	}
 	vec3	f = mix(f0, vec3(1.0), envLUT.r);
@@ -199,25 +205,19 @@ void main(void)
 		ambient *= (vec3(1.0) - f0) * fDiffEnv;
 	}
 	float	ao = lightingMap.g;
-	refl *= f * envLUT.g * ao;
-
-	//vec3 soft = vec3(0.0);
-	//float wrap = NdotL;
-	//if ( hasSoftlight || subsurfaceRolloff > 0.0 ) {
-	//	wrap = (wrap + subsurfaceRolloff) / (1.0 + subsurfaceRolloff);
-	//	soft = albedo * max(0.0, wrap) * smoothstep(1.0, 0.0, sqrt(NdotL0));
-	//
-	//	diffuse += soft;
-	//}
+	float	specOcc = max( ( ao - 1.0 ) * ( ( NdotV * 1.125 - 2.625 ) * NdotV + 2.5 ) + 1.0, 0.0 );
+	// apply AO to all diffuse lighting, and specular occlusion to indirect specular only
+	albedo *= ao;
+	refl *= f * envLUT.g * specOcc;
 
 	//if ( hasTintColor ) {
 	//	albedo *= tintColor;
 	//}
 
 	// Diffuse
-	color.rgb = diffuse * albedo * D.rgb;
+	color.rgb = diffuse * albedo * lightSourceDiffuse[0].rgb;
 	// Ambient
-	color.rgb += ambient * albedo * ao;
+	color.rgb += ambient * albedo;
 	// Specular
 	color.rgb += spec;
 	color.rgb += refl;
@@ -225,9 +225,18 @@ void main(void)
 	// Emissive
 	color.rgb += emissive;
 
-	color.rgb = tonemap(color.rgb * D.a, A.a);
-	color.a = C.a * baseMap.a;
+	// Transmissive
+	if ( translucencyColorAndScale.a > 0.0 ) {
+		vec3	transmissive = albedo * translucencyColorAndScale.rgb * ( vec3(1.0) - f );
+		transmissive *= translucencyColorAndScale.a * lightingMap.b;
+		color.rgb += transmissive * lightSourceDiffuse[0].rgb * max( -NdotL, 0.0 );
+		if ( hasCubeMap )
+			color.rgb += textureLod( CubeMap2, -normalWS, 0.0 ).rgb * transmissive * lightSourceAmbient.rgb;
+		else
+			color.rgb += transmissive * lightSourceAmbient.rgb * 0.06666667;
+	}
 
-	gl_FragColor = color;
-	gl_FragColor.a *= alpha;
+	color.rgb = tonemap(color.rgb * brightnessScale, toneMapScale);
+
+	fragColor = color;
 }

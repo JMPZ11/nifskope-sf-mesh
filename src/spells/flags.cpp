@@ -114,11 +114,35 @@ public:
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override
 	{
+		if ( nif->getBSVersion() >= 170 && index.isValid() ) {
+			const NifItem *	i = nif->getItem( index );
+			for ( const NifItem * j = i; j; j = j->parent() ) {
+				if ( j->isAbstract() && j->hasStrType( "BSLayeredMaterial" ) ) {
+					return ( i->hasName( "Layer Enable Mask" ) || i->hasName( "Blender Enable Mask" )
+							|| i->hasName( "Enable Mask" ) || i->hasName( "Write Mask" ) );
+				}
+			}
+		}
 		return queryType( nif, getFlagIndex( nif, index ) ) != None;
 	}
 
+	void sfMaterialFlags( NifModel * nif, const QModelIndex & index, NifItem * i );
+
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override
 	{
+		if ( nif->getBSVersion() >= 170 && index.isValid() ) {
+			NifItem *	i = nif->getItem( index );
+			for ( const NifItem * j = i; j; j = j->parent() ) {
+				if ( j->isAbstract() && j->hasStrType( "BSLayeredMaterial" ) ) {
+					if ( i->hasName( "Layer Enable Mask" ) || i->hasName( "Blender Enable Mask" )
+						|| i->hasName( "Enable Mask" ) || i->hasName( "Write Mask" ) ) {
+						sfMaterialFlags( nif, index, i );
+					}
+					return index;
+				}
+			}
+		}
+
 		QModelIndex iFlags = getFlagIndex( nif, index );
 
 		switch ( queryType( nif, iFlags ) ) {
@@ -959,6 +983,77 @@ public:
 	}
 };
 
+void spEditFlags::sfMaterialFlags( NifModel * nif, const QModelIndex & index, NifItem * i )
+{
+	static const char *	flagNames_layerEnableMask[6] = {
+		"Enable Layer 1", "Enable Layer 2", "Enable Layer 3", "Enable Layer 4", "Enable Layer 5", "Enable Layer 6"
+	};
+	static const char *	flagNames_blenderEnableMask[5] = {
+		"Enable Blender 1", "Enable Blender 2", "Enable Blender 3", "Enable Blender 4", "Enable Blender 5"
+	};
+	static const char *	flagNames_textureEnableMask[21] = {
+		"Enable Albedo", "Enable Normal Map", "Enable Opacity", "Enable Roughness", "Enable Metalness",
+		"Enable Ambient Occlusion", "Enable Height Map", "Enable Emissive Map", "Enable Transmissive Map",
+		"Enable Curvature Map", "Enable Mask", "Enable Texture 11", "Enable Z Offset Map", "Enable Texture 13",
+		"Enable Overlay Color", "Enable Overlay Roughness", "Enable Overlay Metalness", "Enable Texture 17",
+		"Enable Texture 18", "Enable Texture 19", "Enable ID Texture"
+	};
+	static const char *	flagNames_decalWriteMask[24] = {
+		"Output Albedo R", "Output Albedo G", "Output Albedo B", "Unused", "Output Normal X", "Output Normal Y",
+		"Unused", "Unused", "Output Ambient Occlusion", "Output Roughness", "Output Metalness", "Unused",
+		"Unused", "Unused", "Unused", "Unused", "Unused", "Unused", "Unused", "Unused",
+		"Output Emissive R", "Output Emissive G", "Output Emissive B", "Output Emissive A"
+	};
+
+	quint32 flags = nif->get<int>( index );
+
+	QDialog dlg;
+	QVBoxLayout * vbox = new QVBoxLayout( &dlg );
+
+	QStringList flagNames;
+	const char * const *	flagNamesData = flagNames_layerEnableMask;
+	size_t	flagNamesSize = sizeof( flagNames_layerEnableMask ) / sizeof( char * );
+	if ( i->hasName( "Blender Enable Mask" ) ) {
+		flagNamesData = flagNames_blenderEnableMask;
+		flagNamesSize = sizeof( flagNames_blenderEnableMask ) / sizeof( char * );
+	} else if ( i->hasName( "Enable Mask" ) ) {
+		flagNamesData = flagNames_textureEnableMask;
+		flagNamesSize = sizeof( flagNames_textureEnableMask ) / sizeof( char * );
+	} else if ( i->hasName( "Write Mask" ) ) {
+		flagNamesData = flagNames_decalWriteMask;
+		flagNamesSize = sizeof( flagNames_decalWriteMask ) / sizeof( char * );
+	}
+	for ( size_t i = 0; i < flagNamesSize; i++ )
+		flagNames.append( QString::fromLatin1( flagNamesData[i] ) );
+
+	QList<QCheckBox *> chkBoxes;
+	int x = 0;
+	for ( const QString& flagName : flagNames ) {
+		chkBoxes << dlgCheck( vbox, QString( "%1: %2 (%3)" ).arg( Spell::tr( "Bit %1" ).arg( x ) )
+							  .arg( flagName ).arg( (uint)(1 << x) ) );
+		chkBoxes.last()->setChecked( flags & (1 << x) );
+		x++;
+	}
+
+	dlgButtons( &dlg, vbox );
+
+	if ( dlg.exec() == QDialog::Accepted ) {
+		x = 0;
+		for ( QCheckBox * chk : chkBoxes ) {
+			flags = (flags & (~(1 << x))) | (chk->isChecked() ? 1 << x : 0);
+			x++;
+		}
+		for ( i = nif->getItem( index ); i; i = i->parent() ) {
+			if ( i->hasStrType( "BSLayeredMaterial" ) && !nif->get<bool>( i, "Is Modified" ) ) {
+				nif->set<bool>( i, "Is Modified", true );
+				QMessageBox::warning( nullptr, "NifSkope warning", QString( "Changes to material data are not saved automatically, use the spell 'Material/Save Edited Material...'" ) );
+				break;
+			}
+		}
+		nif->set<int>( index, flags );
+	}
+}
+
 REGISTER_SPELL( spEditFlags )
 
 
@@ -973,6 +1068,9 @@ public:
 	{
 		return nif->blockInherits( index.parent(), "BSTriShape" ) && nif->itemName( index ) == "Vertex Desc";
 	}
+
+	static void getVertexPositions( QVector<Vector4> & verts, const NifModel * nif, const QModelIndex & iShape );
+	static void setVertexPositions( const QVector<Vector4> & verts, NifModel * nif, const QModelIndex & iShape );
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
@@ -1010,9 +1108,12 @@ public:
 
 		dlgButtons( &dlg, vbox );
 
+		bool fullPrecisionChanged = false;
 		if ( dlg.exec() == QDialog::Accepted ) {
 			x = 0;
 			for ( QCheckBox * chk : chkBoxes ) {
+				if ( x == 10 )
+					fullPrecisionChanged = ( chk->isChecked() != desc.HasFlag( VertexAttribute(x) ) );
 				if ( chk->isChecked() )
 					desc.SetFlag( VertexAttribute(x) );
 				else
@@ -1025,22 +1126,88 @@ public:
 			if ( dynamic )
 				desc.MakeDynamic();
 
+			QModelIndex iBlock = nif->getBlockIndex( index );
+
+			QVector<Vector4> verts;
+			if ( fullPrecisionChanged )
+				getVertexPositions( verts, nif, iBlock );
+
 			if ( nif->set<BSVertexDesc>( index, desc ) ) {
-				auto iDataSize = nif->getIndex( index.parent(), "Data Size" );
-				auto numVerts = nif->get<uint>( index.parent(), "Num Vertices" );
-				auto numTris = nif->get<uint>( index.parent(), "Num Triangles" );
+				auto iDataSize = nif->getIndex( iBlock, "Data Size" );
+				auto numVerts = nif->get<uint>( iBlock, "Num Vertices" );
+				auto numTris = nif->get<uint>( iBlock, "Num Triangles" );
 
 				if ( iDataSize.isValid() )
 					nif->set<uint>( iDataSize, desc.GetVertexSize() * numVerts + 6 * numTris );
 
-				nif->updateArraySize( index.parent(), "Vertex Data" );
+				if ( auto iData = nif->getIndex( iBlock, "Vertex Data" ); iData.isValid() )
+					nif->updateArraySize( iData );
+
+				if ( fullPrecisionChanged )
+					setVertexPositions( verts, nif, iBlock );
 			}
 
+			if ( ( desc & VertexFlags::VF_SKINNED ) && nif->getBSVersion() == 100 ) {
+				// Skinned SSE
+				auto skinID = nif->getLink( nif->getIndex( iBlock, "Skin" ) );
+				auto partID = nif->getLink( nif->getBlockIndex( skinID, "NiSkinInstance" ), "Skin Partition" );
+				if ( auto iPartBlock = nif->getBlockIndex( partID, "NiSkinPartition" ); iPartBlock.isValid() ) {
+					if ( fullPrecisionChanged )
+						getVertexPositions( verts, nif, iPartBlock );
+					nif->set<BSVertexDesc>( iPartBlock, "Vertex Desc", desc );
+					quint32 numVerts = 0;
+					if ( auto iData = nif->getIndex( iPartBlock, "Vertex Data" ); iData.isValid() )
+						numVerts = quint32( nif->rowCount( iData ) );
+					nif->set<quint32>( iPartBlock, "Vertex Size", quint32( desc.GetVertexSize() ) );
+					nif->set<quint32>( iPartBlock, "Data Size", quint32( desc.GetVertexSize() ) * numVerts );
+					if ( fullPrecisionChanged )
+						setVertexPositions( verts, nif, iPartBlock );
+				}
+			}
 		}
 
 		return index;
 	}
 
 };
+
+void spEditVertexDesc::getVertexPositions( QVector<Vector4> & verts, const NifModel * nif, const QModelIndex & iShape )
+{
+	if ( auto iData = nif->getIndex( iShape, "Vertex Data" ); iData.isValid() ) {
+		int n = nif->rowCount( iData );
+		verts.resize( n );
+		for ( int i = 0; i < n; i++ ) {
+			if ( auto iVertex = nif->getItem( iData, i, false ); iVertex ) {
+				Vector4 v = Vector4( nif->get<Vector3>( iVertex, "Vertex" ) );
+				v[3] = nif->get<float>( iVertex, "Bitangent X" );
+				verts[i] = v;
+			}
+		}
+	}
+}
+
+void spEditVertexDesc::setVertexPositions( const QVector<Vector4> & verts, NifModel * nif, const QModelIndex & iShape )
+{
+	if ( auto iData = nif->getIndex( iShape, "Vertex Data" ); iData.isValid() ) {
+		nif->setState( BaseModel::Processing );
+		int n = nif->rowCount( iData );
+		for ( int i = 0; i < n; i++ ) {
+			if ( auto iVertex = nif->getItem( iData, i, false ); iVertex ) {
+				Vector4 v;
+				if ( i < verts.size() )
+					v = verts.at( i );
+				if ( auto iVertexPosition = nif->getItem( iVertex, "Vertex" ); iVertexPosition ) {
+					if ( iVertexPosition->valueType() == NifValue::tVector3 )
+						nif->set<Vector3>( iVertexPosition, Vector3(v) );
+					else
+						nif->set<HalfVector3>( iVertexPosition, HalfVector3( Vector3(v) ) );
+				}
+				if ( auto iBitangentX = nif->getItem( iVertex, "Bitangent X" ); iBitangentX )
+					nif->set<float>( iBitangentX, v[3] );
+			}
+		}
+		nif->restoreState();
+	}
+}
 
 REGISTER_SPELL( spEditVertexDesc )

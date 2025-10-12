@@ -45,8 +45,17 @@ by Kaspar Fischer, Bernd Gärtner and Martin Kutz, the code is available under t
 [Apache 2 License](http://www.apache.org/licenses/LICENSE-2.0.html).
 
 Starfield meshlet and LOD generation are based on code from [meshoptimizer](https://github.com/zeux/meshoptimizer)
-(MIT License, Copyright (c) 2016-2024 Arseny Kapoulkine) and [DirectXMesh](https://github.com/microsoft/DirectXMesh)
+(MIT License, Copyright (c) 2016-2025 Arseny Kapoulkine) and [DirectXMesh](https://github.com/microsoft/DirectXMesh)
 (MIT License, Copyright (c) by Microsoft Corporation).
+
+[Tiny glTF](https://github.com/syoyo/tinygltf) is copyright (c) 2015-present by
+Syoyo Fujita, Aurélien Chatelain and many contributors under the MIT License.
+
+[JSON for Modern C++](https://github.com/nlohmann/json) library is copyright (c)
+2013-2025 by Niels Lohmann, MIT License.
+
+[xxHash](https://github.com/Cyan4973/xxHash) is copyright (c) 2012-2023 by
+Yann Collet, BSD 2-Clause License.
 
 NOTICE
 

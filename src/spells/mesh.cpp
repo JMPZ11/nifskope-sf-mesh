@@ -1,6 +1,5 @@
 #include "mesh.h"
 #include "gl/gltools.h"
-#include "qtcompat.h"
 
 #include <QDialog>
 #include <QGridLayout>
@@ -8,10 +7,11 @@
 #include <cfloat>
 #include <unordered_set>
 
-#include "libfo76utils/src/fp32vec4.hpp"
+#include "fp32vec4.hpp"
 #include "io/MeshFile.h"
-#include "meshoptimizer/meshoptimizer.h"
+#include "meshoptimizer/src/meshoptimizer.h"
 #include "meshlet.h"
+#include "ui/widgets/filebrowser.h"
 
 // Brief description is deliberately not autolinked to class Spell
 /*! \file mesh.cpp
@@ -46,11 +46,13 @@ static QModelIndex getTriShapeData( const NifModel * nif, const QModelIndex & in
 {
 	QModelIndex iData = nif->getBlockIndex( index );
 
+	if ( nif->isNiBlock( iData, "NiTriShapeData" )
+		|| ( nif->blockInherits( iData, "BSTriShape" ) && nif->getIndex( iData, "Triangles" ).isValid() ) ) {
+		return iData;
+	}
+
 	if ( nif->isNiBlock( index, { "NiTriShape", "BSLODTriShape" } ) )
 		iData = nif->getBlockIndex( nif->getLink( index, "Data" ) );
-
-	if ( nif->isNiBlock( iData, "NiTriShapeData" ) )
-		return iData;
 
 	return QModelIndex();
 }
@@ -83,7 +85,7 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 		QModelIndex iUVSets = nif->getIndex( iData, "UV Sets" );
 
 		for ( int r = 0; r < nif->rowCount( iUVSets ); r++ ) {
-			texco << nif->getArray<Vector2>( QModelIndex_child( iUVSets, r ) );
+			texco << nif->getArray<Vector2>( nif->getIndex( iUVSets, r ) );
 
 			if ( texco.last().count() != verts.count() )
 				throw QString( Spell::tr( "UV array size differs" ) );
@@ -113,7 +115,7 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 		QModelIndex iPoints = nif->getIndex( iData, "Points" );
 
 		for ( int r = 0; r < nif->rowCount( iPoints ); r++ ) {
-			strips << nif->getArray<quint16>( QModelIndex_child( iPoints, r ) );
+			strips << nif->getArray<quint16>( nif->getIndex( iPoints, r ) );
 			for ( const auto p : strips.last() ) {
 				used.insert( p, true );
 			}
@@ -121,7 +123,8 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 
 		// remove them
 
-		Message::info( nullptr, Spell::tr( "Removed %1 vertices" ).arg( verts.count() - used.count() ) );
+		if ( !nif->getBatchProcessingMode() )
+			Message::info( nullptr, Spell::tr( "Removed %1 vertices" ).arg( verts.count() - used.count() ) );
 
 		if ( verts.count() == used.count() )
 			return;
@@ -171,7 +174,7 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 		nif->setArray<Triangle>( iData, "Triangles", tris );
 
 		for ( int r = 0; r < nif->rowCount( iPoints ); r++ )
-			nif->setArray<quint16>( QModelIndex_child( iPoints, r ), strips[r] );
+			nif->setArray<quint16>( nif->getIndex( iPoints, r ), strips[r] );
 
 		nif->set<int>( iData, "Num Vertices", verts.count() );
 		nif->updateArraySize( iData, "Vertices" );
@@ -182,8 +185,8 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 		nif->setArray<Color4>( iData, "Vertex Colors", colors );
 
 		for ( int r = 0; r < nif->rowCount( iUVSets ); r++ ) {
-			nif->updateArraySize( QModelIndex_child( iUVSets, r ) );
-			nif->setArray<Vector2>( QModelIndex_child( iUVSets, r ), texco[r] );
+			nif->updateArraySize( nif->getIndex( iUVSets, r ) );
+			nif->setArray<Vector2>( nif->getIndex( iUVSets, r ), texco[r] );
 		}
 
 		// process NiSkinData
@@ -195,10 +198,10 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 
 		for ( int b = 0; b < nif->rowCount( iBones ); b++ ) {
 			QVector<QPair<int, float> > weights;
-			QModelIndex iWeights = nif->getIndex( QModelIndex_child( iBones, b ), "Vertex Weights" );
+			QModelIndex iWeights = nif->getIndex( nif->getIndex( iBones, b ), "Vertex Weights" );
 
 			for ( int w = 0; w < nif->rowCount( iWeights ); w++ ) {
-				weights.append( QPair<int, float>( nif->get<int>( QModelIndex_child( iWeights, w ), "Index" ), nif->get<float>( QModelIndex_child( iWeights, w ), "Weight" ) ) );
+				weights.append( QPair<int, float>( nif->get<int>( nif->getIndex( iWeights, w ), "Index" ), nif->get<float>( nif->getIndex( iWeights, w ), "Weight" ) ) );
 			}
 
 			for ( int x = weights.count() - 1; x >= 0; x-- ) {
@@ -215,12 +218,12 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 					w.first = map[ w.first ];
 			}
 
-			nif->set<int>( QModelIndex_child( iBones, b ), "Num Vertices", weights.count() );
+			nif->set<int>( nif->getIndex( iBones, b ), "Num Vertices", weights.count() );
 			nif->updateArraySize( iWeights );
 
 			for ( int w = 0; w < weights.count(); w++ ) {
-				nif->set<int>( QModelIndex_child( iWeights, w ), "Index", weights[w].first );
-				nif->set<float>( QModelIndex_child( iWeights, w ), "Weight", weights[w].second );
+				nif->set<int>( nif->getIndex( iWeights, w ), "Index", weights[w].first );
+				nif->set<float>( nif->getIndex( iWeights, w ), "Weight", weights[w].second );
 			}
 		}
 
@@ -242,82 +245,103 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iData, cons
 	}
 }
 
+static void copyBSTriShapeVertexData( NifModel * nif, NifItem * dst, const NifItem * src )
+{
+	if ( !( dst && src && dst->valueType() == src->valueType() ) )
+		return;
+	if ( src->isCompound() || src->isArray() ) {
+		if ( dst->isCompound() != src->isCompound() || dst->isArray() != src->isArray()
+			|| dst->childCount() != src->childCount() ) {
+			return;
+		}
+		int	n = src->childCount();
+		for ( int i = 0; i < n; i++ )
+			copyBSTriShapeVertexData( nif, dst->children()[i], src->children()[i] );
+		return;
+	}
+	if ( dst->isCompound() || dst->isArray() || dst->isLink() || dst->value().isAllocated() )
+		return;
+	nif->setItemValue( dst, src->value() );
+}
+
 //! Removes waste vertices from the specified BSTriShape
 
 static void removeWasteVertices( NifModel * nif, const QModelIndex & iShape )
 {
 	try
 	{
+		if ( nif->getBSVersion() < 130 && nif->getBlockIndex( nif->getLink( iShape, "Skin" ) ).isValid() )
+			throw QString( Spell::tr( "Skinned meshes are not supported yet" ) );
 		// read the data
 		quint32	numTriangles = nif->get<quint32>( iShape, "Num Triangles" );
 		quint32	numVertices = nif->get<quint32>( iShape, "Num Vertices" );
 		QModelIndex	iVertexData = nif->getIndex( iShape, "Vertex Data" );
 		QModelIndex	iTriangleData = nif->getIndex( iShape, "Triangles" );
-		if ( !numTriangles || !iTriangleData.isValid() )
-			throw QString( Spell::tr( "No triangles" ) );
-		if ( !numVertices || !iVertexData.isValid() )
-			throw QString( Spell::tr( "No vertices" ) );
-		if ( nif->getBlockIndex( nif->getLink( iShape, "Skin" ) ).isValid() )
-			throw QString( Spell::tr( "Skinned meshes are not supported yet" ) );
-		if ( int(numVertices) != nif->rowCount( iVertexData ) )
+		if ( !iVertexData.isValid() ) {
+			if ( numVertices || numTriangles )
+				throw QString( Spell::tr( "No vertices" ) );
+		} else if ( int(numVertices) != nif->rowCount( iVertexData ) ) {
 			throw QString( Spell::tr( "Vertex array size differs" ) );
+		}
+		if ( numTriangles && !iTriangleData.isValid() )
+			throw QString( Spell::tr( "No triangles" ) );
+		if ( !numVertices )
+			return;
 
 		// detect unused vertices
 
 		QMap<quint16, quint16> used;
 
-		QVector<Triangle> tris = nif->getArray<Triangle>( iShape, "Triangles" );
+		QVector<Triangle> tris;
+		if ( numTriangles )
+			tris = nif->getArray<Triangle>( iShape, "Triangles" );
 		for ( const Triangle& tri : tris ) {
 			for ( int t = 0; t < 3; t++ ) {
-				used.insert( tri[t], 0 );
+				if ( tri[t] < numVertices )
+					used.insert( tri[t], 0 );
 			}
 		}
 
 		// remove them
 
-		Message::info( nullptr, Spell::tr( "Removed %1 vertices" ).arg( qsizetype(numVertices) - used.count() ) );
-
-		if ( qsizetype(numVertices) == used.count() )
+		qsizetype numRemoved = qsizetype( numVertices ) - used.size();
+		if ( numRemoved < 1 )
 			return;
 
-		quint16	n = 0;
-		for ( auto i = used.begin(); i != used.end(); i++, n++ )
-			i.value() = n;
-
-		int	firstRow = 0;
-		int	removeCnt = 0;
-		for ( size_t i = numVertices; i-- > 0; ) {
-			if ( used.contains(quint16(i)) ) {
-				if ( removeCnt )
-					nif->removeRows( firstRow, removeCnt, iVertexData );
-				removeCnt = 0;
-			} else {
-				firstRow = int(i);
-				removeCnt++;
-			}
+		if ( !nif->getBatchProcessingMode() ) {
+			Message::append( nullptr, Spell::tr( "Removed unused vertices:" ),
+								QString( "Block %1: %2" ).arg( nif->getBlockNumber(iShape) ).arg( numRemoved ),
+								QMessageBox::Information );
 		}
-		if ( removeCnt )
-			nif->removeRows( firstRow, removeCnt, iVertexData );
+
+		NifItem *	vertexDataItem = nif->getItem( iVertexData );
+		quint32	n = 0;
+		for ( auto i = used.begin(); i != used.end(); i++, n++ ) {
+			if ( n < i.key() && vertexDataItem )
+				copyBSTriShapeVertexData( nif, vertexDataItem->child( int(n) ), vertexDataItem->child( i.key() ) );
+			i.value() = quint16( n );
+		}
+
+		nif->set<quint32>( iShape, "Num Vertices", n );
 		nif->updateArraySize( iVertexData );
-		nif->set<quint32>( iShape, "Num Vertices", quint32(used.count()) );
 
 		// adjust the faces
 
-		QMutableVectorIterator<Triangle> itri( tris );
-
-		while ( itri.hasNext() ) {
-			Triangle & tri = itri.next();
-
+		for ( Triangle & tri : tris ) {
 			for ( int t = 0; t < 3; t++ ) {
-				if ( used.contains( tri[t] ) )
+				if ( !used.contains( tri[t] ) )
+					tri[t] = tri[t] - quint16( numRemoved );
+				else
 					tri[t] = used[ tri[t] ];
 			}
-
 		}
 
 		// write back the data
 
-		nif->setArray<Triangle>( iShape, "Triangles", tris );
+		if ( !tris.isEmpty() )
+			nif->setArray<Triangle>( iShape, "Triangles", tris );
+
+		spRemoveWasteVertices::updateBSTriShape( nif, iShape );
 
 		// TODO: process NiSkinData
 
@@ -325,7 +349,7 @@ static void removeWasteVertices( NifModel * nif, const QModelIndex & iShape )
 	}
 	catch ( QString & e )
 	{
-		Message::warning( nullptr, Spell::tr( "There were errors during the operation" ), e );
+		Message::append( nullptr, Spell::tr( "There were errors during the operation" ), e, QMessageBox::Warning );
 	}
 }
 
@@ -338,8 +362,8 @@ public:
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
-		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
-			return bool( nif->get<quint32>( index, "Flags" ) & 0x0200 );
+		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
+			return true;
 		if ( nif->blockInherits( index, "BSTriShape" ) && nif->getIndex( index, "Vertex Data" ).isValid() )
 			return true;
 		return nif->itemStrType( index ).toLower() == "texcoord" || nif->blockInherits( index, "NiTriBasedGeomData" );
@@ -359,6 +383,8 @@ public:
 			} else if ( nif->itemStrType( index ).toLower() != "texcoord" ) {
 				idx = nif->getIndex( nif->getBlockIndex( index ), "UV Sets" );
 			}
+		} else if ( !nif->checkInternalGeometry( index ) ) {
+			return index;
 		}
 
 		QMenu menu;
@@ -387,11 +413,11 @@ public:
 	//! Flips UV data in a model index
 	void flip( NifModel * nif, const QModelIndex & index, int f )
 	{
-		if ( nif->itemStrType( index ) == "BSVertexData" ) {
+		if ( nif->itemStrType( index ).startsWith( "BSVertexData" ) ) {
 			// BSTriShape vertex data
 			int	n = nif->rowCount( index );
 			for ( int i = 0; i < n; i++ ) {
-				auto	v = QModelIndex_child( index, i );
+				auto	v = nif->getIndex( index, i );
 				if ( !v.isValid() )
 					continue;
 				auto	iUV = nif->getIndex( v, "UV" );
@@ -402,7 +428,7 @@ public:
 				nif->set<HalfVector2>( iUV, uv );
 			}
 		} else if ( nif->isArray( index ) ) {
-			QModelIndex idx = QModelIndex_child( index );
+			QModelIndex idx = nif->getIndex( index, 0 );
 
 			if ( idx.isValid() ) {
 				if ( nif->isArray( idx ) )
@@ -462,7 +488,7 @@ void spFlipTexCoords::flip_Starfield( NifModel * nif, const QModelIndex & index,
 				auto	iMeshes = nif->getIndex( i, "Meshes" );
 				if ( iMeshes.isValid() && nif->isArray( iMeshes ) ) {
 					for ( int n = 0; n <= 3; n++ )
-						flip_Starfield( nif, QModelIndex_child( iMeshes, n ), f );
+						flip_Starfield( nif, nif->getIndex( iMeshes, n ), f );
 				}
 			}
 			return;
@@ -492,11 +518,10 @@ void spFlipTexCoords::flip_Starfield( NifModel * nif, const QModelIndex & index,
 			std::swap( v[0], v[1] );
 		break;
 	case 3:
-		for ( auto uvs2Index = nif->getIndex( index, "UVs 2" ); uvs2Index.isValid(); ) {
+		if ( auto uvs2Index = nif->getIndex( index, "UVs 2" ); uvs2Index.isValid() ) {
 			QVector< HalfVector2 >	uvs2 = nif->getArray< HalfVector2 >( uvs2Index );
 			nif->setArray< HalfVector2 >( uvs2Index, uvs );
 			uvs = uvs2;
-			break;
 		}
 		break;
 	}
@@ -514,7 +539,7 @@ public:
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
 		return ( nif->getValue( index ).type() == NifValue::tTriangle )
-		       || ( nif->isArray( index ) && nif->getValue( QModelIndex_child( index ) ).type() == NifValue::tTriangle );
+				|| ( nif->isArray( index ) && nif->getValue( nif->getIndex( index, 0 ) ).type() == NifValue::tTriangle );
 	}
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
@@ -531,6 +556,7 @@ public:
 			t.flip();
 			nif->set<Triangle>( index, t );
 		}
+		spRemoveWasteVertices::updateBSTriShape( nif, nif->getBlockIndex( index ) );
 
 		return index;
 	}
@@ -538,40 +564,80 @@ public:
 
 REGISTER_SPELL( spFlipFace )
 
-//! Flips all faces of a triangle based mesh
-class spFlipAllFaces final : public Spell
+class spSetTriangleToZero final : public Spell
 {
 public:
-	QString name() const override final { return Spell::tr( "Flip Faces" ); }
-	QString page() const override final { return Spell::tr( "Mesh" ); }
+	QString name() const override final { return Spell::tr("Set Triangle to 0"); }
 
-	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	bool isApplicable( const NifModel* nif, const QModelIndex& index ) override final
 	{
-		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
-			return bool( nif->get<quint32>( index, "Flags" ) & 0x0200 );
+		return ( nif->getValue(index).type() == NifValue::tTriangle )
+			|| ( nif->isArray(index) && nif->getValue(nif->getIndex(index, 0)).type() == NifValue::tTriangle );
+	}
+
+	QModelIndex cast( NifModel* nif, const QModelIndex& index ) override final
+	{
+		if ( nif->isArray(index) ) {
+			QVector<Triangle> tris = nif->getArray<Triangle>( index );
+			for ( int t = 0; t < tris.count(); t++ ) {
+				tris[t].set( 0, 0, 0 );
+			}
+			nif->setArray<Triangle>( index, tris );
+		} else {
+			Triangle t = nif->get<Triangle>( index );
+			t.set( 0, 0, 0 );
+			nif->set<Triangle>( index, t );
+		}
+		spRemoveWasteVertices::updateBSTriShape( nif, nif->getBlockIndex( index ) );
+		return index;
+	}
+};
+
+REGISTER_SPELL( spSetTriangleToZero )
+
+//! Flips all faces of a triangle based mesh
+class spFlipAllFaces : public Spell
+{
+public:
+	QString name() const override { return Spell::tr( "Flip Faces" ); }
+	QString page() const override { return Spell::tr( "Mesh" ); }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override
+	{
+		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
+			return true;
 		return getTriShapeData( nif, index ).isValid();
 	}
 
-	static void cast_Starfield( NifModel * nif, const QModelIndex & index );
+	virtual void processTriangles( QVector<Triangle> & tris );
+	void cast_Starfield( NifModel * nif, const QModelIndex & index );
 
-	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override
 	{
 		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) ) {
-			cast_Starfield( nif, index );
+			if ( nif->checkInternalGeometry( index ) )
+				cast_Starfield( nif, index );
 			return index;
 		}
 		QModelIndex iData = getTriShapeData( nif, index );
 
 		QVector<Triangle> tris = nif->getArray<Triangle>( iData, "Triangles" );
-
-		for ( int t = 0; t < tris.count(); t++ )
-			tris[t].flip();
-
+		processTriangles( tris );
 		nif->setArray<Triangle>( iData, "Triangles", tris );
+
+		spRemoveWasteVertices::updateBSTriShape( nif, iData );
 
 		return index;
 	}
 };
+
+void spFlipAllFaces::processTriangles( QVector<Triangle> & tris )
+{
+	Triangle *	t = tris.data();
+	qsizetype	n = tris.size();
+	for ( ; n > 0; t++, n-- )
+		t->flip();
+}
 
 void spFlipAllFaces::cast_Starfield( NifModel * nif, const QModelIndex & index )
 {
@@ -591,7 +657,7 @@ void spFlipAllFaces::cast_Starfield( NifModel * nif, const QModelIndex & index )
 				auto	iMeshes = nif->getIndex( i, "Meshes" );
 				if ( iMeshes.isValid() && nif->isArray( iMeshes ) ) {
 					for ( int n = 0; n <= 3; n++ )
-						cast_Starfield( nif, QModelIndex_child( iMeshes, n ) );
+						cast_Starfield( nif, nif->getIndex( iMeshes, n ) );
 				}
 			}
 			return;
@@ -605,7 +671,7 @@ void spFlipAllFaces::cast_Starfield( NifModel * nif, const QModelIndex & index )
 		} else if ( l <= int( nif->get<quint32>( index, "Num LODs" ) ) ) {
 			lodIndex = nif->getIndex( index, "LODs" );
 			if ( lodIndex.isValid() )
-				lodIndex = QModelIndex_child( lodIndex, l - 1 );
+				lodIndex = nif->getIndex( lodIndex, l - 1 );
 		}
 		if ( !lodIndex.isValid() )
 			break;
@@ -618,13 +684,85 @@ void spFlipAllFaces::cast_Starfield( NifModel * nif, const QModelIndex & index )
 			continue;
 
 		QVector<Triangle> tris = nif->getArray<Triangle>( trianglesIndex );
-		for ( auto & t : tris )
-			t.flip();
+
+		processTriangles( tris );
+
 		nif->setArray<Triangle>( trianglesIndex, tris );
 	}
 }
 
 REGISTER_SPELL( spFlipAllFaces )
+
+//! Reorders triangles to optimize GPU vertex shader invocations
+class spOptimizeVertexCache final : public spFlipAllFaces
+{
+public:
+	QString name() const override final { return Spell::tr( "Optimize Indices" ); }
+	QString page() const override final { return Spell::tr( "Mesh" ); }
+
+	void processTriangles( QVector<Triangle> & tris ) override final;
+};
+
+void spOptimizeVertexCache::processTriangles( QVector<Triangle> & tris )
+{
+	qsizetype	numTriangles = tris.size();
+	if ( numTriangles < 1 )
+		return;
+	size_t	n = size_t( numTriangles ) * 3;
+	std::vector< unsigned int >	buf1( n );
+	std::vector< unsigned int >	buf2( n );
+	unsigned int	maxVertex = 0;
+	for ( qsizetype i = 0; i < numTriangles; i++ ) {
+		const Triangle &	t = tris.at( i );
+		unsigned int *	p = buf1.data() + ( i * 3 );
+		p[0] = t.v1();
+		p[1] = t.v2();
+		p[2] = t.v3();
+		maxVertex = std::max( std::max( maxVertex, p[0] ), std::max( p[1], p[2] ) );
+	}
+	meshopt_optimizeVertexCache( buf2.data(), buf1.data(), n, size_t( maxVertex ) + 1 );
+	for ( qsizetype i = 0; i < numTriangles; i++ )
+		tris[i] = Triangle( quint16(buf2[i * 3]), quint16(buf2[i * 3 + 1]), quint16(buf2[i * 3 + 2]) );
+}
+
+REGISTER_SPELL( spOptimizeVertexCache )
+
+class spOptimizeAllIndices final : public Spell
+{
+public:
+	QString name() const override final { return Spell::tr( "Optimize All Indices" ); }
+	QString page() const override final { return Spell::tr( "Batch" ); }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & idx ) override final
+	{
+		return ( nif && !idx.isValid() );
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & ) override final
+	{
+		spOptimizeVertexCache sp;
+
+		for ( int n = 0; n < nif->getBlockCount(); n++ ) {
+			QModelIndex idx = nif->getBlockIndex( n );
+
+			if ( sp.isApplicable( nif, idx ) )
+				sp.cast( nif, idx );
+		}
+
+		return QModelIndex();
+	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
+};
+
+QModelIndex spOptimizeAllIndices::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spOptimizeAllIndices	sp;
+	return sp.cast( nif, index );
+}
+
+REGISTER_SPELL( spOptimizeAllIndices )
+
 
 //! Removes redundant triangles from a mesh
 class spPruneRedundantTriangles final : public Spell
@@ -635,9 +773,7 @@ public:
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
-		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
-			return bool( nif->get<quint32>( index, "Flags" ) & 0x0200 );
-		if ( nif->blockInherits( index, "BSTriShape" ) && nif->getIndex( index, "Triangles" ).isValid() )
+		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
 			return true;
 		return getTriShapeData( nif, index ).isValid();
 	}
@@ -655,18 +791,16 @@ public:
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) ) {
-			nif->setState( BaseModel::Processing );
-			cast_Starfield( nif, index );
-			nif->restoreState();
+			if ( nif->checkInternalGeometry( index ) ) {
+				nif->setState( BaseModel::Processing );
+				cast_Starfield( nif, index );
+				nif->restoreState();
+			}
 			return index;
 		}
 
-		QModelIndex iData;
-		bool isBSTriShape = nif->blockInherits( index, "BSTriShape" );
-		if ( !isBSTriShape )
-			iData = getTriShapeData( nif, index );
-		else
-			iData = index;
+		QModelIndex iData = getTriShapeData( nif, index );
+
 		QList<Triangle> tris = nif->getArray<Triangle>( iData, "Triangles" ).toList();
 		int cnt = 0;
 
@@ -710,9 +844,11 @@ public:
 		if ( cnt > 0 ) {
 			Message::info( nullptr, Spell::tr( "Removed %1 triangles" ).arg( cnt ) );
 			nif->set<int>( iData, "Num Triangles", tris.count() );
-			if ( !isBSTriShape )
-				nif->set<int>( iData, "Num Triangle Points", tris.count() * 3 );
+			if ( auto iNumPoints = nif->getIndex( iData, "Num Triangle Points" ); iNumPoints.isValid() )
+				nif->set<int>( iNumPoints, tris.count() * 3 );
 			nif->updateArraySize( iData, "Triangles" );
+			if ( nif->blockInherits( iData, "BSTriShape" ) )
+				spRemoveWasteVertices::updateBSTriShape( nif, iData );
 			nif->setArray<Triangle>( iData, "Triangles", tris.toVector() );
 		}
 
@@ -738,7 +874,7 @@ void spPruneRedundantTriangles::cast_Starfield( NifModel * nif, const QModelInde
 				auto	iMeshes = nif->getIndex( i, "Meshes" );
 				if ( iMeshes.isValid() && nif->isArray( iMeshes ) ) {
 					for ( int n = 0; n <= 3; n++ )
-						cast_Starfield( nif, QModelIndex_child( iMeshes, n ) );
+						cast_Starfield( nif, nif->getIndex( iMeshes, n ) );
 				}
 			}
 			return;
@@ -755,7 +891,7 @@ void spPruneRedundantTriangles::cast_Starfield( NifModel * nif, const QModelInde
 		} else if ( l <= int( nif->get<quint32>( index, "Num LODs" ) ) ) {
 			lodIndex = nif->getIndex( index, "LODs" );
 			if ( lodIndex.isValid() )
-				lodIndex = QModelIndex_child( lodIndex, l - 1 );
+				lodIndex = nif->getIndex( lodIndex, l - 1 );
 		}
 		if ( !lodIndex.isValid() )
 			break;
@@ -792,7 +928,9 @@ void spPruneRedundantTriangles::cast_Starfield( NifModel * nif, const QModelInde
 
 		bool	removeInvalid = false;
 		if ( !invalidTriangles.empty() ) {
-			removeInvalid = ( QMessageBox::question( nullptr, "NifSkope warning", QString("Remove %1 triangles with invalid indices?").arg(invalidTriangles.size()) ) == QMessageBox::Yes );
+			removeInvalid = ( QMessageBox::question( nullptr, "NifSkope warning",
+														QString("Remove %1 triangles with invalid indices?").arg(
+															invalidTriangles.size() ) ) == QMessageBox::Yes );
 		}
 
 		if ( trianglesRemoved.empty() && !removeInvalid )
@@ -832,29 +970,35 @@ void spPruneRedundantTriangles::cast_Starfield( NifModel * nif, const QModelInde
 REGISTER_SPELL( spPruneRedundantTriangles )
 
 //! Removes duplicate vertices from a mesh
-class spRemoveDuplicateVertices final : public Spell
+class spRemoveDuplicateVertices final : public spRemoveWasteVertices
 {
 public:
 	QString name() const override final { return Spell::tr( "Remove Duplicate Vertices" ); }
-	QString page() const override final { return Spell::tr( "Mesh" ); }
-
-	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
-	{
-		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
-			return bool( nif->get<quint32>( index, "Flags" ) & 0x0200 );
-		return spRemoveWasteVertices::getShape( nif, index ).isValid();
-	}
 
 	static void cast_Starfield( NifModel * nif, const QModelIndex & index );
+	static void cast_BSTriShape( NifModel * nif, const QModelIndex & index );
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
-		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) ) {
-			if ( nif->get<quint32>( index, "Flags" ) & 0x0200 ) {
-				nif->setState( BaseModel::Processing );
-				cast_Starfield( nif, index );
-				spRemoveWasteVertices::cast_Starfield( nif, index, false );
-				nif->restoreState();
+		if ( nif->getBSVersion() >= 100 ) {
+			QModelIndex	iBlock = nif->getBlockIndex( index );
+			if ( nif->blockInherits( iBlock, "BSTriShape" ) ) {
+				if ( nif->getBSVersion() < 130 && nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ).isValid() ) {
+					Message::append( nullptr, Spell::tr( "Remove Duplicate Vertices failed" ),
+										Spell::tr( "Skinned meshes are not supported yet" ), QMessageBox::Warning );
+				} else {
+					nif->setState( BaseModel::Processing );
+					cast_BSTriShape( nif, iBlock );
+					removeWasteVertices( nif, iBlock );
+					nif->restoreState();
+				}
+			} else if ( nif->blockInherits( iBlock, "BSGeometry" ) ) {
+				if ( nif->checkInternalGeometry( iBlock ) ) {
+					nif->setState( BaseModel::Processing );
+					cast_Starfield( nif, iBlock );
+					spRemoveWasteVertices::cast_Starfield( nif, iBlock, false );
+					nif->restoreState();
+				}
 			}
 			return index;
 		}
@@ -877,7 +1021,7 @@ public:
 			QModelIndex iUVSets = nif->getIndex( iData, "UV Sets" );
 
 			for ( int r = 0; r < nif->rowCount( iUVSets ); r++ ) {
-				texco << nif->getArray<Vector2>( QModelIndex_child( iUVSets, r ) );
+				texco << nif->getArray<Vector2>( nif->getIndex( iUVSets, r ) );
 
 				if ( texco.last().count() != verts.count() )
 					throw QString( Spell::tr( "UV array size differs" ) );
@@ -948,7 +1092,7 @@ public:
 			QModelIndex iPoints = nif->getIndex( iData, "Points" );
 			if ( iPoints.isValid() ) {
 				for ( int r = 0; r < nif->rowCount( iPoints ); r++ ) {
-					QVector<quint16> strip = nif->getArray<quint16>( QModelIndex_child( iPoints, r ) );
+					QVector<quint16> strip = nif->getArray<quint16>( nif->getIndex( iPoints, r ) );
 					QMutableVectorIterator<quint16> istrp( strip );
 
 					while ( istrp.hasNext() ) {
@@ -958,7 +1102,7 @@ public:
 							p = map.value( p );
 					}
 
-					nif->setArray<quint16>( QModelIndex_child( iPoints, r ), strip );
+					nif->setArray<quint16>( nif->getIndex( iPoints, r ), strip );
 				}
 			}
 
@@ -997,20 +1141,11 @@ struct SFMeshVertexAttributes
 #endif
 		return v;
 	}
-	SFMeshVertexAttributes( const MeshFile & meshFile, qsizetype n )
-	{
-		std::memset( this, 0, sizeof( SFMeshVertexAttributes ) );
-		index = std::uint32_t( n );
-		if ( n < meshFile.positions.size() )
-			clearDenorm( FloatVector4( meshFile.positions.at( n ) ) ).convertToVector3( xyz );
-		if ( n < meshFile.normals.size() )
-			normal = FloatVector4( meshFile.normals.at( n ) ).convertToX10Y10Z10();
-		if ( n < meshFile.colors.size() )
-			color = std::uint32_t( FloatVector4( meshFile.colors.at( n ) ) * 255.0f );
-		if ( n < meshFile.coords.size() )
-			texCoords = clearDenorm( FloatVector4( meshFile.coords.at( n ) ), 1.0e-12f ).convertToFloat16();
-		// TODO: should also test weights?
-	}
+	// TODO: should also test weights?
+	SFMeshVertexAttributes( qsizetype i, FloatVector4 position, FloatVector4 n, FloatVector4 c, FloatVector4 coords );
+	SFMeshVertexAttributes( const MeshFile & meshFile, qsizetype i );
+	// from BSTriShape vertex data
+	SFMeshVertexAttributes( const NifModel * nif, const QModelIndex & iVertexData, qsizetype i );
 	inline const unsigned char * data() const
 	{
 		return reinterpret_cast< const unsigned char * >( &( xyz[0] ) );
@@ -1024,6 +1159,60 @@ struct SFMeshVertexAttributes
 		return ( std::memcmp( data(), r.data(), size() ) == 0 );
 	}
 };
+
+SFMeshVertexAttributes::SFMeshVertexAttributes(
+	qsizetype i, FloatVector4 position, FloatVector4 n, FloatVector4 c, FloatVector4 coords )
+{
+	index = std::uint32_t( i );
+	clearDenorm( position ).convertToVector3( xyz );
+	normal = n.convertToX10Y10Z10();
+	color = std::uint32_t( c * 255.0f );
+	texCoords = clearDenorm( coords, 1.0e-12f ).convertToFloat16();
+}
+
+SFMeshVertexAttributes::SFMeshVertexAttributes( const MeshFile & meshFile, qsizetype i )
+{
+	FloatVector4	position( 0.0f );
+	FloatVector4	n( 0.0f );
+	FloatVector4	c( 0.0f );
+	FloatVector4	coords( 0.0f );
+	if ( i < meshFile.positions.size() )
+		position = FloatVector4( meshFile.positions.at( i ) );
+	if ( i < meshFile.normals.size() )
+		n = FloatVector4( meshFile.normals.at( i ) );
+	if ( i < meshFile.colors.size() )
+		c = FloatVector4( meshFile.colors.at( i ) );
+	if ( i < meshFile.coords1.size() ) {
+		const auto &	tmp = meshFile.coords1.at( i );
+		coords[0] = tmp[0];
+		coords[1] = tmp[1];
+	}
+	if ( i < meshFile.coords2.size() ) {
+		const auto &	tmp = meshFile.coords2.at( i );
+		coords[2] = tmp[0];
+		coords[3] = tmp[1];
+	}
+	( void ) new ( this ) SFMeshVertexAttributes( i, position, n, c, coords );
+}
+
+SFMeshVertexAttributes::SFMeshVertexAttributes( const NifModel * nif, const QModelIndex & iVertexData, qsizetype i )
+{
+	FloatVector4	position( 0.0f );
+	FloatVector4	n( 0.0f );
+	FloatVector4	c( 0.0f );
+	FloatVector4	coords( 0.0f );
+	if ( QModelIndex iVertex = nif->getIndex( iVertexData, int( i ) ); iVertex.isValid() ) {
+		if ( QModelIndex v = nif->getIndex( iVertex, "Vertex" ); v.isValid() )
+			position = FloatVector4( nif->get<Vector3>( v ) );
+		if ( QModelIndex v = nif->getIndex( iVertex, "Normal" ); v.isValid() )
+			n = FloatVector4( nif->get<Vector3>( v ) );
+		if ( QModelIndex v = nif->getIndex( iVertex, "Vertex Colors" ); v.isValid() )
+			c = FloatVector4( nif->get<Color4>( v ) );
+		if ( QModelIndex v = nif->getIndex( iVertex, "UV" ); v.isValid() )
+			coords = FloatVector4( Vector3( nif->get<Vector2>( v ), 0.0f ) );
+	}
+	( void ) new ( this ) SFMeshVertexAttributes( i, position, n, c, coords );
+}
 
 template <> class std::hash< SFMeshVertexAttributes >
 {
@@ -1050,7 +1239,7 @@ void spRemoveDuplicateVertices::cast_Starfield( NifModel * nif, const QModelInde
 				auto	iMeshes = nif->getIndex( i, "Meshes" );
 				if ( iMeshes.isValid() && nif->isArray( iMeshes ) ) {
 					for ( int n = 0; n <= 3; n++ )
-						cast_Starfield( nif, QModelIndex_child( iMeshes, n ) );
+						cast_Starfield( nif, nif->getIndex( iMeshes, n ) );
 				}
 			}
 			return;
@@ -1078,7 +1267,7 @@ void spRemoveDuplicateVertices::cast_Starfield( NifModel * nif, const QModelInde
 		} else if ( l <= int( nif->get<quint32>( iMeshData, "Num LODs" ) ) ) {
 			lodIndex = nif->getIndex( iMeshData, "LODs" );
 			if ( lodIndex.isValid() )
-				lodIndex = QModelIndex_child( lodIndex, l - 1 );
+				lodIndex = nif->getIndex( lodIndex, l - 1 );
 		}
 		if ( !lodIndex.isValid() )
 			break;
@@ -1106,7 +1295,84 @@ void spRemoveDuplicateVertices::cast_Starfield( NifModel * nif, const QModelInde
 	spGenerateMeshlets::clearMeshlets( nif, iMeshData );
 }
 
+void spRemoveDuplicateVertices::cast_BSTriShape( NifModel * nif, const QModelIndex & index )
+{
+	if ( !index.isValid() )
+		return;
+
+	QModelIndex	iVertexData = nif->getIndex( index, "Vertex Data" );
+	QModelIndex	iTriangles = nif->getIndex( index, "Triangles" );
+	if ( !( iVertexData.isValid() && iTriangles.isValid() ) )
+		return;
+
+	size_t	numVerts = nif->get<quint32>( index, "Num Vertices" );
+
+	std::unordered_set< SFMeshVertexAttributes >	uniqueVertexSet;
+	std::vector< std::uint32_t >	vertexMap( numVerts );
+	for ( size_t i = 0; i < numVerts; i++ )
+		vertexMap[i] = uniqueVertexSet.emplace( nif, iVertexData, qsizetype( i ) ).first->index;
+	if ( uniqueVertexSet.size() == numVerts )
+		return;
+
+	// remap indices
+	int	numTriangles = int( nif->get<quint32>( index, "Num Triangles" ) );
+	NifItem *	trianglesItem = nif->getItem( iTriangles );
+	if ( numTriangles < 1 || !trianglesItem )
+		return;
+
+	for ( int i = 0; i < numTriangles; i++ ) {
+		Triangle	t = nif->get<Triangle>( trianglesItem->child( i ) );
+		bool	indicesChanged = false;
+		for ( int j = 0; j < 3; j++ ) {
+			std::uint32_t	v = t[j];
+			if ( v < numVerts && vertexMap[v] != v && vertexMap[v] < numVerts ) {
+				t[j] = quint16( vertexMap[v] );
+				indicesChanged = true;
+			}
+		}
+		if ( indicesChanged )
+			nif->set<Triangle>( trianglesItem->child( i ), t );
+	}
+}
+
 REGISTER_SPELL( spRemoveDuplicateVertices )
+
+class spRemoveAllDuplicateVertices final : public Spell
+{
+public:
+	QString name() const override final { return Spell::tr( "Remove All Duplicate Vertices" ); }
+	QString page() const override final { return Spell::tr( "Batch" ); }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & idx ) override final
+	{
+		return ( nif && !idx.isValid() );
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & ) override final
+	{
+		spRemoveDuplicateVertices sp;
+
+		for ( int n = 0; n < nif->getBlockCount(); n++ ) {
+			QModelIndex idx = nif->getBlockIndex( n );
+
+			if ( sp.isApplicable( nif, idx ) )
+				sp.cast( nif, idx );
+		}
+
+		return QModelIndex();
+	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
+};
+
+QModelIndex spRemoveAllDuplicateVertices::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spRemoveAllDuplicateVertices	sp;
+	return sp.cast( nif, index );
+}
+
+REGISTER_SPELL( spRemoveAllDuplicateVertices )
+
 
 //! Removes unused vertices
 
@@ -1128,7 +1394,7 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 				auto	iMeshes = nif->getIndex( i, "Meshes" );
 				if ( iMeshes.isValid() && nif->isArray( iMeshes ) ) {
 					for ( int n = 0; n <= 3; n++ )
-						cast_Starfield( nif, QModelIndex_child( iMeshes, n ), noMessages );
+						cast_Starfield( nif, nif->getIndex( iMeshes, n ), noMessages );
 				}
 			}
 			return;
@@ -1163,7 +1429,7 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 		} else if ( l <= int( nif->get<quint32>( index, "Num LODs" ) ) ) {
 			lodIndex = nif->getIndex( index, "LODs" );
 			if ( lodIndex.isValid() )
-				lodIndex = QModelIndex_child( lodIndex, l - 1 );
+				lodIndex = nif->getIndex( lodIndex, l - 1 );
 		}
 		if ( !lodIndex.isValid() )
 			break;
@@ -1186,7 +1452,7 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 			}
 		}
 	}
-	if ( invalidIndices > 0 )
+	if ( invalidIndices > 0 && !nif->getBatchProcessingMode() )
 		QMessageBox::warning( nullptr, "NifSkope warning", QString("Mesh has %1 invalid indices").arg(invalidIndices) );
 	if ( verticesRemoved < 1 )
 		return;
@@ -1207,7 +1473,7 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 		} else if ( l <= int( nif->get<quint32>( index, "Num LODs" ) ) ) {
 			lodIndex = nif->getIndex( index, "LODs" );
 			if ( lodIndex.isValid() )
-				lodIndex = QModelIndex_child( lodIndex, l - 1 );
+				lodIndex = nif->getIndex( lodIndex, l - 1 );
 		}
 		if ( !lodIndex.isValid() )
 			break;
@@ -1282,10 +1548,9 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 	}
 
 	// update array sizes
-	for ( auto i = nif->getItem( index ); i; ) {
+	if ( auto i = nif->getItem( index ); i ) {
 		i->invalidateVersionCondition();
 		i->invalidateCondition();
-		break;
 	}
 	numVerts -= std::uint32_t( verticesRemoved );
 	numUVs = std::min( numUVs, numVerts );
@@ -1318,16 +1583,18 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 	if ( ( i = nif->getIndex( index, "Weights" ) ).isValid() )
 		nif->updateArraySize( i );
 
-	if ( !noMessages )
+	if ( !noMessages && !nif->getBatchProcessingMode() )
 		Message::info( nullptr, Spell::tr( "Removed %1 vertices" ).arg( verticesRemoved ) );
 }
 
 QModelIndex spRemoveWasteVertices::cast( NifModel * nif, const QModelIndex & index )
 {
 	if ( nif->blockInherits( index, "BSGeometry" ) ) {
-		nif->setState( BaseModel::Processing );
-		cast_Starfield( nif, index );
-		nif->restoreState();
+		if ( nif->checkInternalGeometry( index ) ) {
+			nif->setState( BaseModel::Processing );
+			cast_Starfield( nif, index );
+			nif->restoreState();
+		}
 	} else if ( nif->blockInherits( index, "BSTriShape" ) ) {
 		removeWasteVertices( nif, index );
 	} else {
@@ -1339,7 +1606,109 @@ QModelIndex spRemoveWasteVertices::cast( NifModel * nif, const QModelIndex & ind
 	return index;
 }
 
+void spRemoveWasteVertices::updateBSTriShape( NifModel * nif, const QModelIndex & index, bool dataSizeOnly )
+{
+	bool	isDynamic = false;
+	if ( const NifItem * i = nif->getItem( index, false ); i ) {
+		if ( !( i->hasName( "BSTriShape" ) || i->hasName( "BSMeshLODTriShape" )
+				|| i->hasName( "BSSubIndexTriShape" ) ) ) {
+			isDynamic = i->hasName( "BSDynamicTriShape" );
+			if ( !isDynamic )
+				return;
+		}
+	} else {
+		return;
+	}
+
+	quint32	numVerts = nif->get<quint32>( index, "Num Vertices" );
+	quint32	numTriangles = nif->get<quint32>( index, "Num Triangles" );
+	BSVertexDesc	vertexDesc = nif->get<BSVertexDesc>( index, "Vertex Desc" );
+	quint32	totalDataSize = numTriangles * 6U;
+	if ( !isDynamic )
+		totalDataSize += numVerts * vertexDesc.GetVertexSize();
+	if ( auto i = nif->getIndex( index, "Data Size" ); i.isValid() && nif->get<quint32>( i ) != totalDataSize )
+		nif->set<quint32>( i, totalDataSize );
+
+	if ( isDynamic )
+		nif->set<quint32>( index, "Dynamic Data Size", quint32( numVerts * ( sizeof(float) * 4 ) ) );
+
+	if ( nif->getBSVersion() == 100 && !dataSizeOnly && !( vertexDesc & VertexFlags::VF_SKINNED ) ) {
+		QModelIndex	iParticleDataSize = nif->getIndex( index, "Particle Data Size" );
+		if ( !iParticleDataSize.isValid() )
+			return;
+		quint32	particleDataSize = nif->get<quint32>( iParticleDataSize );
+		if ( !particleDataSize ) [[likely]]
+			return;
+		quint32	newDataSize = ( numVerts * 6U ) + ( numTriangles * 3U );
+		nif->set<quint32>( iParticleDataSize, newDataSize );
+		QVector<HalfVector3>	vertexData, normalData;
+		vertexData.resize( qsizetype(numVerts) );
+		normalData.resize( qsizetype(numVerts) );
+		if ( const NifItem * iVertexData = nif->getItem( index, "Vertex Data" ); iVertexData ) {
+			for ( int i = 0; i < int( numVerts ); i++ ) {
+				if ( const NifItem * iVertex = iVertexData->child( i ); iVertex ) {
+					if ( const NifItem * v = nif->getItem( iVertex, "Vertex" ); v )
+						vertexData[i] = HalfVector3( nif->get<Vector3>( v ) );
+					if ( const NifItem * v = nif->getItem( iVertex, "Normal" ); v )
+						normalData[i] = HalfVector3( nif->get<Vector3>( v ) );
+				}
+			}
+		}
+		if ( QModelIndex iPartVertices = nif->getIndex( index, "Particle Vertices" ); iPartVertices.isValid() ) {
+			nif->updateArraySize( iPartVertices );
+			nif->setArray<HalfVector3>( iPartVertices, vertexData );
+		}
+		if ( QModelIndex iPartNormals = nif->getIndex( index, "Particle Normals" ); iPartNormals.isValid() ) {
+			nif->updateArraySize( iPartNormals );
+			nif->setArray<HalfVector3>( iPartNormals, normalData );
+		}
+		if ( QModelIndex iPartTriangles = nif->getIndex( index, "Particle Triangles" ); iPartTriangles.isValid() ) {
+			QVector<Triangle>	triangleData = nif->getArray<Triangle>( index, "Triangles" );
+			triangleData.resize( qsizetype(numTriangles) );
+			nif->updateArraySize( iPartTriangles );
+			nif->setArray<Triangle>( iPartTriangles, triangleData );
+		}
+	}
+}
+
 REGISTER_SPELL( spRemoveWasteVertices )
+
+class spRemoveAllWasteVertices final : public Spell
+{
+public:
+	QString name() const override final { return Spell::tr( "Remove All Unused Vertices" ); }
+	QString page() const override final { return Spell::tr( "Batch" ); }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & idx ) override final
+	{
+		return ( nif && !idx.isValid() );
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & ) override final
+	{
+		spRemoveWasteVertices sp;
+
+		for ( int n = 0; n < nif->getBlockCount(); n++ ) {
+			QModelIndex idx = nif->getBlockIndex( n );
+
+			if ( sp.isApplicable( nif, idx ) )
+				sp.cast( nif, idx );
+		}
+
+		return QModelIndex();
+	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
+};
+
+QModelIndex spRemoveAllWasteVertices::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spRemoveAllWasteVertices	sp;
+	return sp.cast( nif, index );
+}
+
+REGISTER_SPELL( spRemoveAllWasteVertices )
+
 
 static bool calculateBoundingBox( FloatVector4 & bndCenter, FloatVector4 & bndDims, const QVector< Vector3 > & verts )
 {
@@ -1429,21 +1798,82 @@ REGISTER_SPELL( spUpdateCenterRadius )
 
 //! spUpdateBounds: updates Bounds of BSTriShape or BSGeometry
 
-void spUpdateBounds::calculateSFBoneBounds(
-	NifModel * nif, const QPersistentModelIndex & iBoneList, int numBones, const MeshFile & meshFile )
+bool spUpdateBounds::calculateBoneBounds(
+	NifModel * nif, const QPersistentModelIndex & iBlock, const MeshFile * meshFile )
 {
+	QModelIndex	iBoneList;
+	QModelIndex	iSkinPartition;
+	int	numBones = 0;
+	if ( auto iSkin = nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ); iSkin.isValid() ) {
+		auto	iBoneData = nif->getBlockIndex( nif->getLink( iSkin, "Data" ) );
+		if ( iBoneData.isValid() ) {
+			iBoneList = nif->getIndex( iBoneData, "Bone List" );
+			if ( iBoneList.isValid() && nif->isArray( iBoneList ) )
+				numBones = nif->rowCount( iBoneList );
+		}
+		iSkinPartition = nif->getBlockIndex( nif->getLink( iSkin, "Skin Partition" ) );
+	}
+	if ( numBones < 1 )
+		return false;
+
 	std::map< int, std::vector< Vector3 > >	boneVertexMap;
-	for ( const auto & w : meshFile.weights ) {
-		qsizetype	i = qsizetype( &w - meshFile.weights.data() );
-		if ( i >= meshFile.positions.size() ) [[unlikely]]
-			break;
-		for ( const auto & b : w.weightsUNORM ) {
-			if ( (unsigned int) b.bone < (unsigned int) numBones && b.weight > 0.00005f )
-				boneVertexMap[int(b.bone)].push_back( meshFile.positions.at(i) );
+	if ( !meshFile ) {
+		QModelIndex	iVertexData;
+		if ( iSkinPartition.isValid() ) {
+			// using skin partition
+			iVertexData = nif->getIndex( iSkinPartition, "Vertex Data" );
+		} else {
+			iVertexData = nif->getIndex( iBlock, "Vertex Data" );
+		}
+		if ( iVertexData.isValid() && nif->isArray( iVertexData ) ) {
+			int	numVerts = nif->rowCount( iVertexData );
+			bool	isDynamic = false;
+			QModelIndex	iDynamicData;
+			if ( nif->isNiBlock( iBlock, "BSDynamicTriShape" ) ) {
+				iDynamicData = nif->getIndex( iBlock, "Vertices" );
+				isDynamic = ( iDynamicData.isValid() && nif->rowCount( iDynamicData ) >= numVerts );
+			}
+			for ( int i = 0; i < numVerts; i++ ) {
+				auto	iVertex = nif->getIndex( iVertexData, i );
+				if ( !iVertex.isValid() )
+					continue;
+				Vector3	v;
+				if ( isDynamic )
+					v = Vector3( nif->get<Vector4>( nif->getIndex( iDynamicData, i ) ) );
+				else
+					v = nif->get<Vector3>( iVertex, "Vertex" );
+				auto	iWeights = nif->getIndex( iVertex, "Bone Weights" );
+				auto	iIndices = nif->getIndex( iVertex, "Bone Indices" );
+				int	numWeights;
+				if ( !( iWeights.isValid() && iIndices.isValid() && ( numWeights = nif->rowCount( iWeights ) ) > 0 ) )
+					continue;
+				if ( nif->rowCount( iIndices ) != numWeights )
+					continue;
+				for ( int j = 0; j < numWeights; j++ ) {
+					float	w = nif->get<float>( nif->getIndex( iWeights, j ) );
+					int	b = nif->get<quint8>( nif->getIndex( iIndices, j ) );
+					if ( w > 0.00001f && b < numBones )
+						boneVertexMap[b].push_back( v );
+				}
+			}
+		}
+	} else {
+		for ( qsizetype i = 0; i < meshFile->positions.size(); i++ ) {
+			qsizetype	k = i * meshFile->weightsPerVertex;
+			for ( qsizetype j = 0; j < meshFile->weightsPerVertex; j++, k++ ) {
+				if ( k < meshFile->weights.size() ) {
+					std::uint32_t	bw = meshFile->weights.at( k );
+					if ( int( bw >> 16 ) < numBones && ( bw & 0xFFFCU ) != 0 )
+						boneVertexMap[int(bw >> 16)].push_back( meshFile->positions.at(i) );
+				}
+			}
 		}
 	}
+	if ( boneVertexMap.empty() )
+		return false;
+
 	for ( int i = 0; i < numBones; i++ ) {
-		auto	iBone = QModelIndex_child( iBoneList, i );
+		auto	iBone = nif->getIndex( iBoneList, i );
 		if ( !iBone.isValid() )
 			continue;
 		std::vector< Vector3 > &	vertices = boneVertexMap[i];
@@ -1459,6 +1889,8 @@ void spUpdateBounds::calculateSFBoneBounds(
 		}
 		bounds.update( nif, iBone );
 	}
+
+	return true;
 }
 
 static void updateCullData( NifModel * nif, const QPersistentModelIndex & iMeshData, const MeshFile & meshFile )
@@ -1470,7 +1902,7 @@ static void updateCullData( NifModel * nif, const QPersistentModelIndex & iMeshD
 	nif->updateArraySize( iCullData );
 	qsizetype	k = 0;
 	for ( int i = 0; i < meshletCount; i++ ) {
-		int	triangleCount = int( nif->get<quint32>( QModelIndex_child( iMeshlets, i ), "Triangle Count" ) );
+		int	triangleCount = int( nif->get<quint32>( nif->getIndex( iMeshlets, i ), "Triangle Count" ) );
 		FloatVector4	bndMin( float(FLT_MAX) );
 		FloatVector4	bndMax( float(-FLT_MAX) );
 		bool	haveBounds = false;
@@ -1494,7 +1926,7 @@ static void updateCullData( NifModel * nif, const QPersistentModelIndex & iMeshD
 			bndCenter = ( bndMin + bndMax ) * 0.5f;
 			bndDims = ( bndMax - bndMin ) * 0.5f;
 		}
-		setBoundingBox( nif, QModelIndex_child( iCullData, i ), bndCenter, bndDims );
+		setBoundingBox( nif, nif->getIndex( iCullData, i ), bndCenter, bndDims );
 	}
 }
 
@@ -1509,23 +1941,8 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 	BoundSphere	bounds;
 	FloatVector4	bndCenter( 0.0f );
 	FloatVector4	bndDims( -1.0f );
-	QModelIndex	iBoneList;
-	int	numBones = 0;
-	for ( auto iSkin = nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ); iSkin.isValid(); ) {
-		bounds.center = Vector3( 0.0f, 0.0f, 0.0f );
-		bounds.radius = 0.0f;
-		bndCenter = FloatVector4( float(FLT_MAX) );
-		bndDims = FloatVector4( float(FLT_MAX) );
-		auto	iBoneData = nif->getBlockIndex( nif->getLink( iSkin, "Data" ) );
-		if ( iBoneData.isValid() ) {
-			iBoneList = nif->getIndex( iBoneData, "Bone List" );
-			if ( iBoneList.isValid() && nif->isArray( iBoneList ) )
-				numBones = nif->rowCount( iBoneList );
-		}
-		break;
-	}
 	for ( int i = 0; i <= 3; i++ ) {
-		auto mesh = QModelIndex_child( meshes, i );
+		auto mesh = nif->getIndex( meshes, i );
 		if ( !mesh.isValid() )
 			continue;
 		auto hasMesh = nif->getIndex( mesh, "Has Mesh" );
@@ -1545,8 +1962,11 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 		nif->set<quint32>( mesh, "Num Verts", numVerts );
 		// FIXME: mesh flags are not updated
 		if ( meshFile.isValid() && meshFile.positions.size() > 0 && !boundsCalculated ) {
-			if ( numBones > 0 ) {
-				calculateSFBoneBounds( nif, iBoneList, numBones, meshFile );
+			if ( calculateBoneBounds( nif, iBlock, &meshFile ) ) {
+				bounds.center = Vector3();
+				bounds.radius = 0.0f;
+				bndCenter = FloatVector4( float(FLT_MAX) );
+				bndDims = FloatVector4( float(FLT_MAX) );
 			} else {
 				// Creating a bounding sphere and bounding box from the verts
 				bounds = BoundSphere( meshFile.positions, true );
@@ -1573,27 +1993,42 @@ QModelIndex spUpdateBounds::cast( NifModel * nif, const QModelIndex & index )
 	if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
 		return cast_Starfield( nif, index );
 
-	auto vertData = nif->getIndex( index, "Vertex Data" );
+	auto	iBlock = nif->getBlockIndex( index );
+	spRemoveWasteVertices::updateBSTriShape( nif, iBlock );
 
-	// Retrieve the verts
-	QVector<Vector3> verts;
-	for ( int i = 0; i < nif->rowCount( vertData ); i++ ) {
-		verts << nif->get<Vector3>( QModelIndex_child( vertData, i ), "Vertex" );
+	BoundSphere	bounds( Vector3(), 0.0f );
+	FloatVector4	bndCenter( float(FLT_MAX) );
+	FloatVector4	bndDims( float(FLT_MAX) );
+
+	bool	isDynamic = nif->isNiBlock( iBlock, "BSDynamicTriShape" );
+	if ( !calculateBoneBounds( nif, iBlock ) || isDynamic ) {
+		auto	vertData = nif->getIndex( iBlock, ( !isDynamic ? "Vertex Data" : "Vertices" ) );
+		int	numVerts;
+		if ( !( vertData.isValid() && nif->isArray( vertData ) && ( numVerts = nif->rowCount( vertData ) ) > 0 ) )
+			return index;
+
+		// Retrieve the verts
+		QVector<Vector3> verts( numVerts );
+		for ( Vector3 & v : verts ) {
+			QModelIndex	i = nif->getIndex( vertData, int( &v - verts.constData() ) );
+			if ( isDynamic )
+				v = Vector3( nif->get<Vector4>( i ) );
+			else
+				v = nif->get<Vector3>( i, "Vertex" );
+		}
+
+		// Creating a bounding sphere from the verts
+		bounds = BoundSphere( verts, true );
+
+		if ( nif->getBSVersion() >= 151 ) {
+			// Fallout 76: update bounding box
+			calculateBoundingBox( bndCenter, bndDims, verts );
+		}
 	}
 
-	if ( verts.isEmpty() )
-		return index;
-
-	// Creating a bounding sphere from the verts
-	BoundSphere bounds = BoundSphere( verts, true );
-	bounds.update( nif, index );
-
-	if ( nif->getBSVersion() >= 151 ) {
-		// Fallout 76: update bounding box
-		FloatVector4	bndCenter, bndDims;
-		calculateBoundingBox( bndCenter, bndDims, verts );
-		setBoundingBox( nif, index, bndCenter, bndDims );
-	}
+	bounds.update( nif, iBlock );
+	if ( nif->getBSVersion() >= 151 )
+		setBoundingBox( nif, iBlock, bndCenter, bndDims );
 
 	return index;
 }
@@ -1612,7 +2047,7 @@ public:
 		if ( !nif || idx.isValid() )
 			return false;
 
-		return ( nif->getBSVersion() >= 130 );
+		return ( nif->getBSVersion() >= 100 );
 	}
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & ) override final
@@ -1634,7 +2069,17 @@ public:
 
 		return QModelIndex();
 	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
+
+QModelIndex spUpdateAllBounds::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spUpdateAllBounds	tmp;
+	if ( tmp.isApplicable( nif, index ) )
+		return tmp.cast( nif, index );
+	return index;
+}
 
 REGISTER_SPELL( spUpdateAllBounds )
 
@@ -1643,10 +2088,9 @@ REGISTER_SPELL( spUpdateAllBounds )
 
 void spGenerateMeshlets::clearMeshlets( NifModel * nif, const QModelIndex & iMeshData )
 {
-	for ( auto i = nif->getItem( iMeshData ); i; ) {
+	if ( auto i = nif->getItem( iMeshData ); i ) {
 		i->invalidateVersionCondition();
 		i->invalidateCondition();
-		break;
 	}
 	nif->set<quint32>( iMeshData, "Num Meshlets", 0 );
 	QModelIndex	i;
@@ -1681,13 +2125,13 @@ void spGenerateMeshlets::updateMeshlets(
 			size_t	triangleCnt = size_t( meshFile.triangles.size() );
 			auto	iTriangles = nif->getIndex( iMeshData, "Triangles" );
 			if ( !iTriangles.isValid() || size_t( nif->rowCount( iTriangles ) ) != triangleCnt )
-				throw FO76UtilsError( "invalid triangle data" );
+				throw NifSkopeError( "invalid triangle data" );
 			if ( meshletAlgorithm < 4 ) {
 				std::vector< unsigned int >	indices( triangleCnt * 3 );
 				size_t	k = 0;
 				for ( const auto & t : meshFile.triangles ) {
 					if ( t[0] >= vertexCnt || t[1] >= vertexCnt || t[2] >= vertexCnt )
-						throw FO76UtilsError( "vertex number is out of range" );
+						throw NifSkopeError( "vertex number is out of range" );
 					indices[k] = t[0];
 					indices[k + 1] = t[1];
 					indices[k + 2] = t[2];
@@ -1726,9 +2170,9 @@ void spGenerateMeshlets::updateMeshlets(
 					const unsigned int *	v = meshletVertices.data() + m.vertex_offset;
 					const unsigned char *	p = meshletTriangles.data() + m.triangle_offset;
 					for ( ; n; n--, k++, p = p + 3 ) {
-						auto	iTriangle = QModelIndex_child( iTriangles, int(k) );
+						auto	iTriangle = nif->getIndex( iTriangles, int(k) );
 						if ( !iTriangle.isValid() )
-							throw FO76UtilsError( "triangle number is out of range" );
+							throw NifSkopeError( "triangle number is out of range" );
 						quint16	v0 = quint16( v[p[0]] );
 						quint16	v1 = quint16( v[p[1]] );
 						quint16	v2 = quint16( v[p[2]] );
@@ -1743,7 +2187,7 @@ void spGenerateMeshlets::updateMeshlets(
 													meshFile.positions.data(), vertexCnt,
 													tmpMeshlets, newIndices, 96, 128 );
 				if ( err ) {
-					throw FO76UtilsError( err == ERANGE ? "vertex number is out of range"
+					throw NifSkopeError( err == ERANGE ? "vertex number is out of range"
 														: ( err == ENOMEM ? "std::bad_alloc" : "invalid argument" ) );
 				}
 				meshletData.resize( tmpMeshlets.size() );
@@ -1760,7 +2204,7 @@ void spGenerateMeshlets::updateMeshlets(
 				}
 				for ( int i = 0; i < int(triangleCnt); i++ ) {
 					Triangle	t( newIndices[i * 3], newIndices[i * 3 + 1], newIndices[i * 3 + 2] );
-					nif->set<Triangle>( QModelIndex_child( iTriangles, i ), t );
+					nif->set<Triangle>( nif->getIndex( iTriangles, i ), t );
 				}
 			}
 		} catch ( std::exception & e ) {
@@ -1774,7 +2218,7 @@ void spGenerateMeshlets::updateMeshlets(
 	auto	iMeshlets = nif->getIndex( iMeshData, "Meshlets" );
 	nif->updateArraySize( iMeshlets );
 	for ( int i = 0; i < meshletCount; i++ ) {
-		auto	iMeshlet = QModelIndex_child( iMeshlets, i );
+		auto	iMeshlet = nif->getIndex( iMeshlets, i );
 		if ( iMeshlet.isValid() ) {
 			nif->set<quint32>( iMeshlet, "Vertex Count", meshletData[i].vertex_count );
 			nif->set<quint32>( iMeshlet, "Vertex Offset", meshletData[i].vertex_offset );
@@ -1800,13 +2244,13 @@ QModelIndex spGenerateMeshlets::cast( NifModel * nif, const QModelIndex & index 
 		return index;
 	}
 
-	if ( !nif->blockInherits( index, "BSGeometry" ) )
+	if ( !( nif->isNiBlock( index, "BSGeometry" ) && nif->checkInternalGeometry( index ) ) )
 		return index;
 
 	auto	meshes = nif->getIndex( index, "Meshes" );
-	if ( meshes.isValid() && ( nif->get<quint32>(index, "Flags") & 0x0200 ) != 0 ) {
+	if ( meshes.isValid() ) {
 		for ( int i = 0; i <= 3; i++ ) {
-			auto mesh = QModelIndex_child( meshes, i );
+			auto mesh = nif->getIndex( meshes, i );
 			if ( !mesh.isValid() )
 				continue;
 			auto hasMesh = nif->getIndex( mesh, "Has Mesh" );
@@ -1823,6 +2267,14 @@ QModelIndex spGenerateMeshlets::cast( NifModel * nif, const QModelIndex & index 
 	}
 
 	return spUpdateBounds::cast_Starfield( nif, index );
+}
+
+QModelIndex spGenerateMeshlets::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spGenerateMeshlets	tmp;
+	if ( tmp.isApplicable( nif, index ) )
+		return tmp.cast( nif, index );
+	return index;
 }
 
 REGISTER_SPELL( spGenerateMeshlets )
@@ -1845,7 +2297,7 @@ QModelIndex spUpdateTrianglesFromSkin::cast( NifModel * nif, const QModelIndex &
 	QVector<Triangle> tris;
 	auto iParts = nif->getIndex( iSkinPart, "Partitions" );
 	for ( int i = 0; i < nif->rowCount( iParts ) && iParts.isValid(); i++ )
-		tris << SkinPartition( nif, QModelIndex_child( iParts, i ) ).getRemappedTriangles();
+		tris << SkinPartition( nif, nif->getIndex( iParts, i ) ).getRemappedTriangles();
 
 	nif->set<bool>( iData, "Has Triangles", true );
 	nif->set<ushort>( iData, "Num Triangles", tris.size() );
@@ -1857,3 +2309,80 @@ QModelIndex spUpdateTrianglesFromSkin::cast( NifModel * nif, const QModelIndex &
 }
 
 REGISTER_SPELL( spUpdateTrianglesFromSkin )
+
+//! Selects a Starfield mesh filename
+class spChooseMeshFile final : public Spell
+{
+public:
+	QString name() const override final { return Spell::tr( "Choose" ); }
+	QString page() const override final { return Spell::tr( "Mesh" ); }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & idx ) override final
+	{
+		if ( !( nif && nif->getBSVersion() >= 170 && idx.isValid() ) )
+			return false;
+		const NifItem *	item = nif->getItem( idx );
+		if ( !item )
+			return false;
+		return ( item->hasName( "Mesh Path" ) && nif->blockInherits( item, "BSGeometry" ) );
+	}
+
+	static bool meshFileFilterFunc( [[maybe_unused]] void * p, const std::string_view & s )
+	{
+		if ( !( s.ends_with( ".mesh" ) && s.starts_with( "geometries/" ) ) )
+			return false;
+		// exclude SHA1 paths
+		if ( !( s.length() == 57 && s[31] == '/' ) )
+			return true;
+		for ( size_t i = 11; i < 52; i++ ) {
+			if ( i == 31 )
+				continue;
+			char	c = s[i];
+			if ( !( ( c >= '0' && c <= '9' ) || ( c >= 'a' && c <= 'f' ) ) )
+				return true;
+		}
+		return false;
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & idx ) override final
+	{
+		std::set< std::string_view >	meshPaths;
+		nif->listResourceFiles( meshPaths, &meshFileFilterFunc );
+		if ( meshPaths.empty() )
+			return idx;
+
+		std::string	prvPath = Game::GameManager::get_full_path( nif->get<QString>( idx ), "geometries/", ".mesh" );
+		if ( meshPaths.find( prvPath ) == meshPaths.end() )
+			prvPath.clear();
+
+		QSettings	settings;
+		QString	key = QString( "%1/%2/%3/Last Mesh Path" ).arg( "Spells", page(), name() );
+		if ( prvPath.empty()
+			|| settings.value( "Settings/UI/Resource File Choosers Default to the Path of the File Last Selected",
+								false ).toBool() ) {
+			QString	tmp = settings.value( key, QString() ).toString();
+			if ( prvPath.empty() || !nif->findResourceFile( tmp, "geometries/", ".mesh" ).isEmpty() )
+				prvPath = tmp.toStdString();
+		}
+
+		FileBrowserWidget	fileBrowser( 800, 600, "Choose Mesh File", meshPaths, prvPath );
+		if ( fileBrowser.exec() == QDialog::Accepted ) {
+			const std::string_view *	s = fileBrowser.getItemSelected();
+			if ( s && !s->empty() ) {
+				QString	file = QString::fromUtf8( s->data(), qsizetype(s->length()) );
+				// save path for future
+				settings.setValue( key, QVariant( file ) );
+
+				nif->set<QString>( idx, file.replace( QChar('/'), QChar('\\') ) );
+
+				if ( *s != prvPath )
+					spUpdateBounds::cast_Starfield( nif, nif->getBlockIndex( idx ) );
+			}
+		}
+
+		return idx;
+	}
+};
+
+REGISTER_SPELL( spChooseMeshFile )
+

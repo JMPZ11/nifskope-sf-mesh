@@ -1,18 +1,16 @@
-#version 120
-#extension GL_ARB_shader_texture_lod : require
+#version 410 core
+
+#include "uniforms.glsl"
 
 uniform samplerCube	CubeMap;
 uniform bool	hasCubeMap;
-uniform bool	invertZAxis;
-uniform int	skyCubeMipLevel;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec4 A;
-varying vec4 D;
+flat in mat3 reflMatrix;
 
-varying mat4 reflMatrix;
+out vec4 fragColor;
 
 float LightingFuncGGX_REF( float LdotR, float roughness )
 {
@@ -21,7 +19,7 @@ float LightingFuncGGX_REF( float LdotR, float roughness )
 	float alphaSqr = alpha * alpha;
 	// denom = NdotH * NdotH * (alphaSqr - 1.0) + 1.0,
 	// LdotR = NdotH * NdotH * 2.0 - 1.0
-	float denom = LdotR * alphaSqr + alphaSqr + (1.0 - LdotR);
+	float denom = LdotR * alphaSqr + alphaSqr + max(1.0 - LdotR, 0.0);
 	// no pi because BRDF -> lighting
 	return alphaSqr / (denom * denom);
 }
@@ -46,23 +44,23 @@ void main()
 	vec3	V = normalize( -ViewDir );
 
 	float	VdotL = dot( V, L );
-	float	VdotL0 = max( VdotL, 0.0 );
 
-	vec3	viewWS = vec3( reflMatrix * (gl_ModelViewMatrixInverse * vec4(V, 0.0)) );
-	if ( invertZAxis )
-		viewWS.z *= -1.0;
+	vec3	viewWS = reflMatrix * V;
 
-	float	m = clamp( float(skyCubeMipLevel), 0.0, 6.0 );
-	float	roughness = ( 5.0 - sqrt( 25.0 - 4.0 * m ) ) / 4.0;
-	vec3	color = D.rgb * LightingFuncGGX_REF( VdotL, max(roughness, 0.02) ) * VdotL0;
+	float	m = clamp( float(cubeBgndMipLevel), 0.0, 6.0 );
 
 	// Environment
-	vec3	ambient = A.rgb;
+	vec3	color = lightSourceAmbient.rgb;
 	if ( hasCubeMap ) {
-		color += textureCubeLod( CubeMap, viewWS, m ).rgb * ambient;
+		color *= textureLod( CubeMap, viewWS, m ).rgb;
 	} else {
-		color += ambient * 0.08;
+		color *= 0.08;
+	}
+	// Directional light
+	if ( VdotL > 0.0 ) {
+		float	roughness = ( 5.0 - sqrt( 25.0 - 4.0 * m ) ) / 4.0;
+		color += lightSourceDiffuse[0].rgb * LightingFuncGGX_REF( VdotL, max(roughness, 0.02) ) * VdotL;
 	}
 
-	gl_FragColor = vec4( tonemap( color * D.a, A.a ), 0.0 );
+	fragColor = vec4( tonemap( color * brightnessScale, toneMapScale ), 0.0 );
 }

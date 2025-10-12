@@ -33,8 +33,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gltools.h"
 
 #include "model/nifmodel.h"
-#include "qtcompat.h"
 #include "glview.h"
+#include "gl/renderer.h"
 
 #include <QMap>
 #include <QStack>
@@ -45,42 +45,26 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <algorithm>
 #include <functional>
 
-#include "libfo76utils/src/fp32vec4.hpp"
+#include "fp32vec4.hpp"
 #include "miniball/Seb.h"
 
 //! \file gltools.cpp GL helper functions
 
-BoneWeights::BoneWeights( const NifModel * nif, const QModelIndex & index, int b, int vcnt )
+BoneData::BoneData( const NifModel * nif, const QModelIndex & index, int b )
 {
 	trans  = Transform( nif, index );
 	auto sph = BoundSphere( nif, index );
 	center = sph.center;
 	radius = sph.radius;
 	bone = b;
-
-	QModelIndex idxWeights = nif->getIndex( index, "Vertex Weights" );
-	if ( vcnt && idxWeights.isValid() ) {
-		for ( int c = 0; c < nif->rowCount( idxWeights ); c++ ) {
-			QModelIndex idx = QModelIndex_child( idxWeights, c );
-			weights.append( VertexWeight( nif->get<int>( idx, "Index" ), nif->get<float>( idx, "Weight" ) ) );
-		}
-	}
 }
 
-void BoneWeights::setTransform( const NifModel * nif, const QModelIndex & index )
+void BoneData::setTransform( const NifModel * nif, const QModelIndex & index )
 {
 	trans = Transform( nif, index );
 	auto sph = BoundSphere( nif, index );
 	center = sph.center;
 	radius = sph.radius;
-}
-
-BoneWeightsUNorm::BoneWeightsUNorm( QVector<QPair<quint16, quint16>> weights, [[maybe_unused]] int v )
-{
-	weightsUNORM.resize(weights.size());
-	for ( int i = 0; i < weights.size(); i++ ) {
-		weightsUNORM[i] = BoneWeightUNORM16(weights[i].first, weights[i].second / 65535.0);
-	}
 }
 
 
@@ -106,8 +90,8 @@ SkinPartition::SkinPartition( const NifModel * nif, const QModelIndex & index )
 
 	for ( int v = 0; v < vertexMap.count(); v++ ) {
 		for ( int w = 0; w < numWeightsPerVertex; w++ ) {
-			QModelIndex iw = QModelIndex_child( QModelIndex_child( iWeights, v ), w );
-			QModelIndex ib = QModelIndex_child( QModelIndex_child( iBoneIndices, v ), w );
+			QModelIndex iw = nif->getIndex( nif->getIndex( iWeights, v ), w );
+			QModelIndex ib = nif->getIndex( nif->getIndex( iBoneIndices, v ), w );
 
 			weights[ v * numWeightsPerVertex + w ].first  = ( ib.isValid() ? nif->get<int>( ib ) : 0 );
 			weights[ v * numWeightsPerVertex + w ].second = ( iw.isValid() ? nif->get<float>( iw ) : 0 );
@@ -117,7 +101,7 @@ SkinPartition::SkinPartition( const NifModel * nif, const QModelIndex & index )
 	QModelIndex iStrips = nif->getIndex( index, "Strips" );
 
 	for ( int s = 0; s < nif->rowCount( iStrips ); s++ ) {
-		tristrips << nif->getArray<quint16>( QModelIndex_child( iStrips, s ) );
+		tristrips << nif->getArray<quint16>( nif->getIndex( iStrips, s ) );
 	}
 
 	triangles = nif->getArray<Triangle>( index, "Triangles" );
@@ -410,54 +394,253 @@ BoundSphere operator*( const Transform & t, const BoundSphere & sphere )
  * draw primitives
  */
 
-void drawAxes( const Vector3 & c, float axis, bool color )
+static const float	defaultAttrData[12] = {
+	1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f
+};
+
+const float * const	Scene::defaultVertexAttrs[16] = {
+	// position, color, normal, tangent
+	&( defaultAttrData[4] ), &( defaultAttrData[0] ), &( defaultAttrData[6] ), &( defaultAttrData[9] ),
+	// bitangent, weights0, weights1, texcoord0
+	&( defaultAttrData[3] ), &( defaultAttrData[4] ), &( defaultAttrData[4] ), &( defaultAttrData[4] ),
+	// texcoord1..texcoord8
+	&( defaultAttrData[4] ), &( defaultAttrData[4] ), &( defaultAttrData[4] ), &( defaultAttrData[4] ),
+	&( defaultAttrData[4] ), &( defaultAttrData[4] ), &( defaultAttrData[4] ), &( defaultAttrData[4] )
+};
+
+Vector3 * Scene::allocateVertexAttr( size_t numVerts, FloatVector4 ** colors )
 {
-	glPushMatrix();
-	glTranslate( c );
-	GLfloat arrow = axis / 36.0;
-	glBegin( GL_LINES );
-	if ( color )
-		glColor3f( 1.0, 0.0, 0.0 );
-	glVertex3f( -axis, 0, 0 );
-	glVertex3f( +axis, 0, 0 );
-	glVertex3f( +axis, 0, 0 );
-	glVertex3f( +axis - 3 * arrow, +arrow, +arrow );
-	glVertex3f( +axis, 0, 0 );
-	glVertex3f( +axis - 3 * arrow, -arrow, +arrow );
-	glVertex3f( +axis, 0, 0 );
-	glVertex3f( +axis - 3 * arrow, +arrow, -arrow );
-	glVertex3f( +axis, 0, 0 );
-	glVertex3f( +axis - 3 * arrow, -arrow, -arrow );
-	if ( color )
-		glColor3f( 0.0, 1.0, 0.0 );
-	glVertex3f( 0, -axis, 0 );
-	glVertex3f( 0, +axis, 0 );
-	glVertex3f( 0, +axis, 0 );
-	glVertex3f( +arrow, +axis - 3 * arrow, +arrow );
-	glVertex3f( 0, +axis, 0 );
-	glVertex3f( -arrow, +axis - 3 * arrow, +arrow );
-	glVertex3f( 0, +axis, 0 );
-	glVertex3f( +arrow, +axis - 3 * arrow, -arrow );
-	glVertex3f( 0, +axis, 0 );
-	glVertex3f( -arrow, +axis - 3 * arrow, -arrow );
-	if ( color )
-		glColor3f( 0.0, 0.0, 1.0 );
-	glVertex3f( 0, 0, -axis );
-	glVertex3f( 0, 0, +axis );
-	glVertex3f( 0, 0, +axis );
-	glVertex3f( +arrow, +arrow, +axis - 3 * arrow );
-	glVertex3f( 0, 0, +axis );
-	glVertex3f( -arrow, +arrow, +axis - 3 * arrow );
-	glVertex3f( 0, 0, +axis );
-	glVertex3f( +arrow, -arrow, +axis - 3 * arrow );
-	glVertex3f( 0, 0, +axis );
-	glVertex3f( -arrow, -arrow, +axis - 3 * arrow );
-	glEnd();
-	glPopMatrix();
+	if ( ( numVerts - 1 ) & size_t( -65536 ) ) [[unlikely]] {
+		if ( colors )
+			*colors = nullptr;
+		return nullptr;
+	}
+	size_t	n = ( numVerts * 3 + 3 ) >> 2;
+	size_t	n2 = ( !colors ? n : n + numVerts );
+	if ( n2 > vertexAttrBuf.size() )
+		vertexAttrBuf.resize( n2 );
+	FloatVector4 *	p = vertexAttrBuf.data();
+	if ( colors )
+		*colors = p + n;
+	return reinterpret_cast< Vector3 * >( p );
 }
 
-const float hkScale660 = 1.0 / 1.42875 * 10.0;
-const float hkScale2010 = 1.0 / 1.42875 * 100.0;
+NifSkopeOpenGLContext::Program * Scene::useProgram( std::string_view name )
+{
+	NifSkopeOpenGLContext *	context = renderer;
+	if ( !context ) [[unlikely]]
+		return nullptr;
+	auto	prog = context->getCurrentProgram();
+	if ( prog && prog->name == name )
+		return prog;
+	return context->useProgram( name );
+}
+
+void Scene::setGLColor( const QColor & c )
+{
+	currentGLColor = FloatVector4( Color4( c ) );
+}
+
+void Scene::drawPoints( const Vector3 * positions, size_t numVerts )
+{
+	auto	prog = useProgram( "selection.prog" );
+	if ( !prog || numVerts < 1 )
+		return;
+	NifSkopeOpenGLContext *	context = renderer;
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( currentGLColor ) );
+	prog->uni1i( "selectionParam", -1 );
+
+	float	pointSize = currentGLPointSize;
+	if ( selecting ) {
+		prog->uni1i( "selectionFlags", 0x0003 );
+		glDisable( GL_BLEND );
+	} else {
+		pointSize += 0.5f;
+		prog->uni1i( "selectionFlags", ( roundFloat( std::min( pointSize * 8.0f, 255.0f ) ) << 8 ) | 0x0002 );
+		glEnable( GL_BLEND );
+		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+	}
+	glPointSize( pointSize );
+
+	if ( !positions ) {
+		prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
+	} else if ( numVerts < 2 ) {
+		prog->uni4m( "modelViewMatrix", *currentModelViewMatrix * Transform( *positions, 1.0f ) );
+		context->bindShape( 1, 0x03, 0, defaultVertexAttrs, nullptr );
+	} else {
+		prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
+		const float *	attrData = &( positions[0][0] );
+		context->bindShape( (unsigned int) numVerts, 0x03, 0, &attrData, nullptr );
+	}
+	context->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
+}
+
+void Scene::drawLine( const Vector3 & a, const Vector3 & b )
+{
+	auto	prog = useProgram( "lines.prog" );
+	if ( !prog )
+		return;
+	NifSkopeOpenGLContext *	context = renderer;
+	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix * Transform( a, b - a ) );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( currentGLColor ) );
+	prog->uni1f( "lineWidth", currentGLLineWidth );
+
+	if ( selecting ) {
+		glDisable( GL_BLEND );
+	} else {
+		glEnable( GL_BLEND );
+		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+	}
+
+	static const float	positions[6] = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f };
+	const float *	attrData = positions;
+	context->bindShape( 2, 0x03, 0, &attrData, nullptr );
+	context->fn->glDrawArrays( GL_LINES, 0, 2 );
+}
+
+void Scene::drawLines( const Vector3 * positions, size_t numVerts, const FloatVector4 * colors,
+						unsigned int elementMode )
+{
+	auto	prog = useProgram( "lines.prog" );
+	if ( !prog )
+		return;
+	NifSkopeOpenGLContext *	context = renderer;
+	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
+	prog->uni1f( "lineWidth", currentGLLineWidth );
+
+	if ( selecting ) {
+		glDisable( GL_BLEND );
+	} else {
+		glEnable( GL_BLEND );
+		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+	}
+
+	FloatVector4	color( currentGLColor );
+	const float *	attrData[2];
+	attrData[0] = &( positions[0][0] );
+	if ( colors ) {
+		attrData[1] = &( colors[0][0] );
+		context->bindShape( (unsigned int) numVerts, 0x43, 0, attrData, nullptr );
+		color = FloatVector4( 0.0f );
+	} else {
+		context->bindShape( (unsigned int) numVerts, 0x03, 0, attrData, nullptr );
+		color.maxValues( FloatVector4( 1.0e-15f ) );
+	}
+	prog->uni4f( "vertexColorOverride", color );
+	context->fn->glDrawArrays( GLenum( elementMode ), 0, GLsizei( numVerts ) );
+}
+
+void Scene::drawLineStrip( const Vector3 * positions, size_t numVerts, const FloatVector4 * colors )
+{
+	drawLines( positions, numVerts, colors, GL_LINE_STRIP );
+}
+
+void Scene::drawTriangles( const Vector3 * positions, size_t numVerts, const FloatVector4 * colors, bool solid,
+							unsigned int elementMode, size_t numElements, unsigned int elementType,
+							const void * elementData )
+{
+	auto	prog = useProgram( !solid ? "wireframe.prog" : "selection.prog" );
+	if ( !prog )
+		return;
+	NifSkopeOpenGLContext *	context = renderer;
+	if ( !solid ) {
+		prog->uni3m( "normalMatrix", Matrix() );
+		prog->uni1f( "lineWidth", currentGLLineWidth );
+	} else {
+		prog->uni1i( "selectionFlags", 0 );
+	}
+	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
+	prog->uni1i( "selectionParam", -1 );
+
+	if ( selecting ) {
+		glDisable( GL_BLEND );
+	} else {
+		glEnable( GL_BLEND );
+		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+	}
+
+	size_t	elementDataSize = 0;
+	if ( numElements > 0 ) {
+		elementDataSize = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
+		elementDataSize = elementDataSize * numElements;
+	}
+
+	FloatVector4	color = FloatVector4( 1.0e-15f ).maxValues( currentGLColor );
+	const float *	attrData[2];
+	attrData[0] = &( positions[0][0] );
+	unsigned int	attrMask = 0x03;
+	if ( colors ) {
+		attrData[1] = &( colors[0][0] );
+		attrMask = 0x43;
+		color = FloatVector4( 0.0f );
+	}
+	context->bindShape( (unsigned int) numVerts, attrMask, elementDataSize, attrData, elementData );
+	prog->uni4f( "vertexColorOverride", color );
+	if ( !elementMode ) [[unlikely]]
+		return;
+	if ( numElements > 0 )
+		context->fn->glDrawElements( GLenum( elementMode ), GLsizei( numElements ), GLenum( elementType ), (void *) 0 );
+	else
+		context->fn->glDrawArrays( GLenum( elementMode ), 0, GLsizei( numVerts ) );
+}
+
+void Scene::drawAxes( const Vector3 & c, float axis, bool color )
+{
+	pushAndMultModelViewMatrix( Transform( c, axis ) );
+
+	FloatVector4 *	colors = nullptr;
+	Vector3 *	positions = allocateVertexAttr( 30, ( color ? &colors : nullptr ) );
+
+	float	arrow = 1.0f / 36.0f;
+
+	positions[0] = Vector3( -1.0f, 0.0f, 0.0f );
+	positions[1] = Vector3( +1.0f, 0.0f, 0.0f );
+	positions[2] = Vector3( +1.0f, 0.0f, 0.0f );
+	positions[3] = Vector3( +1.0f - 3.0f * arrow, +arrow, +arrow );
+	positions[4] = Vector3( +1.0f, 0.0f, 0.0f );
+	positions[5] = Vector3( +1.0f - 3.0f * arrow, -arrow, +arrow );
+	positions[6] = Vector3( +1.0f, 0.0f, 0.0f );
+	positions[7] = Vector3( +1.0f - 3.0f * arrow, +arrow, -arrow );
+	positions[8] = Vector3( +1.0f, 0.0f, 0.0f );
+	positions[9] = Vector3( +1.0f - 3.0f * arrow, -arrow, -arrow );
+
+	positions[10] = Vector3( 0.0f, -1.0f, 0.0f );
+	positions[11] = Vector3( 0.0f, +1.0f, 0.0f );
+	positions[12] = Vector3( 0.0f, +1.0f, 0.0f );
+	positions[13] = Vector3( +arrow, +1.0f - 3.0f * arrow, +arrow );
+	positions[14] = Vector3( 0.0f, +1.0f, 0.0f );
+	positions[15] = Vector3( -arrow, +1.0f - 3.0f * arrow, +arrow );
+	positions[16] = Vector3( 0.0f, +1.0f, 0.0f );
+	positions[17] = Vector3( +arrow, +1.0f - 3.0f * arrow, -arrow );
+	positions[18] = Vector3( 0.0f, +1.0f, 0.0f );
+	positions[19] = Vector3( -arrow, +1.0f - 3.0f * arrow, -arrow );
+
+	positions[20] = Vector3( 0.0f, 0.0f, -1.0f );
+	positions[21] = Vector3( 0.0f, 0.0f, +1.0f );
+	positions[22] = Vector3( 0.0f, 0.0f, +1.0f );
+	positions[23] = Vector3( +arrow, +arrow, +1.0f - 3.0f * arrow );
+	positions[24] = Vector3( 0.0f, 0.0f, +1.0f );
+	positions[25] = Vector3( -arrow, +arrow, +1.0f - 3.0f * arrow );
+	positions[26] = Vector3( 0.0f, 0.0f, +1.0f );
+	positions[27] = Vector3( +arrow, -arrow, +1.0f - 3.0f * arrow );
+	positions[28] = Vector3( 0.0f, 0.0f, +1.0f );
+	positions[29] = Vector3( -arrow, -arrow, +1.0f - 3.0f * arrow );
+
+	if ( color ) {
+		for ( size_t i = 0; i < 10; i++ ) {
+			colors[i] = FloatVector4( 1.0f, 0.0f, 0.0f, 1.0f );
+			colors[i + 10] = FloatVector4( 0.0f, 1.0f, 0.0f, 1.0f );
+			colors[i + 20] = FloatVector4( 0.0f, 0.0f, 1.0f, 1.0f );
+		}
+	}
+
+	drawLines( positions, 30, colors );
+
+	popModelViewMatrix();
+}
+
+static const float hkScale660 = 1.0 / 1.42875 * 10.0;
+static const float hkScale2010 = 1.0 / 1.42875 * 100.0;
 
 float bhkScale( const NifModel * nif )
 {
@@ -521,300 +704,302 @@ QModelIndex bhkGetRBInfo( const NifModel * nif, const QModelIndex & index, const
 	return iInfo;
 }
 
-QVector<int> sortAxes( QVector<float> axesDots )
+static void sortAxes( int * axesOrder, FloatVector4 axesDots )
 {
-	QVector<float> dotsSorted = axesDots;
-	std::stable_sort( dotsSorted.begin(), dotsSorted.end() );
-
 	// Retrieve position of X, Y, Z axes in sorted list
-	auto x = axesDots.indexOf( dotsSorted[0] );
-	auto y = axesDots.indexOf( dotsSorted[1] );
-	auto z = axesDots.indexOf( dotsSorted[2] );
-
-	// When z == 1.0, x and y both == 0
-	if ( axesDots[2] == 1.0 ) {
-		x = 0;
-		y = 1;
+	axesOrder[0] = 0;
+	axesOrder[1] = 1;
+	axesOrder[2] = 2;
+	if ( axesDots[1] > axesDots[2] ) {
+		axesDots.shuffleValues( 0xD8 );		// 0, 2, 1, 3
+		std::swap( axesOrder[1], axesOrder[2] );
 	}
-
-	return{ int(x), int(y), int(z) };
+	if ( axesDots[0] > axesDots[1] ) {
+		axesDots.shuffleValues( 0xE1 );		// 1, 0, 2, 3
+		std::swap( axesOrder[0], axesOrder[1] );
+	}
+	if ( axesDots[1] > axesDots[2] ) {
+		axesDots.shuffleValues( 0xD8 );		// 0, 2, 1, 3
+		std::swap( axesOrder[1], axesOrder[2] );
+	}
 }
 
-void drawAxesOverlay( const Vector3 & c, float axis, QVector<int> axesOrder )
+void Scene::drawAxesOverlay( const Vector3 & c, float axis, const Vector3 & axesDots )
 {
-	glPushMatrix();
-	glTranslate( c );
-	GLfloat arrow = axis / 36.0;
+	if ( selecting )
+		return;
 
-	glDisable( GL_LIGHTING );
-	glDisable( GL_COLOR_MATERIAL );
-	glDisable( GL_BLEND );
-	glDisable( GL_TEXTURE_2D );
+	int	axesOrder[3];
+	sortAxes( axesOrder, FloatVector4( axesDots ) );
+
+	pushAndMultModelViewMatrix( Transform( c, axis ) );
+
+	FloatVector4 *	colors = nullptr;
+	Vector3 *	positions = allocateVertexAttr( 30, &colors );
+
+	float	arrow = 1.0f / 36.0f;
+
+	for ( int i = 0; i < 3; i++ ) {
+		Vector3 *	v = positions + ( i * 10 );
+		FloatVector4	color( 0.0f, 0.0f, 1.0f, 1.0f );
+		switch ( axesOrder[i] ) {
+		case 0:
+			// Render the X axis
+			color = FloatVector4( 1.0f, 0.0f, 0.0f, 1.0f );
+			v[0] = Vector3( 0.0f, 0.0f, 0.0f );
+			v[1] = Vector3( 1.0f, 0.0f, 0.0f );
+			v[2] = Vector3( 1.0f, 0.0f, 0.0f );
+			v[3] = Vector3( 1.0f - 3.0f * arrow, +arrow, +arrow );
+			v[4] = Vector3( 1.0f, 0.0f, 0.0f );
+			v[5] = Vector3( 1.0f - 3.0f * arrow, -arrow, +arrow );
+			v[6] = Vector3( 1.0f, 0.0f, 0.0f );
+			v[7] = Vector3( 1.0f - 3.0f * arrow, +arrow, -arrow );
+			v[8] = Vector3( 1.0f, 0.0f, 0.0f );
+			v[9] = Vector3( 1.0f - 3.0f * arrow, -arrow, -arrow );
+			break;
+		case 1:
+			// Render the Y axis
+			color = FloatVector4( 0.0f, 1.0f, 0.0f, 1.0f );
+			v[0] = Vector3( 0.0f, 0.0f, 0.0f );
+			v[1] = Vector3( 0.0f, 1.0f, 0.0f );
+			v[2] = Vector3( 0.0f, 1.0f, 0.0f );
+			v[3] = Vector3( +arrow, 1.0f - 3.0f * arrow, +arrow );
+			v[4] = Vector3( 0.0f, 1.0f, 0.0f );
+			v[5] = Vector3( -arrow, 1.0f - 3.0f * arrow, +arrow );
+			v[6] = Vector3( 0.0f, 1.0f, 0.0f );
+			v[7] = Vector3( +arrow, 1.0f - 3.0f * arrow, -arrow );
+			v[8] = Vector3( 0.0f, 1.0f, 0.0f );
+			v[9] = Vector3( -arrow, 1.0f - 3.0f * arrow, -arrow );
+			break;
+		default:
+			// Render the Z axis
+			v[0] = Vector3( 0.0f, 0.0f, 0.0f );
+			v[1] = Vector3( 0.0f, 0.0f, 1.0f );
+			v[2] = Vector3( 0.0f, 0.0f, 1.0f );
+			v[3] = Vector3( +arrow, +arrow, 1.0f - 3.0f * arrow );
+			v[4] = Vector3( 0.0f, 0.0f, 1.0f );
+			v[5] = Vector3( -arrow, +arrow, 1.0f - 3.0f * arrow );
+			v[6] = Vector3( 0.0f, 0.0f, 1.0f );
+			v[7] = Vector3( +arrow, -arrow, 1.0f - 3.0f * arrow );
+			v[8] = Vector3( 0.0f, 0.0f, 1.0f );
+			v[9] = Vector3( -arrow, -arrow, 1.0f - 3.0f * arrow );
+			break;
+		}
+		for ( int j = 0; j < 10; j++ )
+			colors[i * 10 + j] = color;
+	}
+
+	setGLLineWidth( GLView::Settings::lineWidthAxes );
+
 	glDisable( GL_DEPTH_TEST );
-	glLineWidth( GLView::Settings::lineWidthAxes );
-	glBegin( GL_LINES );
+	drawLines( positions, 30, colors );
+	glDisable( GL_BLEND );
 
-	// Render the X axis
-	std::function<void()> xAxis = [axis, arrow]() {
-		glColor3f( 1.0, 0.0, 0.0 );
-		glVertex3f( 0, 0, 0 );
-		glVertex3f( +axis, 0, 0 );
-		glVertex3f( +axis, 0, 0 );
-		glVertex3f( +axis - 3 * arrow, +arrow, +arrow );
-		glVertex3f( +axis, 0, 0 );
-		glVertex3f( +axis - 3 * arrow, -arrow, +arrow );
-		glVertex3f( +axis, 0, 0 );
-		glVertex3f( +axis - 3 * arrow, +arrow, -arrow );
-		glVertex3f( +axis, 0, 0 );
-		glVertex3f( +axis - 3 * arrow, -arrow, -arrow );
-	};
-
-	// Render the Y axis
-	std::function<void()> yAxis = [axis, arrow]() {
-		glColor3f( 0.0, 1.0, 0.0 );
-		glVertex3f( 0, 0, 0 );
-		glVertex3f( 0, +axis, 0 );
-		glVertex3f( 0, +axis, 0 );
-		glVertex3f( +arrow, +axis - 3 * arrow, +arrow );
-		glVertex3f( 0, +axis, 0 );
-		glVertex3f( -arrow, +axis - 3 * arrow, +arrow );
-		glVertex3f( 0, +axis, 0 );
-		glVertex3f( +arrow, +axis - 3 * arrow, -arrow );
-		glVertex3f( 0, +axis, 0 );
-		glVertex3f( -arrow, +axis - 3 * arrow, -arrow );
-	};
-
-	// Render the Z axis
-	std::function<void()> zAxis = [axis, arrow]() {
-		glColor3f( 0.0, 0.0, 1.0 );
-		glVertex3f( 0, 0, 0 );
-		glVertex3f( 0, 0, +axis );
-		glVertex3f( 0, 0, +axis );
-		glVertex3f( +arrow, +arrow, +axis - 3 * arrow );
-		glVertex3f( 0, 0, +axis );
-		glVertex3f( -arrow, +arrow, +axis - 3 * arrow );
-		glVertex3f( 0, 0, +axis );
-		glVertex3f( +arrow, -arrow, +axis - 3 * arrow );
-		glVertex3f( 0, 0, +axis );
-		glVertex3f( -arrow, -arrow, +axis - 3 * arrow );
-	};
-
-	// List of the lambdas
-	QVector<std::function<void()>> axes = { xAxis, yAxis, zAxis };
-
-	// Render the axes in the given order
-	//	e.g. {2, 1, 0} = zAxis(); yAxis(); xAxis();
-	for ( auto i : axesOrder ) {
-		axes[i]();
-	}
-
-	glEnd();
-	glPopMatrix();
+	popModelViewMatrix();
 }
 
-void drawBox( const Vector3 & a, const Vector3 & b )
+void Scene::drawBox( const Vector3 & a, const Vector3 & b )
 {
-	glBegin( GL_LINE_STRIP );
-	glVertex3f( a[0], a[1], a[2] );
-	glVertex3f( a[0], b[1], a[2] );
-	glVertex3f( a[0], b[1], b[2] );
-	glVertex3f( a[0], a[1], b[2] );
-	glVertex3f( a[0], a[1], a[2] );
-	glEnd();
-	glBegin( GL_LINE_STRIP );
-	glVertex3f( b[0], a[1], a[2] );
-	glVertex3f( b[0], b[1], a[2] );
-	glVertex3f( b[0], b[1], b[2] );
-	glVertex3f( b[0], a[1], b[2] );
-	glVertex3f( b[0], a[1], a[2] );
-	glEnd();
-	glBegin( GL_LINES );
-	glVertex3f( a[0], a[1], a[2] );
-	glVertex3f( b[0], a[1], a[2] );
-	glVertex3f( a[0], b[1], a[2] );
-	glVertex3f( b[0], b[1], a[2] );
-	glVertex3f( a[0], b[1], b[2] );
-	glVertex3f( b[0], b[1], b[2] );
-	glVertex3f( a[0], a[1], b[2] );
-	glVertex3f( b[0], a[1], b[2] );
-	glEnd();
+	static const Vector3	positions[16] = {
+		// line strip
+		Vector3( 0.0f, 0.0f, 0.0f ), Vector3( 1.0f, 0.0f, 0.0f ), Vector3( 1.0f, 1.0f, 0.0f ),
+		Vector3( 0.0f, 1.0f, 0.0f ), Vector3( 0.0f, 0.0f, 0.0f ), Vector3( 0.0f, 0.0f, 1.0f ),
+		Vector3( 1.0f, 0.0f, 1.0f ), Vector3( 1.0f, 1.0f, 1.0f ), Vector3( 0.0f, 1.0f, 1.0f ),
+		Vector3( 0.0f, 0.0f, 1.0f ),
+		// lines
+		Vector3( 1.0f, 0.0f, 0.0f ), Vector3( 1.0f, 0.0f, 1.0f ),
+		Vector3( 1.0f, 1.0f, 0.0f ), Vector3( 1.0f, 1.0f, 1.0f ),
+		Vector3( 0.0f, 1.0f, 0.0f ), Vector3( 0.0f, 1.0f, 1.0f )
+	};
+
+	pushAndMultModelViewMatrix( Transform( a, b - a ) );
+	drawLineStrip( positions, 10 );
+	drawLines( &( positions[10] ), 6 );
+	popModelViewMatrix();
 }
 
-void drawGrid( float s /* grid size / 2 */, int lines /* number of lines - 1 */, int sub /* # subdivisions */ )
+void Scene::drawGrid( float s /* grid size / 2 */, int lines /* number of lines - 1 */, int sub /* # subdivisions */,
+						FloatVector4 color, FloatVector4 axis1Color, FloatVector4 axis2Color )
 {
-	glEnable( GL_BLEND );
-	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-	glLineWidth( GLView::Settings::lineWidthGrid1 );
-	glColor4f( 1.0f, 1.0f, 1.0f, 0.2f );
+	if ( selecting )
+		return;
+
+	lines = std::max< int >( lines, 2 ) & ~1;
+	sub = std::max< int >( sub, 1 );
+
+	size_t	numVerts = ( size_t( lines ) + 1 ) * 4;
+	FloatVector4 *	colors = nullptr;
+	Vector3 *	positions = allocateVertexAttr( numVerts, &colors );
+	if ( !positions )
+		return;
 
 	float	scale1 = s * 2.0f / float( lines );
-	glBegin( GL_LINES );
-	for ( int i = 0; i <= lines; i++ ) {
+	Vector3 *	p = positions;
+	FloatVector4 *	c = colors;
+	for ( int i = 0; i <= lines; i++, p = p + 4, c = c + 4 ) {
 		float	t = float( i ) * scale1 - s;
-		glVertex3f( t, -s, 0.0f );
-		glVertex3f( t, s, 0.0f );
-		glVertex3f( -s, t, 0.0f );
-		glVertex3f( s, t, 0.0f );
-	}
-	glEnd();
-
-	glColor4f( 1.0f, 1.0f, 1.0f, 0.1f );
-	glLineWidth( GLView::Settings::lineWidthGrid2 );
-	float	scale2 = s * 2.0f / float( lines * sub );
-	glBegin( GL_LINES );
-	for ( int i = 0; i < lines; i++ ) {
-		for ( int j = 1; j < sub; j++ ) {
-			float	t = float( i * sub + j ) * scale2 - s;
-			glVertex3f( t, -s, 0.0f );
-			glVertex3f( t, s, 0.0f );
-			glVertex3f( -s, t, 0.0f );
-			glVertex3f( s, t, 0.0f );
+		p[0] = Vector3( t, -s, 0.0f );
+		p[1] = Vector3( t, s, 0.0f );
+		p[2] = Vector3( -s, t, 0.0f );
+		p[3] = Vector3( s, t, 0.0f );
+		if ( i == ( lines >> 1 ) ) {
+			c[0] = axis2Color;
+			c[1] = axis2Color;
+			c[2] = axis1Color;
+			c[3] = axis1Color;
+		} else {
+			c[0] = color;
+			c[1] = color;
+			c[2] = color;
+			c[3] = color;
 		}
 	}
-	glEnd();
+	setGLLineWidth( GLView::Settings::lineWidthGrid );
+	drawLines( positions, numVerts, colors );
+
+	numVerts = size_t( lines ) * size_t( sub - 1 ) * 4;
+	positions = allocateVertexAttr( numVerts );
+	if ( positions ) {
+		float	scale2 = s * 2.0f / float( lines * sub );
+		p = positions;
+		for ( int i = 0; i < lines; i++ ) {
+			for ( int j = 1; j < sub; j++, p = p + 4 ) {
+				float	t = float( i * sub + j ) * scale2 - s;
+				p[0] = Vector3( t, -s, 0.0f );
+				p[1] = Vector3( t, s, 0.0f );
+				p[2] = Vector3( -s, t, 0.0f );
+				p[3] = Vector3( s, t, 0.0f );
+			}
+		}
+		setGLColor( color );
+		setGLLineWidth( GLView::Settings::lineWidthGrid * 0.25f );
+		drawLines( positions, numVerts );
+	}
+
 	glDisable( GL_BLEND );
 }
 
-void drawCircle( const Vector3 & c, const Vector3 & n, float r, int sd )
+void Scene::drawCircle( const Vector3 & c, const Vector3 & n, float r, int sd )
 {
 	Vector3 x = Vector3::crossproduct( n, Vector3( n[1], n[2], n[0] ) );
 	Vector3 y = Vector3::crossproduct( n, x );
 	drawArc( c, x * r, y * r, -PI, +PI, sd );
 }
 
-void drawArc( const Vector3 & c, const Vector3 & x, const Vector3 & y, float an, float ax, int sd )
+void Scene::drawArc( const Vector3 & c, const Vector3 & x, const Vector3 & y, float an, float ax, int sd )
 {
-	glBegin( GL_LINE_STRIP );
+	if ( sd < 1 )
+		return;
+	Vector3 *	positions = allocateVertexAttr( size_t( sd ) + 1 );
+	if ( !positions )
+		return;
+
+	Transform	t( c, 1.0f );
+	float	m[9] = { x[0], y[0], 0.0f, x[1], y[1], 0.0f, x[2], y[2], 0.0f };
+	t.rotation = Matrix( m );
+	pushAndMultModelViewMatrix( t );
 
 	for ( int j = 0; j <= sd; j++ ) {
 		float f = ( ax - an ) * float(j) / float(sd) + an;
-
-		glVertex( c + x * sin( f ) + y * cos( f ) );
+		positions[j] = Vector3( std::sin( f ), std::cos( f ), 0.0f );
 	}
 
-	glEnd();
+	drawLineStrip( positions, size_t( sd ) + 1 );
+	popModelViewMatrix();
 }
 
-void drawCone( const Vector3 & c, Vector3 n, float a, int sd )
+Matrix4 Scene::calculateTransform( const Vector3 & c, const Vector3 & n, float xyScale )
 {
-	Vector3 x = Vector3::crossproduct( n, Vector3( n[1], n[2], n[0] ) );
-	Vector3 y = Vector3::crossproduct( n, x );
+	FloatVector4	m[4];
 
-	x = x * sin( a );
-	y = y * sin( a );
-	n = n * cos( a );
+	FloatVector4	normal = FloatVector4::convertVector3( &( n[0] ) );
+	FloatVector4	n2 = normal * normal;
+	float	tmp = ( n2[2] < ( n2[0] + n2[1] ) ? 0.0f : 1.0f );
+	m[1] = normal.crossProduct3( FloatVector4( tmp, 0.0f, 1.0f - tmp, 0.0f ) ).normalize();
+	m[0] = m[1].crossProduct3( normal ).normalize() * xyScale;
+	m[1] *= xyScale;
+	m[2] = normal;
+	m[3] = FloatVector4::convertVector3( &( c[0] ) );
+	m[3][3] = 1.0f;
 
-	glBegin( GL_TRIANGLE_FAN );
-	glVertex( c );
-
-	for ( int i = 0; i <= sd; i++ ) {
-		float f = ( 2 * PI * float(i) / float(sd) );
-
-		glVertex( c + n + x * sin( f ) + y * cos( f ) );
-	}
-
-	glEnd();
-
-	// double-sided, please
-
-	glBegin( GL_TRIANGLE_FAN );
-	glVertex( c );
-
-	for ( int i = 0; i <= sd; i++ ) {
-		float f = ( 2 * PI * float(i) / float(sd) );
-
-		glVertex( c + n + x * sin( -f ) + y * cos( -f ) );
-	}
-
-	glEnd();
+	return Matrix4( &( m[0][0] ) );
 }
 
-void drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane, float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd )
+void Scene::drawCone( const Vector3 & c, Vector3 n, float a, int sd )
 {
-	Vector3 z = twist;
-	Vector3 y = plane;
-	Vector3 x = Vector3::crossproduct( z, y );
+	Vector3 *	positions = allocateVertexAttr( size_t( sd ) * 4 );
+	if ( !positions )
+		return;
 
-	x = x * sin( coneAngle );
+	pushAndMultModelViewMatrix( calculateTransform( c, n * std::cos( a ), n.length() * std::sin( a ) ) );
 
-	glBegin( GL_TRIANGLE_FAN );
-	glVertex( pivot );
-
-	for ( int i = 0; i <= sd; i++ ) {
-		float f = ( 2.0f * PI * float(i) / float(sd) );
-
-		Vector3 xy = x * sin( f ) + y * sin( f <= PI / 2 || f >= 3 * PI / 2 ? maxPlaneAngle : -minPlaneAngle ) * cos( f );
-
-		glVertex( pivot + z * sqrt( 1 - xy.squaredLength() ) + xy );
+	Vector3	p0( 1.0f, 0.0f, 1.0f );
+	for ( int i = 0; i < sd; i++ ) {
+		float	f = ( 2.0f * PI * float(i + 1) / float(sd) );
+		Vector3	p1( std::cos( f ), std::sin( f ), 1.0f );
+		positions[i * 4] = Vector3();
+		positions[i * 4 + 1] = p0;
+		positions[i * 4 + 2] = p0;
+		positions[i * 4 + 3] = p1;
+		p0 = p1;
 	}
 
-	glEnd();
-
-	// double-sided, please
-
-	glBegin( GL_TRIANGLE_FAN );
-	glVertex( pivot );
-
-	for ( int i = 0; i <= sd; i++ ) {
-		float f = ( 2.0f * PI * float(i) / float(sd) );
-
-		Vector3 xy = x * sin( -f ) + y * sin( -f <= PI / 2 || -f >= 3 * PI / 2 ? maxPlaneAngle : -minPlaneAngle ) * cos( -f );
-
-		glVertex( pivot + z * sqrt( 1 - xy.squaredLength() ) + xy );
-	}
-
-	glEnd();
+	drawLines( positions, size_t( sd ) * 4 );
+	popModelViewMatrix();
 }
 
-void drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd, bool solid )
+void Scene::drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane,
+								float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd )
 {
-	// draw a spring with stiffness turns
-	bool cull = glIsEnabled( GL_CULL_FACE );
-	glDisable( GL_CULL_FACE );
+	Vector3 *	positions = allocateVertexAttr( size_t( sd ) + 2 );
+	if ( !positions )
+		return;
 
-	Vector3 h = b - a;
+	FloatVector4	m[4];
+	m[2] = FloatVector4::convertVector3( &( twist[0] ) );	// z
+	m[1] = FloatVector4::convertVector3( &( plane[0] ) );	// y
+	m[0] = m[2].crossProduct3( m[1] ) * float( std::sin( coneAngle ) );	// x
+	m[3] = FloatVector4::convertVector3( &( pivot[0] ) );	// translation
+	m[3][3] = 1.0f;
+	pushAndMultModelViewMatrix( Matrix4( &( m[0][0] ) ) );
 
-	float r = h.length() / 5;
+	positions[0] = Vector3();
+	for ( int i = 0; i <= sd; i++ ) {
+		float	f = ( 2.0f * PI * float(i) / float(sd) );
+		float	x = std::sin( f );
+		float	y = std::sin( f <= PI / 2 || f >= 3 * PI / 2 ? maxPlaneAngle : -minPlaneAngle ) * std::cos( f );
+		positions[i + 1] = Vector3( x, y, 1.0f );
+	}
 
-	Vector3 n = h;
-	n.normalize();
+	drawTriangles( positions, size_t( sd ) + 2, nullptr, true, GL_TRIANGLE_FAN );
+	popModelViewMatrix();
+}
 
-	Vector3 x = Vector3::crossproduct( n, Vector3( n[1], n[2], n[0] ) );
-	Vector3 y = Vector3::crossproduct( n, x );
+void Scene::drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd, [[maybe_unused]] bool solid )
+{
+	// draw a spring with stiffness turns (TODO: implement solid mode)
+	int	m = int( stiffness * sd );
+	if ( sd < 1 || m < 1 )
+		return;
+	size_t	numVerts = size_t( m ) + 3;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
 
-	x.normalize();
-	y.normalize();
+	pushAndMultModelViewMatrix( calculateTransform( a, b - a, ( b - a ).length() / 5.0f ) );
 
-	x *= r;
-	y *= r;
-
-	glBegin( GL_LINES );
-	glVertex( a );
-	glVertex( a + x * sinf( 0 ) + y * cosf( 0 ) );
-	glEnd();
-	glBegin( solid ? GL_QUAD_STRIP : GL_LINE_STRIP );
-	int m = int(stiffness * sd);
-
+	positions[0] = Vector3();
 	for ( int i = 0; i <= m; i++ ) {
-		float f = 2 * PI * float(i) / float(sd);
-
-		glVertex( a + h * i / m + x * sinf( f ) + y * cosf( f ) );
-
-		if ( solid )
-			glVertex( a + h * i / m + x * 0.8f * sinf( f ) + y * 0.8f * cosf( f ) );
+		float f = 2.0f * PI * float( i ) / float( sd );
+		positions[i + 1] = Vector3( std::cos( f ), std::sin( f ), float( i ) / float( m ) );
 	}
+	positions[m + 2] = Vector3( 0.0f, 0.0f, 1.0f );
 
-	glEnd();
-	glBegin( GL_LINES );
-	glVertex( b + x * sinf( 2 * PI * float(m) / float(sd) ) + y * cosf( 2 * PI * float(m) / float(sd) ) );
-	glVertex( b );
-	glEnd();
-
-	if ( cull )
-		glEnable( GL_CULL_FACE );
+	drawLineStrip( positions, numVerts );
+	popModelViewMatrix();
 }
 
-void drawRail( const Vector3 & a, const Vector3 & b )
+void Scene::drawRail( const Vector3 & a, const Vector3 & b )
 {
 	/* offset between beginning and end points */
 	Vector3 off = b - a;
@@ -828,165 +1013,299 @@ void drawRail( const Vector3 & a, const Vector3 & b )
 
 	x.normalize();
 
-	glBegin( GL_POINTS );
-	glVertex( a );
-	glVertex( b );
-	glEnd();
+	int	len = std::min< int >( std::max< int >( int( off.length() ), 1 ), 32000 );
+	size_t	numVerts = size_t( len + 1 ) * 2 + 4;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
+
+	Transform	t( a, 1.0f );
+	t.rotation( 0, 0 ) = x[0];
+	t.rotation( 0, 2 ) = off[0];
+	t.rotation( 1, 0 ) = x[1];
+	t.rotation( 1, 2 ) = off[1];
+	t.rotation( 2, 0 ) = x[2];
+	t.rotation( 2, 2 ) = off[2];
+	pushAndMultModelViewMatrix( t );
+
+	positions[0] = Vector3( 0.0f, 0.0f, 0.0f );
+	positions[1] = Vector3( 0.0f, 0.0f, 1.0f );
+	drawPoints( positions, 2 );
 
 	/* draw the rail */
-	glBegin( GL_LINES );
-	glVertex( a + x );
-	glVertex( b + x );
-	glVertex( a - x );
-	glVertex( b - x );
-	glEnd();
-
-	int len = int( off.length() );
+	positions[0] = Vector3( 1.0f, 0.0f, 0.0f );
+	positions[1] = Vector3( 1.0f, 0.0f, 1.0f );
+	positions[2] = Vector3( -1.0f, 0.0f, 0.0f );
+	positions[3] = Vector3( -1.0f, 0.0f, 1.0f );
 
 	/* draw the logs */
-	glBegin( GL_LINES );
-
 	for ( int i = 0; i <= len; i++ ) {
 		float rel_off = ( 1.0f * i ) / len;
-		glVertex( a + off * rel_off + x * 1.3f );
-		glVertex( a + off * rel_off - x * 1.3f );
+		positions[i * 2 + 4] = Vector3( 1.3f, 0.0f, rel_off );
+		positions[i * 2 + 5] = Vector3( -1.3f, 0.0f, rel_off );
 	}
 
-	glEnd();
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
 }
 
-void drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & x, const Vector3 & y, float an, float ax, float r, int sd )
+void Scene::drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & x, const Vector3 & y,
+							float an, float ax, float r, int sd )
 {
+	if ( sd < 1 )
+		return;
+	size_t	numVerts = ( size_t( sd ) + 1 ) * 2;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
+
+	FloatVector4	m[4];
+	m[0] = FloatVector4( x ) * r;
+	m[1] = FloatVector4( y ) * r;
+	m[2] = FloatVector4( n );
+	m[3] = FloatVector4( c ).blendValues( FloatVector4( 1.0f ), 0x08 );
+	pushAndMultModelViewMatrix( Matrix4( &(m[0][0]) ) );
+
 	bool cull = glIsEnabled( GL_CULL_FACE );
 	glDisable( GL_CULL_FACE );
-	glBegin( GL_QUAD_STRIP );
 
 	for ( int j = 0; j <= sd; j++ ) {
 		float f = ( ax - an ) * float(j) / float(sd) + an;
 
-		glVertex( c + x * r * sin( f ) + y * r * cos( f ) + n );
-		glVertex( c + x * r * sin( f ) + y * r * cos( f ) - n );
+		positions[j * 2] = Vector3( std::sin( f ), std::cos( f ), 1.0f );
+		positions[j * 2 + 1] = Vector3( std::sin( f ), std::cos( f ), -1.0f );
 	}
 
-	glEnd();
+	drawTriangles( positions, numVerts, nullptr, true, GL_TRIANGLE_STRIP );
+	popModelViewMatrix();
 
 	if ( cull )
 		glEnable( GL_CULL_FACE );
 }
 
-void drawSphereSimple( const Vector3 & c, float r, int sd )
+void Scene::drawSphereSimple( const Vector3 & c, float r, int sd, int s2 )
 {
-	drawCircle( c, Vector3( 0, 0, 1 ), r, sd );
-	drawCircle( c, Vector3( 0, 1, 0 ), r, sd );
-	drawCircle( c, Vector3( 1, 0, 0 ), r, sd );
-}
+	s2 = std::max< int >( s2, 2 );
+	int	n = s2 * 2;
+	sd = std::max< int >( sd, n );
+	n = ( sd + n - 1 ) / n;
+	sd = n * ( s2 * 2 );
 
-void drawSphere( const Vector3 & c, float r, int sd )
-{
-	for ( int j = -sd; j <= sd; j++ ) {
-		float f = PI * float(j) / float(sd);
-		Vector3 cj = c + Vector3( 0, 0, r * cos( f ) );
-		float rj = r * sin( f );
-
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( Vector3( sin( PI / sd * i ), cos( PI / sd * i ), 0 ) * rj + cj );
-
-		glEnd();
-	}
-
-	for ( int j = -sd; j <= sd; j++ ) {
-		float f = PI * float(j) / float(sd);
-		Vector3 cj = c + Vector3( 0, r * cos( f ), 0 );
-		float rj = r * sin( f );
-
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( Vector3( sin( PI / sd * i ), 0, cos( PI / sd * i ) ) * rj + cj );
-
-		glEnd();
-	}
-
-	for ( int j = -sd; j <= sd; j++ ) {
-		float f = PI * float(j) / float(sd);
-		Vector3 cj = c + Vector3( r * cos( f ), 0, 0 );
-		float rj = r * sin( f );
-
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( Vector3( 0, sin( PI / sd * i ), cos( PI / sd * i ) ) * rj + cj );
-
-		glEnd();
-	}
-}
-
-void drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd )
-{
-	Vector3 d = b - a;
-
-	if ( d.length() < 0.001 ) {
-		drawSphere( a, r );
+	Vector3 *	positions = allocateVertexAttr( size_t(sd) * ( size_t(s2) * 2 - 1 ) + 1 );
+	if ( !positions )
 		return;
+
+	positions[0] = Vector3( 0.0f, 0.0f, -1.0f );
+	Vector3 *	p = positions + 1;
+	double	r1 = 2.0 * PI / double( sd );
+	double	r2 = PI / double( s2 );
+	double	r1x = std::cos( r1 );
+	double	r1y = std::sin( r1 );
+	double	r2x = std::cos( r2 );
+	double	r2y = std::sin( r2 );
+	double	a1x = 0.0;
+	double	a1z = -1.0;
+	double	a2x = 1.0;
+	double	a2y = 0.0;
+	for ( int i = 0; i < s2; i++ ) {
+		for ( int j = 0; j++ < sd; ) {
+			double	tmp = a1x * r1x - a1z * r1y;
+			a1z = a1x * r1y + a1z * r1x;
+			a1x = tmp;
+			double	a3x = a1x * a2x;
+			double	a3y = a1x * a2y;
+			*p = Vector3( float( a3x ), float( a3y ), float( a1z ) );
+			p++;
+
+			if ( i == 0 && j < ( sd >> 1 ) && ( j % n ) == 0 ) {
+				for ( int l = 0; l < sd; l++ ) {
+					tmp = a3x * r1x - a3y * r1y;
+					a3y = a3x * r1y + a3y * r1x;
+					a3x = tmp;
+					*p = Vector3( float( a3x ), float( a3y ), float( a1z ) );
+					p++;
+				}
+			}
+		}
+
+		double	tmp = a2x * r2x - a2y * r2y;
+		a2y = a2x * r2y + a2y * r2x;
+		a2x = tmp;
 	}
 
-	Vector3 n = d;
-	n.normalize();
-
-	Vector3 x( n[1], n[2], n[0] );
-	Vector3 y = Vector3::crossproduct( n, x );
-	x = Vector3::crossproduct( n, y );
-
-	x *= r;
-	y *= r;
-
-	glBegin( GL_LINE_STRIP );
-
-	for ( int i = 0; i <= sd * 2; i++ )
-		glVertex( a + d / 2 + x * sin( PI / sd * i ) + y * cos( PI / sd * i ) );
-
-	glEnd();
-	glBegin( GL_LINES );
-
-	for ( int i = 0; i <= sd * 2; i++ ) {
-		glVertex( a + x * sin( PI / sd * i ) + y * cos( PI / sd * i ) );
-		glVertex( b + x * sin( PI / sd * i ) + y * cos( PI / sd * i ) );
-	}
-
-	glEnd();
-
-	for ( int j = 0; j <= sd; j++ ) {
-		float f = PI * float(j) / float(sd * 2);
-		Vector3 dj = n * r * cos( f );
-		float rj = sin( f );
-
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( a - dj + x * sin( PI / sd * i ) * rj + y * cos( PI / sd * i ) * rj );
-
-		glEnd();
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( b + dj + x * sin( PI / sd * i ) * rj + y * cos( PI / sd * i ) * rj );
-
-		glEnd();
-	}
+	pushAndMultModelViewMatrix( Transform( c, r ) );
+	drawLineStrip( positions, size_t( p - positions ) );
+	popModelViewMatrix();
 }
 
-void drawDashLine( const Vector3 & a, const Vector3 & b, int sd )
+void Scene::drawSphere( const Vector3 & c, float r, int sd )
 {
-	Vector3 d = ( b - a ) / float(sd);
-	glBegin( GL_LINES );
+	if ( sd < 1 )
+		return;
+	size_t	numVerts = size_t( sd ) * ( size_t( sd ) * 2 + 1 ) * 12;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
 
-	for ( int c = 0; c <= sd; c++ ) {
-		glVertex( a + d * c );
+	pushAndMultModelViewMatrix( Transform( c, r ) );
+
+	Vector3 *	p = positions;
+	for ( int j = -sd; j <= sd; j++ ) {
+		float f = PI * float(j) / float(sd);
+		Vector3 cj( 0.0f, 0.0f, std::cos( f ) );
+		float rj = std::sin( f );
+
+		Vector3 p0 = Vector3( 0.0f, rj, 0.0f ) + cj;
+		for ( int i = 0; i < sd * 2; p = p + 2 ) {
+			i++;
+			Vector3 p1 = Vector3( std::sin( PI / sd * i ), std::cos( PI / sd * i ), 0.0f ) * rj + cj;
+			p[0] = p0;
+			p[1] = p1;
+			p0 = p1;
+		}
 	}
 
-	glEnd();
+	for ( int j = -sd; j <= sd; j++ ) {
+		float f = PI * float(j) / float(sd);
+		Vector3 cj( 0.0f, std::cos( f ), 0.0f );
+		float rj = std::sin( f );
+
+		Vector3 p0 = Vector3( 0.0f, 0.0f, rj ) + cj;
+		for ( int i = 0; i < sd * 2; p = p + 2 ) {
+			i++;
+			Vector3 p1 = Vector3( std::sin( PI / sd * i ), 0.0f, std::cos( PI / sd * i ) ) * rj + cj;
+			p[0] = p0;
+			p[1] = p1;
+			p0 = p1;
+		}
+	}
+
+	for ( int j = -sd; j <= sd; j++ ) {
+		float f = PI * float(j) / float(sd);
+		Vector3 cj( std::cos( f ), 0.0f, 0.0f );
+		float rj = std::sin( f );
+
+		Vector3 p0 = Vector3( 0.0f, 0.0f, rj ) + cj;
+		for ( int i = 0; i < sd * 2; p = p + 2 ) {
+			i++;
+			Vector3 p1 = Vector3( 0.0f, std::sin( PI / sd * i ), std::cos( PI / sd * i ) ) * rj + cj;
+			p[0] = p0;
+			p[1] = p1;
+			p0 = p1;
+		}
+	}
+
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
+}
+
+void Scene::drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd )
+{
+	if ( !drawCylinder( a, b, r, sd ) )
+		return;
+
+	int	s2 = std::max< int >( ( sd + 1 ) & ~1, 2 );
+	sd = std::max< int >( sd * 2, 4 );
+	size_t	numVerts = size_t( sd ) * size_t( s2 - 1 ) * 2;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
+
+	Vector3 *	p = positions;
+	float	prvX = 1.0f;
+	float	prvY = 0.0f;
+	for ( int i = 0; i < sd; i++ ) {
+		float	x = std::cos( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		float	y = std::sin( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		float	prvZ = 1.0f;
+		float	prvW = 0.0f;
+		for ( int j = 0; true; j++, p = p + 2 ) {
+			float	z = std::cos( PI * ( float( j + 1 ) / float( s2 ) ) );
+			float	w = std::sqrt( std::max( 1.0f - z * z, 0.0f ) );
+			p[0] = Vector3( prvX * prvW, prvY * prvW, prvZ );
+			p[1] = Vector3( prvX * w, prvY * w, z );
+			p = p + 2;
+			if ( ( j + 1 ) >= ( s2 >> 1 ) )
+				break;
+			p[0] = Vector3( prvX * w, prvY * w, z );
+			p[1] = Vector3( x * w, y * w, z );
+			prvZ = z;
+			prvW = w;
+		}
+		prvX = x;
+		prvY = y;
+	}
+
+	Vector3	d = b - a;
+	d = ( d / d.length() ) * r;
+
+	pushAndMultModelViewMatrix( calculateTransform( a, d * -1.0f, r ) );
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
+
+	pushAndMultModelViewMatrix( calculateTransform( b, d, r ) );
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
+}
+
+bool Scene::drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd )
+{
+	Vector3	d = b - a;
+
+	float	l = d.length();
+	if ( l < 0.001f ) {
+		drawSphere( a, r );
+		return false;
+	}
+
+	sd = std::max< int >( sd * 2, 4 );
+	size_t	numVerts = size_t( sd ) * 8;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return true;
+
+	pushAndMultModelViewMatrix( calculateTransform( a, d, r ) );
+
+	Vector3 *	p = positions;
+	float	prvX = 1.0f;
+	float	prvY = 0.0f;
+	for ( int i = 0; i < sd; i++, p = p + 8 ) {
+		float	x = std::cos( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		float	y = std::sin( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		p[0] = Vector3( prvX, prvY, 0.0f );
+		p[1] = Vector3( x, y, 0.0f );
+		p[2] = Vector3( prvX, prvY, 0.5f );
+		p[3] = Vector3( x, y, 0.5f );
+		p[4] = Vector3( prvX, prvY, 1.0f );
+		p[5] = Vector3( x, y, 1.0f );
+		p[6] = Vector3( prvX, prvY, 0.0f );
+		p[7] = Vector3( prvX, prvY, 1.0f );
+		prvX = x;
+		prvY = y;
+	}
+
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
+
+	return true;
+}
+
+void Scene::drawDashLine( const Vector3 & a, const Vector3 & b, int sd )
+{
+	sd = ( sd + 1 ) & ~1;
+	if ( sd < 2 )
+		return;
+	Vector3 *	positions = allocateVertexAttr( size_t( sd ) );
+	if ( !positions )
+		return;
+
+	float	d = 1.0f / float( sd - 1 );
+	for ( int c = 0; c < sd; c++ )
+		positions[c] = Vector3( FloatVector4( d * float( c ) ) );
+
+	pushAndMultModelViewMatrix( Transform( a, b - a ) );
+	drawLines( positions, size_t( sd ) );
+	popModelViewMatrix();
 }
 
 //! Find the dot product of two vectors
@@ -1067,7 +1386,7 @@ static QVector<Vector3> generateTris( const NifModel * nif, const QModelIndex & 
 	return tris;
 }
 
-void drawConvexHull( const NifModel * nif, const QModelIndex & iShape, float scale, bool solid )
+void Scene::drawConvexHull( const NifModel * nif, const QModelIndex & iShape, float scale, bool solid )
 {
 	static QMap<QModelIndex, QVector<Vector3>> shapes;
 	QVector<Vector3> shape;
@@ -1079,183 +1398,225 @@ void drawConvexHull( const NifModel * nif, const QModelIndex & iShape, float sca
 		shapes[iShape] = shape;
 	}
 
-	glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_FILL : GL_LINE );
+	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 	glDisable( GL_CULL_FACE );
-	glBegin( GL_TRIANGLES );
 
-	for ( int i = 0; i < shape.count(); i += 3 ) {
-		// DRAW ABC
-		glVertex( shape[i] );
-		glVertex( shape[i+1] );
-		glVertex( shape[i+2] );
-	}
+	drawTriangles( shape.constData(), size_t( shape.size() ), nullptr, solid );
 
-	glEnd();
-	glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_LINE : GL_FILL );
 	glEnable( GL_CULL_FACE );
 }
 
-void drawNiTSS( const NifModel * nif, const QModelIndex & iShape, bool solid )
+void Scene::drawNiTSS( const NifModel * nif, const QModelIndex & iShape, bool solid )
 {
+	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	glDisable( GL_CULL_FACE );
+	glEnable( GL_PRIMITIVE_RESTART );
+	renderer->fn->glPrimitiveRestartIndex( 0xFFFF );
+
 	QModelIndex iStrips = nif->getIndex( iShape, "Strips Data" );
 	for ( int r = 0; r < nif->rowCount( iStrips ); r++ ) {
-		QModelIndex iStripData = nif->getBlockIndex( nif->getLink( QModelIndex_child( iStrips, r ) ), "NiTriStripsData" );
-		if ( iStripData.isValid() ) {
-			QVector<Vector3> verts = nif->getArray<Vector3>( iStripData, "Vertices" );
+		QModelIndex iStripData = nif->getBlockIndex( nif->getLink( nif->getIndex( iStrips, r ) ), "NiTriStripsData" );
+		if ( !iStripData.isValid() )
+			continue;
+		QModelIndex iPoints = nif->getIndex( iStripData, "Points" );
+		int numStrips;
+		if ( !iPoints.isValid() || ( numStrips = nif->rowCount( iPoints ) ) < 1 )
+			continue;
 
-			glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_FILL : GL_LINE );
-			glDisable( GL_CULL_FACE );
-			glBegin( GL_TRIANGLES );
+		QVector<Vector3> verts = nif->getArray<Vector3>( iStripData, "Vertices" );
+		qsizetype numVerts = std::min< qsizetype >( verts.size(), 65535 );
+		if ( numVerts < 1 )
+			continue;
 
-			QModelIndex iPoints = nif->getIndex( iStripData, "Points" );
-			for ( int r = 0; r < nif->rowCount( iPoints ); r++ ) {	// draw the strips like they appear in the tescs
-				// (use the unstich strips spell to avoid the spider web effect)
-				QVector<quint16> strip = nif->getArray<quint16>( QModelIndex_child( iPoints, r ) );
-				if ( strip.count() >= 3 ) {
-					quint16 a = strip[0];
-					quint16 b = strip[1];
+		qsizetype numPoints = 0;
+		for ( int s = 0; s < numStrips; s++ ) {
+			if ( QModelIndex i = nif->getIndex( iPoints, s ); i.isValid() )
+				numPoints += qsizetype( nif->rowCount( i ) ) + 1;
+		}
+		if ( numPoints < 2 )
+			continue;
+		numPoints--;
 
-					for ( int x = 2; x < strip.size(); x++ ) {
-						quint16 c = strip[x];
-						glVertex( verts.value( a ) );
-						glVertex( verts.value( b ) );
-						glVertex( verts.value( c ) );
-						a = b;
-						b = c;
-					}
-				}
+		QVector<quint16> points( numPoints );
+		quint16 * p = points.data();
+		qsizetype k = 0;
+		for ( int s = 0; s < numStrips; s++ ) {
+			// draw the strips like they appear in the tescs
+			// (use the unstitch strips spell to avoid the spider web effect)
+			QModelIndex iStrip = nif->getIndex( iPoints, s );
+			const NifItem * i;
+			int stripLen;
+			if ( !iStrip.isValid() || ( i = nif->getItem( iStrip ) ) == nullptr
+				|| ( stripLen = nif->rowCount( iStrip ) ) < 1 ) {
+				continue;
 			}
+			if ( k > 0 ) {
+				p[k] = 0xFFFF;
+				k++;
+			}
+			for ( int j = 0; j < stripLen && k < numPoints; j++, k++ ) {
+				quint16 v = nif->get<quint16>( i, j );
+				if ( qsizetype( v ) >= numVerts )
+					v = 0;
+				p[k] = v;
+			}
+		}
 
-			glEnd();
-			glEnable( GL_CULL_FACE );
-			glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_LINE : GL_FILL );
+		if ( k > 0 ) {
+			drawTriangles( verts.constData(), size_t( numVerts ), nullptr, solid,
+							GL_TRIANGLE_STRIP, size_t( k ), GL_UNSIGNED_SHORT, p );
 		}
 	}
+
+	glDisable( GL_PRIMITIVE_RESTART );
+	glEnable( GL_CULL_FACE );
 }
 
-void drawCMS( const NifModel * nif, const QModelIndex & iShape, bool solid )
+void Scene::drawCMS( const NifModel * nif, const QModelIndex & iShape, bool solid )
 {
 	QModelIndex iData = nif->getBlockIndex( nif->getLink( iShape, "Data" ) );
-	if ( iData.isValid() ) {
-		QModelIndex iBigVerts = nif->getIndex( iData, "Big Verts" );
-		QModelIndex iBigTris = nif->getIndex( iData, "Big Tris" );
-		QModelIndex iChunkTrans = nif->getIndex( iData, "Chunk Transforms" );
+	if ( !iData.isValid() )
+		return;
 
+	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+	glDisable( GL_CULL_FACE );
+
+	QModelIndex iBigVerts = nif->getIndex( iData, "Big Verts" );
+	QModelIndex iBigTris = nif->getIndex( iData, "Big Tris" );
+	QModelIndex iChunkTrans = nif->getIndex( iData, "Chunk Transforms" );
+
+	qsizetype	numVerts = 0;
+	Vector3 *	positions = nullptr;
+	if ( nif->rowCount( iBigVerts ) > 0 ) {
 		QVector<Vector4> verts = nif->getArray<Vector4>( iBigVerts );
-
-		glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_FILL : GL_LINE );
-		glDisable( GL_CULL_FACE );
-
-		for ( int r = 0; r < nif->rowCount( iBigTris ); r++ ) {
-			Triangle tri = nif->get<Triangle>( QModelIndex_child( iBigTris, r ), "Triangle" );
-
-			glBegin( GL_TRIANGLES );
-
-			glVertex( verts[tri.v1()] );
-			glVertex( verts[tri.v2()] );
-			glVertex( verts[tri.v3()] );
-
-			glEnd();
-		}
-
-		glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_LINE : GL_FILL );
-		glEnable( GL_CULL_FACE );
-
-		QModelIndex iChunkArr = nif->getIndex( iData, "Chunks" );
-		for ( int r = 0; r < nif->rowCount( iChunkArr ); r++ ) {
-			auto iChunk = nif->index(r, 0, iChunkArr);
-			Vector4 chunkOrigin = nif->get<Vector4>( iChunk, "Translation" );
-
-			quint32 transformIndex = nif->get<quint32>( iChunk, "Transform Index" );
-			QModelIndex chunkTransform = QModelIndex_child( iChunkTrans, transformIndex );
-			Vector4 chunkTranslation = nif->get<Vector4>( QModelIndex_child( chunkTransform ) );
-			Quat chunkRotation = nif->get<Quat>( QModelIndex_child( chunkTransform, 1 ) );
-
-			quint32 numOffsets = nif->get<quint32>( iChunk, "Num Vertices" ) / 3;
-			quint32 numIndices = nif->get<quint32>( iChunk, "Num Indices" );
-			quint32 numStrips = nif->get<quint32>( iChunk, "Num Strips" );
-			QVector<UshortVector3> offsets = nif->getArray<UshortVector3>( iChunk, "Vertices" );
-			QVector<quint16> indices = nif->getArray<quint16>( iChunk, "Indices" );
-			QVector<quint16> strips = nif->getArray<quint16>( iChunk, "Strips" );
-
-			QVector<Vector4> vertices( numOffsets );
-
-			[[maybe_unused]] int numStripVerts = 0;
-			int offset = 0;
-
-			for ( int v = 0; v < (int)numStrips; v++ ) {
-				numStripVerts += strips[v];
-			}
-
-			for ( int n = 0; n < ((int)numOffsets); n++ ) {
-				vertices[n] = chunkOrigin + chunkTranslation + Vector4( offsets[n], 0.0f ) / 1000.0f;
-			}
-
-			glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_FILL : GL_LINE );
-			glDisable( GL_CULL_FACE );
-
-			Transform trans;
-			trans.rotation.fromQuat( chunkRotation );
-
-			// Stripped tris
-			for ( int s = 0; s < (int)numStrips; s++ ) {
-
-				for ( int idx = 0; idx < strips[s] - 2; idx++ ) {
-
-					glBegin( GL_TRIANGLES );
-
-					glVertex( trans.rotation * Vector3( vertices[indices[offset + idx]] ) );
-					glVertex( trans.rotation * Vector3( vertices[indices[offset + idx + 1]] ) );
-					glVertex( trans.rotation * Vector3( vertices[indices[offset + idx + 2]] ) );
-
-					glEnd();
-
-				}
-
-				offset += strips[s];
-
-			}
-
-			// Non-stripped tris
-			for ( int f = 0; f < (int)(numIndices - offset); f += 3 ) {
-				glBegin( GL_TRIANGLES );
-
-				glVertex( trans.rotation * Vector3( vertices[indices[offset + f]] ) );
-				glVertex( trans.rotation * Vector3( vertices[indices[offset + f + 1]] ) );
-				glVertex( trans.rotation * Vector3( vertices[indices[offset + f + 2]] ) );
-
-				glEnd();
-
-			}
-
-			glPolygonMode( GL_FRONT_AND_BACK, solid ? GL_LINE : GL_FILL );
-			glEnable( GL_CULL_FACE );
-
+		numVerts = std::min< qsizetype >( verts.size(), 65536 );
+		positions = allocateVertexAttr( size_t( numVerts ) );
+		if ( positions ) {
+			for ( qsizetype i = 0; i < numVerts; i++ )
+				FloatVector4( verts.at( i ) ).convertToVector3( &( positions[i][0] ) );
 		}
 	}
+	int numTriangles = nif->rowCount( iBigTris );
+	if ( numVerts >= 2 && numTriangles > 0 && positions ) {
+		QVector<Triangle> triangles( numTriangles );
+		for ( int i = 0; i < numTriangles; i++ ) {
+#if 0
+			triangles[i] = nif->get<Triangle>( nif->getIndex( iBigTris, i ), "Triangle" );
+#else
+			// assume that "Triangle" is in the first row of bhkCMSBigTri
+			triangles[i] = nif->get<Triangle>( nif->getIndex( nif->getIndex( iBigTris, i ), 0 ) );
+#endif
+		}
+
+		drawTriangles( positions, size_t( numVerts ), nullptr, solid,
+						GL_TRIANGLES, size_t( numTriangles ) * 3, GL_UNSIGNED_SHORT, triangles.constData() );
+	}
+
+	QModelIndex iChunkArr = nif->getIndex( iData, "Chunks" );
+	for ( int r = 0; r < nif->rowCount( iChunkArr ); r++ ) {
+		auto iChunk = nif->index(r, 0, iChunkArr);
+		Vector4 chunkOrigin = nif->get<Vector4>( iChunk, "Translation" );
+
+		quint32 transformIndex = nif->get<quint32>( iChunk, "Transform Index" );
+		QModelIndex chunkTransform = nif->getIndex( iChunkTrans, transformIndex );
+		Vector4 chunkTranslation = nif->get<Vector4>( nif->getIndex( chunkTransform, 0 ) ) + chunkOrigin;
+		Quat chunkRotation = nif->get<Quat>( nif->getIndex( chunkTransform, 1 ) );
+
+#if 0
+		quint32 numOffsets = nif->get<quint32>( iChunk, "Num Vertices" ) / 3;
+		quint32 numIndices = nif->get<quint32>( iChunk, "Num Indices" );
+		quint32 numStrips = nif->get<quint32>( iChunk, "Num Strips" );
+#endif
+		QVector<Vector3> vertices = nif->getArray<Vector3>( iChunk, "Vertices" );
+		QVector<quint16> indices = nif->getArray<quint16>( iChunk, "Indices" );
+		QVector<quint16> strips = nif->getArray<quint16>( iChunk, "Strips" );
+
+		if ( vertices.size() < 2 || indices.size() < 3 )
+			continue;
+
+		Transform trans;
+		trans.rotation.fromQuat( chunkRotation );
+
+		pushAndMultModelViewMatrix( trans.toMatrix4() * Transform( Vector3( chunkTranslation ), 0.001f ) );
+		// load data without rendering the mesh
+		drawTriangles( vertices.constData(), size_t( vertices.size() ), nullptr, solid,
+						0, size_t( indices.size() ), GL_UNSIGNED_SHORT, indices.constData() );
+
+		// Stripped tris
+		qsizetype	offset = 0;
+		for ( qsizetype s = 0; s < strips.size(); s++ ) {
+
+			qsizetype	numIndices = strips[s];
+			if ( ( offset + numIndices ) > indices.size() )
+				numIndices = indices.size() - offset;
+			if ( numIndices < 3 )
+				continue;
+
+			renderer->fn->glDrawElements( GL_TRIANGLE_STRIP, GLsizei( numIndices ),
+											GL_UNSIGNED_SHORT, (void *) ( offset * 2 ) );
+
+			offset += numIndices;
+		}
+
+		// Non-stripped tris
+		if ( ( offset + 3 ) <= indices.size() ) {
+			qsizetype	numTriangles = ( indices.size() - offset ) / 3;
+
+			renderer->fn->glDrawElements( GL_TRIANGLES, GLsizei( numTriangles * 3 ),
+											GL_UNSIGNED_SHORT, (void *) ( offset * 2 ) );
+		}
+
+		popModelViewMatrix();
+	}
+
+	glEnable( GL_CULL_FACE );
 }
 
 // Renders text using the font initialized in the primary view class
-void renderText( const Vector3 & c, const QString & str )
+void Scene::renderText( [[maybe_unused]] const Vector3 & c, [[maybe_unused]] const QString & str )
 {
-	renderText( c[0], c[1], c[2], str );
-}
-void renderText( double x, double y, double z, const QString & str )
-{
-	glPushAttrib( GL_ALL_ATTRIB_BITS );
-
-	glDisable( GL_TEXTURE_1D );
-	glDisable( GL_TEXTURE_2D );
-	glDisable( GL_CULL_FACE );
-
-	glRasterPos3d( x, y, z );
-	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-	glEnable( GL_BLEND );
-	glAlphaFunc( GL_GREATER, 0.0 );
-	glEnable( GL_ALPHA_TEST );
-
-	QByteArray cstr( str.toLatin1() );
-	glCallLists( cstr.size(), GL_UNSIGNED_BYTE, cstr.constData() );
-	glPopAttrib();
+	// TODO: implement this function
 }
 
+NifSkopeOpenGLContext::Program * Scene::setupProgram( std::string_view name, unsigned int elementMode )
+{
+	NifSkopeOpenGLContext *	context = renderer;
+	if ( !context ) [[unlikely]]
+		return nullptr;
+	auto	prog = context->getCurrentProgram();
+	if ( !( ( prog && prog->name == name ) || ( prog = context->useProgram( name ) ) != nullptr ) )
+		return nullptr;
+
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( currentGLColor ) );
+	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
+
+	if ( elementMode == GL_LINES || elementMode == GL_LINE_STRIP || elementMode == GL_LINE_LOOP ) {
+		prog->uni1f( "lineWidth", currentGLLineWidth );
+	} else {
+		prog->uni1i( "selectionParam", -1 );
+		if ( elementMode == GL_POINTS ) {
+			float	pointSize = currentGLPointSize;
+			if ( selecting ) {
+				prog->uni1i( "selectionFlags", ( isSelModeVertex() ? 0x0003 : 0x0002 ) );
+			} else {
+				pointSize += 0.5f;
+				prog->uni1i( "selectionFlags", ( roundFloat( std::min( pointSize * 8.0f, 255.0f ) ) << 8 ) | 0x0002 );
+			}
+			glPointSize( pointSize );
+		} else if ( name == "wireframe.prog" ) {
+			prog->uni3m( "normalMatrix", Matrix() );
+			prog->uni1f( "lineWidth", currentGLLineWidth );
+		} else {
+			prog->uni1i( "selectionFlags", 0 );
+		}
+	}
+
+	if ( selecting ) {
+		glDisable( GL_BLEND );
+	} else {
+		glEnable( GL_BLEND );
+		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+	}
+
+	return prog;
+}

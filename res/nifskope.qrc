@@ -10,6 +10,7 @@
         <file alias="havok_logo">img/havok_logo.png</file>
         <file alias="qhull_logo">img/qhull_cone.gif</file>
         <file alias="add">icon/add.png</file>
+        <file alias="color_wheel">icon/color_wheel.png</file>
     </qresource>
     <qresource prefix="/wnd">
         <file>icon/handle.png</file>

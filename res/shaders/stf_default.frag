@@ -1,5 +1,4 @@
-#version 400 compatibility
-#extension GL_ARB_shader_texture_lod : require
+#version 410 core
 
 struct UVStream {
 	vec4	scaleAndOffset;
@@ -99,8 +98,6 @@ struct DecalSettingsComponent {
 struct EffectSettingsComponent {
 	// NOTE: the falloff settings here are deprecated and have been replaced by LayeredEdgeFalloffComponent
 	bool	vertexColorBlend;
-	bool	isAlphaTested;
-	float	alphaTestThreshold;
 	bool	noHalfResOptimization;
 	bool	softEffect;
 	float	softFalloffDepth;
@@ -207,19 +204,15 @@ struct LayeredMaterial {
 	DetailBlenderSettings	detailBlender;
 };
 
+#include "uniforms.glsl"
+
 uniform samplerCube	CubeMap;
 uniform samplerCube	CubeMap2;
 uniform bool	hasCubeMap;
 uniform bool	hasSpecular;
 
-uniform sampler2D	textureUnits[SF_NUM_TEXTURE_UNITS];
+uniform sampler2D	textureUnits[NUM_TEXTURE_UNITS];
 
-uniform vec4 solidColor;
-
-uniform bool isWireframe;
-uniform bool isSkinned;
-uniform mat4 worldMatrix;
-uniform vec4 parallaxOcclusionSettings;	// min. steps, max. steps, height scale, height offset
 // bit 0: alpha testing, bit 1: alpha blending
 uniform int alphaFlags;
 
@@ -228,12 +221,11 @@ uniform	LayeredMaterial	lm;
 in vec3 LightDir;
 in vec3 ViewDir;
 
-in vec4 A;
+in vec4 texCoord;
+
 in vec4 C;
-in vec4 D;
 
 in mat3 btnMatrix;
-in mat4 reflMatrix;
 
 out vec4 fragColor;
 
@@ -251,27 +243,26 @@ float emissiveIntensity( bool useAdaptive, bool adaptiveLimits, vec4 luminancePa
 	float	l = luminanceParams[0];	// luminousEmittance
 
 	if ( useAdaptive ) {
-		l = dot( A.rgb * 20.0 + D.rgb * 80.0, vec3(0.2126, 0.7152, 0.0722) );
+		l = dot( lightSourceAmbient.rgb * 20.0 + lightSourceDiffuse[0].rgb * 80.0, vec3(0.2126, 0.7152, 0.0722) );
 		l = l * exp2( luminanceParams[1] );	// exposureOffset
-		if ( adaptiveLimits )	// maxOffsetEmittance, minOffsetEmittance
+		if ( adaptiveLimits )	// minOffsetEmittance, maxOffsetEmittance
 			l = clamp( l, luminanceParams[3], luminanceParams[2] );
 	}
 
-	return sqrt( l * 0.01 );
+	return sqrt( l * 0.01 ) * glowScale;
 }
 
-float LightingFuncGGX_REF( float LdotR, float NdotL, float NdotV, float roughness )
+float LightingFuncGGX_REF( float NdotH, float NdotL, float NdotV, float roughness )
 {
 	float alpha = roughness * roughness;
 	// D (GGX normal distribution)
 	float alphaSqr = alpha * alpha;
-	// denom = NdotH * NdotH * (alphaSqr - 1.0) + 1.0,
-	// LdotR = NdotH * NdotH * 2.0 - 1.0
-	float denom = LdotR * alphaSqr + alphaSqr + (1.0 - LdotR);
-	float D = alphaSqr / (denom * denom);
+	float denom = NdotH * NdotH;
+	denom = ( denom * alphaSqr ) + ( 1.0 - denom );
+	float D = alphaSqr / ( denom * denom * 4.0 );
 	// no pi because BRDF -> lighting
-	// G (remapped hotness, see Unreal Shading)
-	float	k = ( alpha + 2.0 * roughness + 1.0 ) / 8.0;
+	// G
+	float	k = alpha * 0.5;
 	float	G = NdotL / ( mix(NdotL, 1.0, k) * mix(NdotV, 1.0, k) );
 
 	return D * G;
@@ -293,11 +284,7 @@ vec3 tonemap(vec3 x, float y)
 
 vec2 getTexCoord(in UVStream uvStream)
 {
-	vec2	offset;
-	if ( uvStream.useChannelTwo )
-		offset = gl_TexCoord[0].pq;	// this may be incorrect
-	else
-		offset = gl_TexCoord[0].st;
+	vec2	offset = ( !uvStream.useChannelTwo ? texCoord.st : texCoord.pq );
 	return offset * uvStream.scaleAndOffset.xy + uvStream.scaleAndOffset.zw;
 }
 
@@ -341,17 +328,17 @@ float getBlenderMask(int n)
 
 vec2 parallaxMapping( int n, vec3 V, vec2 offset )
 {
-	if ( parallaxOcclusionSettings.z < 0.0005 )
+	if ( sfParallaxScale < 0.0005 )
 		return offset;	// disabled
 
 	// determine optimal height of each layer
-	float	layerHeight = 1.0 / mix( parallaxOcclusionSettings.y, parallaxOcclusionSettings.x, abs(V.z) );
+	float	layerHeight = 1.0 / mix( float(sfParallaxMaxSteps), 8.0, abs(V.z) );
 
 	// current height of the layer
 	float	curLayerHeight = 1.0;
-	vec2	dtex = parallaxOcclusionSettings.z * V.xy / max( abs(V.z), 0.02 );
+	vec2	dtex = sfParallaxScale * V.xy / max( abs(V.z), 0.02 );
 	// current texture coordinates
-	vec2	currentTextureCoords = offset + ( dtex * parallaxOcclusionSettings.w );
+	vec2	currentTextureCoords = offset + ( dtex * sfParallaxOffset );
 	// shift of texture coordinates for each layer
 	dtex *= layerHeight;
 
@@ -385,10 +372,6 @@ vec2 parallaxMapping( int n, vec3 V, vec2 offset )
 
 void main()
 {
-	if ( isWireframe ) {
-		fragColor = solidColor;
-		return;
-	}
 	if ( lm.shaderModel == 45 )	// "Invisible"
 		discard;
 
@@ -404,7 +387,11 @@ void main()
 	for ( int i = 0; i < numLayers; i++ ) {
 		vec3	layerBaseMap = vec3(0.0);
 		vec3	layerNormal = vec3(0.0, 0.0, 1.0);
-		vec3	layerPBRMap = vec3((lm.shaderModel != 44 ? 0.0 : 0.53), 0.0, 1.0);	// default roughness for Hair1Layer
+		vec3	layerPBRMap = vec3(0.0, 0.0, 1.0);
+
+		int	blendMode = 3;	// "None"
+		if ( i > 0 )
+			blendMode = lm.blenders[i - 1].blendMode;
 
 		vec2	offset = getTexCoord( lm.layers[i].uvStream );
 		// _height.dds
@@ -413,7 +400,7 @@ void main()
 		// _color.dds
 		if ( lm.layers[i].material.textureSet.textures[0] != 0 )
 			layerBaseMap = getLayerTexture(i, 0, offset).rgb;
-		if ( i == 0 || lm.layers[i].material.textureSet.textures[0] != 0 ) {
+		{
 			vec4	tintColor = ( (lm.layers[i].material.flags & 2) == 0 ? lm.layers[i].material.color : C );
 			if ( (lm.layers[i].material.flags & 1) == 0 )
 				layerBaseMap *= tintColor.rgb;
@@ -466,10 +453,11 @@ void main()
 			alpha = f;
 		} else {
 			layerMask = getBlenderMask( i - 1 );
-			if ( lm.blenders[i - 1].blendMode != 3 && !( lm.isEffect && lm.effectSettings.isGlass ) ) {
-				// TODO: correctly implement CharacterCombine and Skin, instead of interpreting these as Linear
+			if ( blendMode != 3 && !( lm.isEffect && lm.effectSettings.isGlass ) ) {
+				// TODO: correctly implement Skin, instead of interpreting it as Linear
 				float	srcMask = layerMask;
-				if ( lm.blenders[i - 1].blendMode == 2 ) {
+				if ( blendMode == 2 ) {
+					// PositionContrast
 					float	blendPosition = lm.blenders[i - 1].floatParams[2];
 					float	blendContrast = lm.blenders[i - 1].floatParams[3];
 					blendContrast = max( blendContrast * min(blendPosition, 1.0 - blendPosition), 0.001 );
@@ -477,26 +465,40 @@ void main()
 					blendPosition = ( blendPosition * blendPosition + 1.0 ) * blendPosition + 0.5;
 					float	maskMin = blendPosition - blendContrast;
 					float	maskMax = blendPosition + blendContrast;
-					srcMask = clamp( (srcMask - maskMin) / (maskMax - maskMin), 0.0, 1.0 );
+					srcMask = ( srcMask - maskMin ) / ( maskMax - maskMin );
+				} else if ( blendMode == 4 ) {
+					// CharacterCombine: blend color, roughness and metalness multiplicatively
+					layerBaseMap = layerBaseMap * baseMap * 2.0;
+					layerPBRMap.r = layerPBRMap.r * pbrMap.r * 2.0;
+					if ( layerPBRMap.g < 0.5 )
+						layerPBRMap.g = layerPBRMap.g * pbrMap.g;
+					else
+						layerPBRMap.g = layerPBRMap.g + pbrMap.g - layerPBRMap.g * pbrMap.g;
+				} else if ( blendMode == 1 ) {
+					// Additive
+					layerBaseMap += baseMap;
+					layerPBRMap += pbrMap;
+					if ( !lm.blenders[i - 1].boolParams[4] )
+						layerNormal += normal;
 				}
-				srcMask *= f;
-				float	dstMask = 1.0 - ( lm.blenders[i - 1].blendMode != 1 ? srcMask : 0.0 );
+				srcMask = clamp( srcMask, 0.0, 1.0 ) * f;
 				if ( lm.blenders[i - 1].boolParams[0] )
-					baseMap = baseMap * dstMask + layerBaseMap * srcMask;	// blend color
+					baseMap = min( mix( baseMap, layerBaseMap, srcMask ), vec3(1.0) );	// blend color
+				layerPBRMap = min( mix( pbrMap, layerPBRMap, srcMask ), vec3(1.0) );
 				if ( lm.blenders[i - 1].boolParams[1] )
-					pbrMap.g = pbrMap.g * dstMask + layerPBRMap.g * srcMask;	// blend metalness
+					pbrMap.g = layerPBRMap.g;	// blend metalness
 				if ( lm.blenders[i - 1].boolParams[2] )
-					pbrMap.r = pbrMap.r * dstMask + layerPBRMap.r * srcMask;	// blend roughness
+					pbrMap.r = layerPBRMap.r;	// blend roughness
 				if ( lm.blenders[i - 1].boolParams[3] ) {
 					if ( lm.blenders[i - 1].boolParams[4] ) {
 						normal.rg = normal.rg + ( layerNormal.rg * srcMask );	// blend normals additively
 						normal.b = sqrt( max( 1.0 - dot(normal.rg, normal.rg), 0.0 ) );
 					} else {
-						normal = normalize( normal * dstMask + layerNormal * srcMask );
+						normal = normalize( mix( normal, layerNormal, srcMask ) );
 					}
 				}
 				if ( lm.blenders[i - 1].boolParams[6] )
-					pbrMap.b = pbrMap.b * dstMask + layerPBRMap.b * srcMask;	// blend ambient occlusion
+					pbrMap.b = layerPBRMap.b;	// blend ambient occlusion
 			}
 		}
 
@@ -542,18 +544,25 @@ void main()
 
 		if ( lm.layers[i].material.textureSet.textures[7] != 0 ) {
 			// _emissive.dds
-			// TODO: layered emissivity masks
 			vec4	tmp = vec4(0.0);
-			if ( lm.emissiveSettings.isEnabled && i == lm.emissiveSettings.emissiveSourceLayer )
+			int	maskBlender = 0;
+			if ( lm.emissiveSettings.isEnabled && i == lm.emissiveSettings.emissiveSourceLayer ) {
 				tmp = lm.emissiveSettings.emissiveTint;
-			else if ( lm.layeredEmissivity.isEnabled && i == lm.layeredEmissivity.firstLayerIndex )
+				maskBlender = lm.emissiveSettings.emissiveMaskSourceBlender;
+			} else if ( lm.layeredEmissivity.isEnabled && i == lm.layeredEmissivity.firstLayerIndex ) {
 				tmp = lm.layeredEmissivity.firstLayerTint;
-			else if ( lm.layeredEmissivity.isEnabled && i == lm.layeredEmissivity.secondLayerIndex )
+				maskBlender = lm.layeredEmissivity.firstLayerMaskIndex;
+			} else if ( lm.layeredEmissivity.isEnabled && i == lm.layeredEmissivity.secondLayerIndex ) {
 				tmp = lm.layeredEmissivity.secondLayerTint;
-			else if ( lm.layeredEmissivity.isEnabled && i == lm.layeredEmissivity.thirdLayerIndex )
+				maskBlender = lm.layeredEmissivity.secondLayerMaskIndex;
+			} else if ( lm.layeredEmissivity.isEnabled && i == lm.layeredEmissivity.thirdLayerIndex ) {
 				tmp = lm.layeredEmissivity.thirdLayerTint;
-			else
+				maskBlender = lm.layeredEmissivity.thirdLayerMaskIndex;
+			} else {
 				continue;
+			}
+			if ( maskBlender > 0 && maskBlender < numLayers )
+				tmp.a *= getBlenderMask( maskBlender - 1 );
 			emissive += getLayerTexture( i, 7, offset ).rgb * tmp.rgb * tmp.a;
 		}
 
@@ -573,7 +582,8 @@ void main()
 				baseAlpha *= C.a;
 			}
 			alpha = alpha * lm.effectSettings.materialOverallAlpha * baseAlpha;
-			if ( ( alphaFlags & 1 ) != 0 && !( alpha > lm.effectSettings.alphaTestThreshold ) )
+			// alpha test settings seem to be ignored for effects, and a fixed threshold of 1/128 is used instead
+			if ( !( alpha > 0.0078 ) )
 				discard;
 			if ( lm.effectSettings.blendingMode == 2 )	// SourceSoftAdditive
 				baseMap *= alpha;
@@ -594,34 +604,35 @@ void main()
 			color.a = alpha;
 	}
 
-	normal = normalize( btnMatrix_norm * normal );
 	if ( !gl_FrontFacing )
-		normal *= -1.0;
+		normal.z *= -1.0;
+	normal = normalize( btnMatrix_norm * normal );
 
 	vec3	L = normalize(LightDir);
 	vec3	V = ViewDir_norm;
 	vec3	R = reflect(-V, normal);
+	vec3	H = normalize(L + V);
 
 	float	NdotL = dot(normal, L);
 	float	NdotL0 = max(NdotL, 0.0);
-	float	LdotR = dot(L, R);
+	float	NdotH = clamp(dot(normal, H), 0.0, 1.0);
 	float	NdotV = abs(dot(normal, V));
-	float	LdotV = dot(L, V);
+	float	LdotH = dot(L, H);
 
-	vec3	reflectedWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(R, 0.0)));
-	vec3	normalWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(normal, 0.0)));
+	vec3	reflectedWS = envMapRotation * R;
+	vec3	normalWS = envMapRotation * normal;
 
 	vec3	f0 = mix(vec3(0.04), baseMap, pbrMap.g);
 	vec3	albedo = baseMap * (1.0 - pbrMap.g);
 
 	// Specular
 	float	roughness = pbrMap.r;
-	vec3	spec = D.rgb * LightingFuncGGX_REF( LdotR, NdotL0, NdotV, max(roughness, 0.02) );
+	vec3	spec = lightSourceDiffuse[0].rgb;
+	spec *= LightingFuncGGX_REF( NdotH, NdotL0, NdotV, clamp(roughness, 0.045, 0.95) );
 
 	// Diffuse
 	vec3	diffuse = vec3(NdotL0);
 	// Fresnel
-	float	LdotH = sqrt( max(LdotV * 0.5 + 0.5, 0.0) );
 	vec2	fDirect = textureLod(textureUnits[0], vec2(LdotH, NdotL0), 0.0).ba;
 	spec *= mix(f0, vec3(1.0), fDirect.x);
 	vec4	envLUT = textureLod(textureUnits[0], vec2(NdotV, roughness), 0.0);
@@ -631,7 +642,7 @@ void main()
 
 	// Environment
 	vec3	refl = vec3(0.0);
-	vec3	ambient = A.rgb;
+	vec3	ambient = lightSourceAmbient.rgb;
 	if ( hasCubeMap ) {
 		float	m = roughness * (roughness * -4.0 + 10.0);
 		refl = textureLod(CubeMap, reflectedWS, max(m, 0.0)).rgb;
@@ -652,15 +663,13 @@ void main()
 		ambient *= (vec3(1.0) - f0) * fDiffEnv;
 	}
 	float	ao = pbrMap.b;
-	refl *= f * envLUT.g * ao;
+	float	specOcc = max( ( ao - 1.0 ) * ( ( NdotV * 1.125 - 2.625 ) * NdotV + 2.5 ) + 1.0, 0.0 );
+	refl *= f * envLUT.g;
 
 	// Diffuse
-	color.rgb = diffuse * albedo * D.rgb;
-	// Ambient
-	color.rgb += ambient * albedo * ao;
+	color.rgb = ( diffuse * lightSourceDiffuse[0].rgb + ambient ) * albedo * ao;
 	// Specular
-	color.rgb += spec;
-	color.rgb += refl;
+	color.rgb += ( spec + refl ) * specOcc;
 
 	// Emissive
 	if ( lm.emissiveSettings.isEnabled ) {
@@ -672,16 +681,16 @@ void main()
 
 	// Transmissive
 	if ( lm.translucencySettings.isEnabled && lm.translucencySettings.isThin ) {
-		transmissive *= albedo * ( vec3(1.0) - f );
+		transmissive *= albedo * ( vec3(1.0) - f ) * ao;
 		// TODO: implement flipBackFaceNormalsInViewSpace
-		color.rgb += transmissive * D.rgb * max( -NdotL, 0.0 );
+		color.rgb += transmissive * lightSourceDiffuse[0].rgb * max( -NdotL, 0.0 );
 		if ( hasCubeMap )
-			color.rgb += textureLod( CubeMap2, -normalWS, 0.0 ).rgb * transmissive * A.rgb * ao;
+			color.rgb += textureLod( CubeMap2, -normalWS, 0.0 ).rgb * transmissive * lightSourceAmbient.rgb;
 		else
-			color.rgb += transmissive * A.rgb * ( ao * 0.08 );
+			color.rgb += transmissive * lightSourceAmbient.rgb * 0.08;
 	}
 
-	color.rgb = tonemap(color.rgb * D.a, A.a);
+	color.rgb = tonemap( color.rgb * brightnessScale, toneMapScale );
 
 	fragColor = color;
 }

@@ -6,6 +6,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSettings>
 
 #include "ui/widgets/filebrowser.h"
 #include "libfo76utils/src/common.hpp"
@@ -88,8 +89,6 @@ public:
 		if ( item ) {
 			auto vt = item->valueType();
 			if ( vt == NifValue::tStringIndex )
-				return true;
-			if ( nif->checkVersion( 0x14010003, 0 ) && ( vt == NifValue::tString || vt == NifValue::tFilePath ) )
 				return true;
 		}
 
@@ -185,14 +184,34 @@ QString spEditStringIndex::browseMaterial( const NifModel * nif, const QString &
 	}
 
 	std::string	prvPath;
-	if ( !matPath.isEmpty() )
-		prvPath = Game::GameManager::get_full_path( matPath, "materials", ( bsVersion >= 170 ? ".mat" : nullptr ) );
+	const char *	matFileExt = ( bsVersion >= 170 ? ".mat" : nullptr );
+	if ( !matPath.isEmpty() ) {
+		prvPath = Game::GameManager::get_full_path( matPath, "materials", matFileExt );
+		if ( materials.find( prvPath ) == materials.end() )
+			prvPath.clear();
+	}
 
-	FileBrowserWidget	fileBrowser( 800, 600, "Select Material", materials, prvPath );
+	QSettings	settings;
+	QString	key = "Spells/Material/Choose/Last Material Path";
+	if ( prvPath.empty()
+		|| settings.value( "Settings/UI/Resource File Choosers Default to the Path of the File Last Selected",
+							false ).toBool() ) {
+		std::string	tmp =
+			Game::GameManager::get_full_path( settings.value( key, QString() ).toString(), "materials", matFileExt );
+		if ( prvPath.empty() || materials.find( tmp ) != materials.end() )
+			prvPath = tmp;
+	}
+
+	FileBrowserWidget	fileBrowser( 800, 600, "Select Material", materials, prvPath,
+										( bsVersion < 170 ? &( nif->getGameResources() ) : nullptr ) );
 	if ( fileBrowser.exec() == QDialog::Accepted ) {
 		const std::string_view *	s = fileBrowser.getItemSelected();
-		if ( s )
-			return QString::fromUtf8( s->data(), qsizetype(s->length()) );
+		if ( s ) {
+			QString	pathSelected( QString::fromUtf8( s->data(), qsizetype(s->length()) ) );
+			// save path for future
+			settings.setValue( key, QVariant( pathSelected ) );
+			return pathSelected;
+		}
 	}
 	return QString();
 }
@@ -201,7 +220,7 @@ void spEditStringIndex::browseMaterial( QLineEdit * le, const NifModel * nif )
 {
 	QString	newPath( browseMaterial( nif, le->text() ) );
 	if ( !newPath.isEmpty() )
-		le->setText( newPath );
+		le->setText( newPath.replace( QChar('/'), QChar('\\') ) );
 }
 
 REGISTER_SPELL( spEditStringIndex )
@@ -217,7 +236,6 @@ public:
 		return QIcon();
 	}
 	bool constant() const override final { return true; }
-	bool instant() const override final { return true; }
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{

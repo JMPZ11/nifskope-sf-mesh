@@ -1,7 +1,6 @@
 #include "spellbook.h"
 #include "sanitize.h"
 #include "spells/misc.h"
-#include "qtcompat.h"
 
 #include <QInputDialog>
 
@@ -63,7 +62,7 @@ public:
 				QList<QPair<qint32, bool>> links;
 
 				for ( int r = 0; r < nif->rowCount( iChildren ); r++ ) {
-					qint32 l = nif->getLink( QModelIndex_child( iChildren, r ) );
+					qint32 l = nif->getLink( nif->getIndex( iChildren, r ) );
 
 					if ( l >= 0 ) {
 						links.append( QPair<qint32, bool>( l, nif->blockInherits(nif->getBlockIndex(l), {"NiTriBasedGeom", "BSTriShape"}) ) );
@@ -77,8 +76,8 @@ public:
 				std::stable_sort( links.begin(), links.end(), compareFn );
 
 				for ( int r = 0; r < links.count(); r++ ) {
-					if ( links[r].first != nif->getLink( QModelIndex_child( iChildren, r ) ) ) {
-						nif->setLink( QModelIndex_child( iChildren, r ), links[r].first );
+					if ( links[r].first != nif->getLink( nif->getIndex( iChildren, r ) ) ) {
+						nif->setLink( nif->getIndex( iChildren, r ), links[r].first );
 					}
 				}
 
@@ -134,6 +133,11 @@ public:
 			QModelIndex iNumModifiers = nif->getIndex( iBlock, "Num Modifiers" );
 			QModelIndex iModifiers = nif->getIndex( iBlock, "Modifiers" );
 			arrayCollapser.numCollapser( nif, iNumModifiers, iModifiers );
+
+			// remove empty Havok shape links
+			QModelIndex iNumSubShapes = nif->getIndex( iBlock, "Num Sub Shapes" );
+			QModelIndex iSubShapes = nif->getIndex( iBlock, "Sub Shapes" );
+			arrayCollapser.numCollapser( nif, iNumSubShapes, iSubShapes );
 		}
 
 		return QModelIndex();
@@ -196,12 +200,15 @@ bool spSanitizeBlockOrder::isApplicable( const NifModel *, const QModelIndex & i
 bool spSanitizeBlockOrder::childBeforeParent( NifModel * nif, qint32 block )
 {
 	// get index to the block
-	QModelIndex iBlock( nif->getBlockIndex( block ) );
+	const NifItem * iBlock = nif->getBlockItem( block );
+	if ( !iBlock )
+		return false;
 	// check its type
-	return (
-		nif->blockInherits( iBlock, "bhkRefObject" )
-		&& !nif->blockInherits( iBlock, "bhkConstraint" )
-	);
+	if ( nif->blockInherits( iBlock, "bhkRefObject" ) ) {
+		return ( !nif->blockInherits( iBlock, { "bhkConstraint", "bhkAction" } )
+				&& !nif->isNiBlock( iBlock, "bhkBallSocketConstraintChain" ) );
+	}
+	return ( nif->getBSVersion() >= 100 && nif->blockInherits( iBlock, "NiPSysData" ) );
 }
 
 // build the nif tree at node block; the block itself and its children are recursively added to
@@ -214,14 +221,25 @@ void spSanitizeBlockOrder::addTree( NifModel * nif, qint32 block, QList<qint32> 
 
 	// special case: add bhkConstraint entities before bhkConstraint
 	// (these are actually links, not refs)
-	QModelIndex iBlock( nif->getBlockIndex( block ) );
-
-	if ( nif->blockInherits( iBlock, "bhkConstraint" ) ) {
-		for ( const auto entity : nif->getLinkArray( iBlock, "Entities" ) ) {
-			addTree( nif, entity, newblocks );
+	const NifItem * iBlock = nif->getBlockItem( block );
+	if ( !iBlock ) {
+		return;
+	} else {
+		QVector<qint32> entities;
+		if ( nif->blockInherits( iBlock, { "bhkConstraint", "bhkBinaryAction" } ) ) {
+			entities.resize( 2 );
+			entities[0] = nif->getLink( iBlock, "Entity A" );
+			entities[1] = nif->getLink( iBlock, "Entity B" );
+		} else if ( nif->blockInherits( iBlock, "bhkUnaryAction" ) ) {
+			entities.append( nif->getLink( iBlock, "Entity" ) );
+		} else if ( nif->isNiBlock( iBlock, "bhkBallSocketConstraintChain" ) ) {
+			entities = nif->getLinkArray( nif->getItem( iBlock, "Constraint Chain Info" ), "Chained Entities" );
+		} else if ( nif->getBSVersion() >= 100 && nif->blockInherits( iBlock, "NiParticleSystem" ) ) {
+			entities.append( nif->getLink( iBlock, "Data" ) );
 		}
+		for ( const auto entity : entities )
+			addTree( nif, entity, newblocks );
 	}
-
 
 	// add all children of block that should be before block
 	for ( const auto child : nif->getChildLinks( block ) ) {
@@ -309,7 +327,7 @@ public:
 	QModelIndex check( NifModel * nif, const QModelIndex & iParent )
 	{
 		for ( int r = 0; r < nif->rowCount( iParent ); r++ ) {
-			QModelIndex idx = QModelIndex_child( iParent, r );
+			QModelIndex idx = nif->getIndex( iParent, r );
 
 			if ( nif->isLink( idx ) ) {
 				qint32 l = nif->getLink( idx );
@@ -566,8 +584,8 @@ public:
 			auto numBlocks = nif->rowCount( controlledBlocks );
 
 			for ( int i = 0; i < numBlocks; i++ ) {
-				auto ctrlrType =  nif->getIndex( QModelIndex_child( controlledBlocks, i ), "Controller Type" );
-				auto nodeName = nif->getIndex( QModelIndex_child( controlledBlocks, i ), "Node Name" );
+				auto ctrlrType =  nif->getIndex( nif->getIndex( controlledBlocks, i ), "Controller Type" );
+				auto nodeName = nif->getIndex( nif->getIndex( controlledBlocks, i ), "Node Name" );
 
 				auto ctrlrTypeIdx = nif->get<int>( ctrlrType );
 				if ( ctrlrTypeIdx == -1 ) {
@@ -741,3 +759,113 @@ QModelIndex spWarningEnvironmentMapping::cast(NifModel * nif, [[maybe_unused]] c
 
 
 REGISTER_SPELL(spWarningEnvironmentMapping)
+
+
+//! Sorts keys in NiFloatData etc. by time
+class spSortKeyGroup final : public Spell
+{
+public:
+	QString name() const override final { return Spell::tr( "Sort Keys" ); }
+	QString page() const override final { return Spell::tr( "Sanitize" ); }
+
+	struct KeyGroupItem
+	{
+		float	time;
+		float	tension;
+		float	bias;
+		float	continuity;
+		NifValue	value;
+		NifValue	forwardTangent;
+		NifValue	backwardTangent;
+		KeyGroupItem();
+		KeyGroupItem( const NifModel * nif, const QModelIndex & index );
+		~KeyGroupItem();
+		void storeItem( NifModel * nif, const QModelIndex & index ) const;
+		inline bool operator<( const KeyGroupItem & r ) const
+		{
+			return ( time < r.time );
+		}
+	};
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	{
+		if ( nif && index.isValid() && nif->isArray( index ) && nif->rowCount( index ) > 1 ) {
+			if ( const NifItem * i = nif->getItem( index, 0, false ); i )
+				return ( i->hasStrType( "Key" ) || i->hasStrType( "QuatKey" ) );
+		}
+		return false;
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	{
+		int	n = nif->rowCount( index );
+		if ( n < 2 )
+			return index;
+
+		std::vector< KeyGroupItem >	keys;
+		keys.reserve( size_t( n ) );
+		for ( int i = 0; i < n; i++ )
+			keys.emplace_back( nif, nif->getIndex( index, i ) );
+
+		std::stable_sort( keys.begin(), keys.end() );
+
+		nif->setState( BaseModel::Processing );
+		for ( int i = 0; i < n; i++ )
+			keys[i].storeItem( nif, nif->getIndex( index, i ) );
+		nif->restoreState();
+
+		return index;
+	}
+};
+
+spSortKeyGroup::KeyGroupItem::KeyGroupItem()
+	: time( 0.0f ), tension( 0.0f ), bias( 0.0f ), continuity( 0.0f )
+{
+}
+
+spSortKeyGroup::KeyGroupItem::KeyGroupItem( const NifModel * nif, const QModelIndex & index )
+	: time( 0.0f ), tension( 0.0f ), bias( 0.0f ), continuity( 0.0f )
+{
+	const NifItem *	item;
+	if ( !( nif && index.isValid() && ( item = nif->getItem( index ) ) != nullptr ) )
+		return;
+	if ( const NifItem * i = nif->getItem( item, "Time" ); i )
+		time = nif->get<float>( i );
+	if ( const NifItem * i = nif->getItem( item, "Value" ); i )
+		value = i->value();
+	if ( const NifItem * i = nif->getItem( item, "Forward" ); i )
+		forwardTangent = i->value();
+	if ( const NifItem * i = nif->getItem( item, "Backward" ); i )
+		backwardTangent = i->value();
+	if ( const NifItem * i = nif->getItem( item, "TBC" ); i ) {
+		tension = nif->get<float>( i, "t" );
+		bias = nif->get<float>( i, "b" );
+		continuity = nif->get<float>( i, "c" );
+	}
+}
+
+spSortKeyGroup::KeyGroupItem::~KeyGroupItem()
+{
+}
+
+void spSortKeyGroup::KeyGroupItem::storeItem( NifModel * nif, const QModelIndex & index ) const
+{
+	NifItem *	item;
+	if ( !( nif && index.isValid() && ( item = nif->getItem( index ) ) != nullptr ) )
+		return;
+	if ( NifItem * i = nif->getItem( item, "Time" ); i )
+		nif->set<float>( i, time );
+	if ( NifItem * i = nif->getItem( item, "Value" ); i )
+		nif->setItemValue( i, value );
+	if ( NifItem * i = nif->getItem( item, "Forward" ); i )
+		nif->setItemValue( i, forwardTangent );
+	if ( NifItem * i = nif->getItem( item, "Backward" ); i )
+		nif->setItemValue( i, backwardTangent );
+	if ( NifItem * i = nif->getItem( item, "TBC" ); i ) {
+		nif->set<float>( i, "t", tension );
+		nif->set<float>( i, "b", bias );
+		nif->set<float>( i, "c", continuity );
+	}
+}
+
+REGISTER_SPELL( spSortKeyGroup )

@@ -1,15 +1,243 @@
  == CHANGELOG ==
 
-#### NifSkope-2.0.dev9-20240908
+* The bone list in NiSkinData and BSSkin::BoneData now shows the bone names. The block should have one parent, and the bone nodes should exist in the NIF.
+* File dialogs for OBJ and 3DS import and export set the default file name from the NIF path, similarly to glTF.
+* The material CRC in NiTriShapeData and NiTriStripsData is shown as Skyrim Havok material, and is set on importing OBJ as collision.
+* Implemented rendering the selected skin partition in BSDismemberSkinInstance and for Skyrim Special Edition.
+* Fixed issues with closing the UV editor window due to the OpenGL context not being set correctly.
+* Fixed errors on opening Fallout 4 models with a BS version greater than 130.
+* Fixed warning on importing OBJ as collision to Oblivion and Fallout 3/New Vegas.
+
+#### NifSkope-2.0.dev11-20250824
+
+* Added new general settings for the Havok layer and material when importing OBJ as collision. The material can be specified as the CRC32 hash (decimal or hexadecimal with a 0x prefix), or as the string name (e.g. Broken Stone), empty defaults to None. Note that some existing settings previously under NIF have been reset because they were moved to a new Import/Export tab.
+* Resource file choosers can now default to the path of the last file of the same type (texture, material or mesh) selected, instead of the original path in the NIF or material, if the last selected file exists. This can be enabled in the general settings.
+* glTF export improvements: support for exporting Skyrim Legendary Edition models and NiTriShape blocks, and for exporting only a selection (node or shape) instead of the entire scene.
+* Added support for importing glTF binary (.glb) files.
+* When importing a skinned glTF mesh, the "Flat" property is inherited by child nodes, and is limited to Starfield only.
+* In the UV editor, the selection can be rotated with the mouse by Control-clicking on a selected vertex.
+* New general setting for the UV editor window to stay on top.
+* Fixed bugs in stitching and unstitching triangle strips, and the output is better optimized by re-stripifying the data.
+* Stripify and Triangulate convert the original geometry and data blocks instead of creating new blocks. This change allows for preserving the block order and all data fields other than the strips/triangles being converted.
+* Fixed highlighting the selected vertices of BSDynamicTriShape blocks.
+* Fixed the sort order of bhkBallSocketConstraintChain in the Reorder Blocks spell.
+* Fixed BSBlastNode, BSDamageStage, BSDebrisNode and projectile, shell casing, sighting and workshop connect points node blocks being incorrectly deleted by Remove Bogus Nodes.
+* Fixed rendering the scale of bhkCompressedMeshShape, the Scale Copy field of the block (X only) now overrides the scale from parent nodes.
+* Fixed glTF export not creating a scene, which causes an error in Blender 4.5.
+* Fixed the sort order of the child links of NiParticleSystem in Skyrim Special Edition and newer, Data is moved to before the Skin Instance and property links. The Reorder Blocks spell also moves the data block before the parent.
+* Fixed Collapse Link Arrays deleting Havok sub-shape arrays with elements of a non-link type.
+* The texture clamp mode in BSEffectShaderProperty is shown as an enumeration instead of a byte value.
+
+#### NifSkope-2.0.dev11-20250630
+
+* Added new spells to move array items up, down, or to a specific row.
+* Implemented copy and paste in the UV editor. UV data is stored on the clipboard in a text format similar to OBJ files, with an additional vertex number field when copying a selection. When pasting a selection to a selection, vertex numbers are remapped, otherwise they are not changed. The paste operation currently does not support the undo/redo feature of the UV editor.
+* Sanitize before save and Remove Bogus Nodes have been added as options when processing multiple NIF files.
+* "Block/Convert" now sets the number of partitions on conversion from NiSkinInstance to BSDismemberSkinInstance. Note that body parts and flags are still initialized with the defaults.
+* PNG format screenshots no longer use the silhouette method for alpha, the output image should be identical to DDS.
+* Sliders on the lighting widget now use a page step (when moving the slider with the Page Up/Page Down keys) of a quarter of the full range.
+* Fixed BSTriShape vertex positions and bitangent X being lost on changes to the full precision flag.
+* Fixed Update Bounds on BSDynamicTriShape.
+* Fixed rendering BSConnectPoint::Parents, the transforms of the parent nodes are now correctly applied.
+* Fixed Fallout 76 translucency with image based lighting.
+* Fixed Fallout 76 rendering issue where materials with the bEmitEnabled flag set but no emissive map were incorrectly glowing.
+* Fixed rendering bounding volume collision used in older games like Morrowind. Collision types other than Box are still not supported.
+* Fixed errors on copying and pasting certain value types like ByteColor4, HalfVector2, and others.
+* Fixed selection colors on Havok constraints.
+* Fixed crash on invalid or missing Fallout 76 effect materials.
+
+#### NifSkope-2.0.dev11-20250530
+
+* The "Combine Properties" optimization spell can now be used when processing multiple NIF files.
+* Implemented "Flip Normals" for BSTriShape geometry.
+* New spell (Sanitize/Sort Keys) for sorting animation key groups by time. It is applicable to arrays with a type of Key or QuatKey, and a size of at least 2.
+* Minor Fallout 76 shading improvements, and limited translucency rendering that currently only supports BGSM files and ignores the turbulence and thick object settings.
+* Collapsing link arrays now also works on bhkListShape blocks.
+* Fixed glTF import of skinned models where the bone nodes are after the meshes.
+* Fixed rendering Skyrim decals.
+* Fixed issue https://github.com/gavrant/nifskope/issues/8.
+* Fixed bug in rendering collision where the transform of the last shape was incorrectly applied to the center of mass.
+* Fixed "Texture/Choose" not being applicable to the texture paths in BSEffectShaderProperty.
+* Updates for Starfield version 1.15.214.
+
+#### NifSkope-2.0.dev11-20250505
+
+* Processing multiple NIF files supports three new spells (Remove Duplicate Vertices, Remove Unused Vertices and Optimize Indices), and recursive processing of all models under a selected folder.
+* Screenshot supersampling is now saved as a setting.
+* Skyrim Special Edition particle data is updated by spells that modify BSTriShape geometry.
+* Fixed the "Extract Resource Files" spell not extracting compiled Starfield materials.
+* Fixed rendering BSSubIndexTriShape segment selection.
+* Fixed Face Normals and Smooth Normals being applicable to meshes using model space normals.
+* Fixed the icons of instant spells like Flags and Color/Choose missing from the value column of Block Details.
+
+#### NifSkope-2.0.dev11-20250414
+
+* Tangent space spells now automatically add tangents to BSTriShape if missing.
+* "Color/Set All" has been implemented for BSTriShape and BSGeometry.
+* Various fixes to the texture preview feature.
+* Editing the vertex flags on a Skyrim SE BSTriShape with skinning updates the skin partition (fix to issue https://github.com/niftools/nifskope/issues/235).
+* Fixed parsing warnings on casting tangent space spells on NiFloatData.
+* Fixed BSValueNode blocks being incorrectly deleted by the Remove Bogus Nodes optimization spell.
+* Fixed issues with "Havok/Pack Strips" on newer NIF versions, including warnings and incorrect scale.
+* Fixed Face Normals and Smooth Normals on NiTriStripsData in Skyrim Special Edition and newer.
+* Significantly improved the performance of rendering bhkNiTriStripsShape with a large number of strips per shape.
+* Fixed parsing warnings on OBJ import to Fallout 3/New Vegas models.
+* Fixed the OpenGL context not being correctly set by the color picker tool.
+
+#### NifSkope-2.0.dev11-20250331
+
+* New spell for simplifying BSTriShape meshes, using [meshoptimizer](https://github.com/zeux/meshoptimizer#simplification). It is recommended to remove duplicate vertices first before simplification. Casting the spell without a selection simplifies the whole model (experimental), and there is also a batch spell that processes each shape separately with the last used settings.
+* Texture chooser dialogs show a preview and information about the selected file. The resolution of the preview can be configured in the general settings.
+* Material and texture browsers have a new button to extract the selected item(s). Note that this feature does not support extracting Starfield materials.
+* Added batch versions of Remove Unused Vertices, Remove Duplicate Vertices and Optimize Indices.
+* Improved the performance of Remove Unused Vertices on BSTriShape geometry.
+* Implemented 'Remove Duplicate Vertices' for BSTriShape geometry (skin partitions are not supported).
+* Mesh spells that change the number of vertices or triangles in a BSTriShape now correctly update the data size, and it is also calculated on updating bounds.
+* Fixed emissive color on Fallout 3/New Vegas meshes using BSShaderNoLightingProperty.
+* Fixed the sort order of Havok action blocks in the Reorder Blocks spell.
+* Fixed a rendering issue on Windows with AMD GPUs.
+
+#### NifSkope-2.0.dev11-20250316
+
+* Implemented support for editing and saving Fallout 4 materials.
+* 'Optimize/Combine Properties' now works on BSShaderTextureSet blocks.
+* Added new buttons to the resource settings to add all applicable subfolders and archives under a selected folder (useful for mod collections), and to remove invalid paths and duplicates from the list.
+* The 'Ignore errors on opening archives and data folders' resource setting has been changed to default to on, and multiple errors are shown with a single message box.
+* Paths set by the material chooser spell use backslash characters instead of forward slashes.
+* New render setting to override the skeleton root for skinned Skyrim and newer meshes. A value of -1 enables the use of the transform in node 0.
+* Fixed potential link time error in particle shader, and disabled lighting on particles.
+* Fixes to Oblivion and Fallout 3 parallax mapping.
+* Fixed rendering NiGeomMorpherController and NiUVController animations.
+* Fixed bugs in Fallout 4 grayscale to palette mapping.
+* Fixed Fallout 3 specular flag and specular color not being ignored.
+* Fixed errors on uncompressed files in BSA archives with full paths.
+* Fixed warnings on sanitizing Fallout 3/New Vegas geometry data, and on processing bhkListShape blocks.
+* Fixed rendering bone bounds to correctly reproduce (buggy) game behavior.
+* Fixed drawing Oblivion tangent space when selected.
+
+#### NifSkope-2.0.dev11-20250220
+
+* Implemented experimental glTF export and import for Skyrim: Special Edition, Fallout 4 and Fallout 76. See [README\_GLTF.md](https://github.com/fo76utils/nifskope/blob/develop/README_GLTF.md) for details, and known limitations and issues.
+* The 'Extract Resource Files' spell has improved support for texture paths in older games, including Oblivion normal and glow maps.
+* Updating bounds has been implemented for skinned BSTriShape meshes, and 'Update All Bounds' is now applicable to Skyrim Special Edition NIFs.
+* The viewport is now enabled by default on opening a new window, and not only after loading a NIF. This allows models imported to a new window to be visible, but may increase startup time, because resources need to be initialized for the default game (the default NIF version can be configured in the general settings).
+* Implemented triangle selection on triangle strips, shift-clicking selects the first point of the triangle.
+* Added keyboard controls for setting the light direction: F, L, T, Up, Down, Left and Right control the light source instead of the camera if Shift is held down.
+* Fixed incorrect sorting of link rows.
+* Fixed errors on drawing bhkPackedNiTriStripsShape.
+* Fixes to Fallout 3/New Vegas rendering: depth buffer flags are now checked only on BSShaderNoLightingProperty, added support for Lighting30ShaderProperty and TallGrassShaderProperty.
+* Fixes to skinned mesh rendering and glTF import.
+* Fixed the light direction being reset on changes to the render settings.
+* Fixed loading Fallout 76 and Starfield cube maps with legacy DDS header.
+* Fixed restoring the background color after silhouette mode.
+* Fixed issues with empty recent file menus (e.g. recent archive files before opening an archive).
+* Improved handling of the alpha channel on DDS screenshots when the model uses alpha blending.
+* Minor optimizations: faster cube map filtering, and use of SIMD data types in 'noavx' GCC and Clang builds.
+
+#### NifSkope-2.0.dev9-20250130
+
+* Reworked the renderer and UV editor to use OpenGL 4.2 or (on macOS) 4.1 core profile. The use of legacy (compatibility profile) functions has been removed. There is a new render setting for the size of mesh cache (vertex and element buffers), but the option to disable shaders has been removed.
+* Added support for Fallout 4 and 76 Havok material types, contributed by Jonathan Ostrus.
+* In object selection mode, triangles can be selected by shift-clicking. Note that this feature is not implemented yet for triangle strips.
+* Antialiasing (MSAA) now defaults to 4x, and the supported number of samples can be detected in the settings.
+* New render setting for the color of the grid, and the axes are highlighted with different colors (X: red, Y: green, Z: blue).
+* When the up axis is set to X or Y, the environment map and light direction are now correctly rotated so that the "up" direction matches the setting.
+* Flipping the view (F11) is no longer limited to the preset view directions.
+* Texture rendering in the UV editor reconstructs the missing channel of BC5 normal maps, and correctly handles signed formats.
+* BSTriShape and BSGeometry bone weights can now be rendered when selected, and also the bounding spheres of Starfield bones.
+* Added new spell to set all vertices of the selected triangle to zero, contributed by Thomas Caron.
+* The Transform/Edit spell has been changed to use a non-modal window.
+* Improved rendering of bounding spheres.
+* Added very limited support for Starfield skinning.
+* When frontal light mode is disabled, the light direction can be controlled with Shift + mouse dragging. The sliders on the lighting widget previously used for the same purpose have been replaced by environment map rotation and glow intensity controls.
+* New spell to optimize the order of triangles, using meshopt\_optimizeVertexCache().
+* Stripifying triangles is implemented with meshoptimizer instead of NvTriStrip.
+* Fixed issues https://github.com/hexabits/nifskope/issues/94 and https://github.com/niftools/nifskope/issues/239.
+* Fixed bugs in selecting furniture markers, and setting the OpenGL context when saving screenshots.
+* Various optimizations to rendering and to NIF item data structures.
+* The use of Qt 6 Core5 compatibility module (previously required by the XML parser) has been removed.
+
+#### NifSkope-2.0.dev9-20241228
+
+* Implemented rendering bhkCylinderShape (fix to issue https://github.com/hexabits/nifskope/issues/37).
+* Added a new resource setting to disable the message box that is shown if an archive or data folder cannot be opened.
+* Added keyboard shortcuts to moving and deleting data paths in the resource settings.
+* Exported UV layouts can be solid filled.
+* Improvements to OBJ export.
+* Added support for more Skyrim Havok material types that were previously unknown.
+* Fixed error message on using Transform/Apply on BSTriShape geometry with full precision vertex positions.
+* Fixed hang on opening loose .bto and .btr files.
+* Fixed the block types NiMeshPSysData and NiMeshParticleSystem being incorrectly filtered out by 'Block/Insert'.
+* Fixed bug in checking vertex attribute flags for enabling the Skyrim multilayer parallax shader.
+* Fixed issue with opening data paths that contain non-ASCII characters on Windows. Note that currently the paths need to be valid in the local 8-bit code page.
+
+#### NifSkope-2.0.dev9-20241112
+
+* Implemented support for editing and saving Fallout 76 materials.
+* New spell for browsing Starfield .mesh files, it is available when right clicking on a 'Mesh Path' item. Note that mesh paths in the format used by the base game are excluded from the file list, so the spell is only useful for browsing new meshes with human readable paths. The Update Bounds spell is automatically cast on the parent block if the path is changed.
+* Internal geometry data can be saved as a single .mesh file (without converting the BSGeometry) to any path by right clicking on Mesh Data and using the 'Mesh/Save As' spell.
+* The Texture/Info spell is now applicable to any string item that ends with ".dds", and it opens a dialog showing information and a preview of the texture.
+* Implemented Transform/Apply for Starfield (internal geometry only).
+* Starfield and Fallout 76 shading fixes.
+* Experimental support for importing glTF models that use anisotropic scaling. Non-uniform scale factors are applied to the rotation matrix, so the model should be fixed manually by applying the transform and recalculating normals and tangents.
+* Optimizations to the texture and material browsers, and to PBR cube map filtering and loading Radiance HDR format files.
+* Fixed the 'Texture/Choose' spell being incorrectly applicable to items that are not texture paths, and the spell can now also be used on Starfield texture set items without expanding the structure.
+* Fixed error on BSFaceFX and BoneModifierExtra blocks.
+* Fixed incorrect cube map orientation on skinned meshes.
+* Fixed warnings about missing items when using the Triangulate and Stripify mesh spells.
+
+#### NifSkope-2.0.dev9-20241028
+
+* Converting Starfield geometry to external mesh files can now use a custom sub-directory under 'geometries'. This can be configured in the general settings under NIF, and if the name is not empty, exported mesh paths will be in the format 'geometries/SUBDIR/SHA1.mesh', and the full hash (40 characters) will be used as the base name of the file.
+* Added an experimental new spell for batch processing multiple NIF files, casting any from a selection of currently 7 spells. The files to be processed can be selected with a file dialog, and are overwritten with the modified data (it is recommended to back up the original NIFs).
+* The default startup NIF version has been changed from Oblivion to Skyrim: Special Edition.
+* Minor Starfield rendering improvements.
+* Fixed setting the NIF version in new windows from the startup defaults.
+* Fixed issue reading version 22 Fallout 76 BGEM files due to unknown new fGlassBlurScaleFactor setting.
+* Fixed exporting Starfield mesh files with no meshlet data.
+* Fixed loading R8G8B8A8\_SNORM format textures with legacy DDS header.
+
+#### NifSkope-2.0.dev9-20241017
+
+* The UV editor now allows selecting Starfield textures from all layers, and also blender masks. Textures are rendered in the editor with the UV scale, offset and wrap mode applied. The latter change is implemented for Skyrim to Fallout 76 as well, but wrap modes are not fully supported.
+* Starfield texture coordinate sets can be selected in the UV editor, if the mesh has more than one and internal geometry is being used.
+* Implemented support for editing and saving Starfield hair and vegetation settings. Note however that currently only hair roughness is used by the renderer.
+* Starfield water settings can be saved by the "Save Edited Material..." spell.
+* Added limited support for Shattered Space material paths in the Starfield material browser.
+* The 'Optimize/Remove Unused Strings' spell now also removes empty strings from the string table, and replaces the string index with -1.
+* Converting Starfield meshes to internal geometry on load is no longer enabled by default, due to compatibility issues with the game. Most of the mesh editing functionality and spells in NifSkope only work with the internal format, however, requiring a temporary conversion to that and re-exporting the modified meshes.
+* Fixed bug in 'Show Blocks in List' mode that caused all data fields to be expanded in the block list after loading a model.
+* Fixed emissive channels missing from the decal write mask in the Starfield material editor.
+* Fixed issue with pasting Fallout 76 and Starfield shader property blocks, due to the block name (that determines whether an external material file is used) not being set before the block data is loaded.
+* Fixed error on copying and pasting NiControllerSequence blocks.
+* Fixed color correction on Fallout 76 and Starfield sRGB textures in the UV editor.
+
+#### NifSkope-2.0.dev9-20240926
+
+* Added support for editing Starfield materials, and a new spell to save the edited material in .mat format. Water settings and global layer data are not saved yet, nor any material setting that is not shown on the user interface.
+* Implemented the 'Transform/Scale Vertices' spell for Skyrim: Special Edition, Fallout 4, Fallout 76 and Starfield. Note that skin partitions are currently not supported, and normals, tangent space and bounds should be updated after using this spell.
+* CharacterCombine blend mode is now correctly implemented on Starfield materials as multiplicative blending, and defaults to multiplying by 1.0 if the overlay textures are missing.
+* Fixed the Options/Theme menu, the list of available styles is now automatically detected, instead of using fixed Windows specific options like "Windows XP" that may no longer be supported by new versions of Qt (see https://github.com/hexabits/nifskope/issues/52).
+* Updates for Starfield version 1.14.68.0. Note: as of this update, the materialsbeta.cdb file in "SFBGS007 - Main.ba2" is still version 1.13.34.0, and it cannot be loaded at the same time as the main CDB file because of incompatible class definitions. However, the DLC001 material unique to SFBGS007 can be extracted in .mat format from the ContentResources.zip archive included with the Creation Kit.
+* Fixed the Remove Unused Strings spell corrupting Starfield models that contain shader property blocks with an empty name (https://github.com/niftools/nifskope/issues/254).
+* Fixed bug in Copy Branch and Duplicate Branch due to Qt 6 changing the return type of QList::count().
+* Fixed error on opening Fallout 76 models with NiPSysRotDampeningCtlr blocks.
+* Fixed the UV editor and some of the spells not updating the view after making changes.
+* Fixed crash on closing the last main window while the UV editor is open.
+
+#### NifSkope-2.0.dev9-20240912
 
 * The Qt version used by NifSkope has been upgraded from 5.15 to 6.7. This is an experimental change and may still have issues. Note that Windows versions older than 10 are not supported by Qt 6.
 * The maximum number of Starfield material layers that can be rendered has been increased from 4 to 6.
 * Auto-detecting game paths in the resource settings now adds archives and the Textures and Materials folders, instead of the game data path. Loose Starfield geometries are not added automatically, since loading Data/geometries can take a long time with all base game .mesh files extracted.
 * Fixes to rendering Starfield materials, and to loading and exporting .mat files.
+* Fixed error on opening NIF files with a BS version of 173 that contain BSWeakReferenceNode blocks.
+* Fixed the Transform/Edit spell not updating the view on changes to the translation or rotation, and for Starfield, the translation step size has also been reduced from 1.0 to 0.02.
 * Fixed "unexpected change to size of loose file" error message on changes to loose Starfield .mat files, resources are now automatically closed and reloaded if such change is detected.
 * Fixed error color on missing Starfield albedo textures. An empty texture path now defaults to black, but invalid textures are highlighted with the error color (if enabled).
 * Fixed vertex selection being slow when the shape has a large number of vertices.
 * Fixed error in the UV editor with Starfield meshes using external geometry data.
+* Fixed invisible Morrowind meshes when skinning is enabled.
 * Linux binary packages are now built on Ubuntu 24.04 instead of 22.04.
 
 #### NifSkope-2.0.dev9-20240825

@@ -79,6 +79,7 @@ std::unordered_map< const NifModel *, GameManager::GameResources * >	GameManager
 QString	GameManager::gamePaths[NUM_GAMES];
 bool	GameManager::gameStatus[NUM_GAMES] = { true, true, true, true, true, true, true, true, true };
 bool	GameManager::otherGamesFallback = false;
+bool	GameManager::ignoreArchiveErrors = true;
 
 static bool archiveFilterFunction_1( [[maybe_unused]] void * p, const std::string_view & s )
 {
@@ -193,9 +194,16 @@ void GameManager::GameResources::init_archives()
 	ba2File = new BA2File();
 	for ( const auto & i : tmp ) {
 		try {
+#ifdef Q_OS_WIN32
+			ba2File->loadArchivePath( i.toLocal8Bit().constData(), archiveFilterFuncTable[game] );
+#else
 			ba2File->loadArchivePath( i.toStdString().c_str(), archiveFilterFuncTable[game] );
-		} catch ( FO76UtilsError & e ) {
-			QMessageBox::critical( nullptr, "NifSkope error", QString("Error opening resource path '%1': %2").arg(i).arg(e.what()) );
+#endif
+		} catch ( NifSkopeError & e ) {
+			if ( !ignoreArchiveErrors ) {
+				Message::append( QString( "Error opening resource path(s)" ),
+									QString( "'%1': %2" ).arg( i ).arg( e.what() ), QMessageBox::Critical );
+			}
 		}
 	}
 }
@@ -235,8 +243,9 @@ CE2MaterialDB * GameManager::GameResources::init_materials()
 		sfMaterials->copyFrom( *(parent->sfMaterials) );
 	try {
 		sfMaterials->loadArchives( *ba2File );
-	} catch ( FO76UtilsError & e ) {
-		QMessageBox::critical( nullptr, "NifSkope error", QString("Error loading Starfield material database: %1").arg(e.what()) );
+	} catch ( NifSkopeError & e ) {
+		Message::append( nullptr, QString( "Error loading Starfield material database" ), QString( e.what() ),
+							QMessageBox::Critical );
 	}
 
 	return sfMaterials;
@@ -300,12 +309,14 @@ bool GameManager::GameResources::get_file( QByteArray & data, const std::string_
 	}
 	try {
 		ba2File->extractFile( &data, &byteArrayAllocFunc, *fd );
-	} catch ( FO76UtilsError & e ) {
+	} catch ( NifSkopeError & e ) {
 		if ( std::string_view(e.what()).starts_with( "BA2File: unexpected change to size of loose file" ) ) {
 			close_archives();
 			return get_file( data, fullPath );
 		}
-		QMessageBox::critical( nullptr, "NifSkope error", QString("Error loading resource file '%1': %2").arg( QLatin1String( fullPath.data(), qsizetype(fullPath.length()) ) ).arg( e.what() ) );
+		Message::append( nullptr, QString( "Error loading resource file(s)" ),
+							QString( "'%1': %2" ).arg( QLatin1String(fullPath.data(), qsizetype(fullPath.length())) ).arg( e.what() ),
+							QMessageBox::Critical );
 		data.resize( 0 );
 		return false;
 	}
@@ -370,58 +381,44 @@ GameMode GameManager::get_game( const NifModel * nif )
 	if ( !nif ) [[unlikely]]
 		return OTHER;
 
-	quint32	bsver = nif->getBSVersion();
+	quint32	bsver = nif->getBSVersion() - 1u;
 
-	switch ( bsver ) {
-	case 0:
-		break;
-	case BSSTREAM_1:
-	case BSSTREAM_3:
-	case BSSTREAM_4:
-	case BSSTREAM_5:
-	case BSSTREAM_6:
-	case BSSTREAM_7:
-	case BSSTREAM_8:
-	case BSSTREAM_9:
-		return OBLIVION;
-	case BSSTREAM_11:
-		{
-			quint32	user = nif->getUserVersion();
-			if ( user == 10 || nif->getVersionNumber() <= 0x14000005 )	// TODO: Enumeration
-				return OBLIVION;
-			else if ( user == 11 )
-				return FALLOUT_3NV;
-		}
-		return OTHER;
-	case BSSTREAM_14:
-	case BSSTREAM_16:
-	case BSSTREAM_21:
-	case BSSTREAM_24:
-	case BSSTREAM_25:
-	case BSSTREAM_26:
-	case BSSTREAM_27:
-	case BSSTREAM_28:
-	case BSSTREAM_30:
-	case BSSTREAM_31:
-	case BSSTREAM_32:
-	case BSSTREAM_33:
-	case BSSTREAM_34:
-		return FALLOUT_3NV;
-	case BSSTREAM_83:
-		return SKYRIM;
-	case BSSTREAM_100:
-		return SKYRIM_SE;
-	case BSSTREAM_130:
-		return FALLOUT_4;
-	case BSSTREAM_155:
-		return FALLOUT_76;
-	case BSSTREAM_170:
-	case BSSTREAM_172:
-	case BSSTREAM_173:
-		return STARFIELD;
-	default:
-		break;
+	// 0 = OTHER
+	// 1 = MORROWIND
+	// 2 = OBLIVION
+	// 3 = FALLOUT_3NV
+	// 4 = SKYRIM
+	// 5 = SKYRIM_SE
+	// 6 = FALLOUT_4
+	// 7 = FALLOUT_76
+	// 8 = STARFIELD
+	static const unsigned char bsverToGame[176] = {
+		   2, 0, 2, 2,  2, 2, 2, 2, 2,  0, 0, 0, 0, 3,  0, 3, 0, 0, 0,	//   1 -  19
+		0, 3, 0, 0, 3,  3, 3, 3, 3, 0,  3, 3, 3, 3, 3,  0, 0, 0, 0, 0,	//  20 -  39
+		0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,	//  40 -  59
+		0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,	//  60 -  79
+		0, 0, 0, 4, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,	//  80 -  99
+		5, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0, 0,	// 100 - 119
+		0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  6, 6, 6, 6, 6,  6, 6, 6, 6, 6,	// 120 - 139
+		0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 7, 7, 7, 7,  7, 0, 0, 0, 0,	// 140 - 159
+		0, 0, 0, 0, 0,  0, 0, 0, 0, 0,  8, 8, 8, 8, 8,  8, 8			// 160 - 176
 	};
+
+	GameMode game = OTHER;
+	if ( bsver < 176u )
+		game = GameMode( bsverToGame[bsver] );
+
+	if ( game != OTHER )
+		return game;
+
+	if ( bsver == 10u ) {	// BSSTREAM_11
+		quint32	user = nif->getUserVersion();
+		if ( user == 10 || nif->getVersionNumber() <= 0x14000005 )	// TODO: Enumeration
+			return OBLIVION;
+		else if ( user == 11 )
+			return FALLOUT_3NV;
+		return OTHER;
+	}
 
 	// NOTE: Morrowind shares a version with other games (Freedom Force, etc.)
 	if ( nif->getVersionNumber() == 0x04000002 )
@@ -762,6 +759,69 @@ QStringList GameManager::find_paths( const GameMode game )
 	return folders;
 }
 
+QStringList GameManager::find_paths( const GameMode game, const QString & dataPath )
+{
+	QStringList	dataPaths;
+	if ( game > OTHER && game < NUM_GAMES ) {
+		QDir	d( dataPath );
+		dataPaths = d.entryList( QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name | QDir::IgnoreCase );
+		dataPaths.append( d.entryList( { "*.ba2", "*.bsa" }, QDir::Files, QDir::Name | QDir::IgnoreCase ) );
+		for ( qsizetype i = 0; i < dataPaths.size(); ) {
+			QString	fullPath = d.filePath( dataPaths.at( i ) );
+			try {
+				void *	p = reinterpret_cast< void * >( reinterpret_cast< unsigned char * >( std::uintptr_t( game ) ) );
+				BA2File	ba2File( fullPath.toStdString().c_str(), &findPathsArchiveFilterFunc, p );
+				if ( ba2File.size() > 0 ) {
+					dataPaths[i] = fullPath;
+					i++;
+					continue;
+				}
+			} catch ( std::exception & ) {
+			}
+			dataPaths.removeAt( i );
+		}
+	}
+	return dataPaths;
+}
+
+void GameManager::remove_invalid_paths( QStringList & dataPaths, const GameMode game )
+{
+	QMap< QString, bool >	pathSet;
+
+	for ( qsizetype i = 0; i < dataPaths.size(); ) {
+		QString	tmp = dataPaths.at( i );
+		if ( !tmp.isEmpty() ) {
+			QDir	d( tmp );
+			tmp = d.absolutePath();
+#ifdef Q_OS_WIN32
+			tmp = tmp.toLower();
+#endif
+			if ( !pathSet.contains( tmp ) ) {
+				pathSet.insert( tmp, true );
+				i++;
+				continue;
+			}
+		}
+		dataPaths.removeAt( i );
+	}
+
+	if ( !( game >= OTHER && game < NUM_GAMES ) )
+		return;
+
+	for ( qsizetype i = 0; i < dataPaths.size(); ) {
+		try {
+			void *	p = reinterpret_cast< void * >( reinterpret_cast< unsigned char * >( std::uintptr_t( game ) ) );
+			BA2File	ba2File( dataPaths.at( i ).toStdString().c_str(), &findPathsArchiveFilterFunc, p );
+			if ( ba2File.size() > 0 ) {
+				i++;
+				continue;
+			}
+		} catch ( std::exception & ) {
+		}
+		dataPaths.removeAt( i );
+	}
+}
+
 void GameManager::save()
 {
 	QVariantMap paths, folders, status;
@@ -780,6 +840,7 @@ void GameManager::save()
 	settings.setValue( GAME_FOLDERS, folders );
 	settings.setValue( GAME_STATUS, status );
 	settings.setValue( "Settings/Resources/Other Games Fallback", QVariant(otherGamesFallback) );
+	settings.setValue( "Settings/Resources/Ignore Archive Errors", QVariant(ignoreArchiveErrors) );
 }
 
 void GameManager::load()
@@ -789,10 +850,12 @@ void GameManager::load()
 	auto	folders = settings.value(GAME_FOLDERS).toMap();
 	auto	status = settings.value(GAME_STATUS).toMap();
 	bool	useOther = settings.value( "Settings/Resources/Other Games Fallback", false ).toBool();
+	bool	disableErrors = settings.value( "Settings/Resources/Ignore Archive Errors", true ).toBool();
 
 	clear();
 
 	otherGamesFallback = useOther;
+	ignoreArchiveErrors = disableErrors;
 	for ( auto i = paths.constBegin(); i != paths.constEnd(); i++ )
 		insert_game( ModeForString( i.key() ), i.value().toString() );
 	for ( auto i = folders.constBegin(); i != folders.constEnd(); i++ )
@@ -809,6 +872,7 @@ void GameManager::clear()
 		gameStatus[i] = true;
 	}
 	otherGamesFallback = false;
+	ignoreArchiveErrors = true;
 }
 
 void GameManager::insert_game( const GameMode game, const QString & path )

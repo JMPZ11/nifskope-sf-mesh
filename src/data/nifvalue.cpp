@@ -33,6 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nifvalue.h"
 
 #include "model/nifmodel.h"
+#include "qt5compat.hpp"
 
 #include <QRegularExpression>
 #include <QSettings>
@@ -119,8 +120,8 @@ void NifValue::initialize()
 	typeMap.insert( "NiFixedString",  NifValue::tStringIndex );
 	typeMap.insert( "BlockTypeIndex", NifValue::tBlockTypeIndex );
 	typeMap.insert( "char8string",    NifValue::tChar8String );
-	typeMap.insert( "string",   NifValue::tString );
-	typeMap.insert( "FilePath", NifValue::tFilePath );
+	typeMap.insert( "string",   NifValue::tStringIndex );	// these can be overridden by NifModel if version < 20.1.0.3
+	typeMap.insert( "FilePath", NifValue::tStringIndex );
 	typeMap.insert( "blob",     NifValue::tBlob );
 	typeMap.insert( "hfloat",   NifValue::tHfloat );
 	typeMap.insert( "HalfVector3", NifValue::tHalfVector3 );
@@ -174,7 +175,7 @@ QString NifValue::typeDescription( const QString & typId )
 
 		it.next();
 		txt += QString( "<tr><td><p style='white-space:pre'>%2 %1</p></td><td><p style='white-space:pre'>%3</p></td></tr>" )
-		       .arg( it.value().first ).arg( it.key() ).arg( it.value().second );
+				.arg( it.value().first ).arg( it.key() ).arg( it.value().second );
 	}
 
 	txt += "</table></td></tr></table>";
@@ -364,43 +365,6 @@ const NifValue::EnumOptions & NifValue::enumOptionData( const QString & eid )
 void NifValue::clear()
 {
 	switch ( typ ) {
-	case tVector4:
-	case tByteVector4:
-	case tUDecVector4:
-		delete static_cast<Vector4 *>( val.data );
-		break;
-	case tVector3:
-	case tHalfVector3:
-	case tShortVector3:
-	case tUshortVector3:
-	case tByteVector3:
-		delete static_cast<Vector3 *>( val.data );
-		break;
-	case tVector2:
-	case tHalfVector2:
-		delete static_cast<Vector2 *>( val.data );
-		break;
-	case tMatrix:
-		delete static_cast<Matrix *>( val.data );
-		break;
-	case tMatrix4:
-		delete static_cast<Matrix4 *>( val.data );
-		break;
-	case tQuat:
-	case tQuatXYZW:
-		delete static_cast<Quat *>( val.data );
-		break;
-	case tByteMatrix:
-		delete static_cast<ByteMatrix *>( val.data );
-		break;
-	case tByteArray:
-	case tStringPalette:
-		delete static_cast<QByteArray *>( val.data );
-		break;
-	case tTriangle:
-		delete static_cast<Triangle *>( val.data );
-		break;
-	case tString:
 	case tSizedString:
 	case tSizedString16:
 	case tText:
@@ -410,16 +374,18 @@ void NifValue::clear()
 	case tChar8String:
 		delete static_cast<QString *>( val.data );
 		break;
-	case tColor3:
-		delete static_cast<Color3 *>( val.data );
+	case tMatrix:
+		delete static_cast<Matrix *>( val.data );
 		break;
-	case tColor4:
-	case tByteColor4:
-	case tByteColor4BGRA:
-		delete static_cast<Color4 *>( val.data );
+	case tMatrix4:
+		delete static_cast<Matrix4 *>( val.data );
 		break;
-	case tBSVertexDesc:
-		delete static_cast<BSVertexDesc *>(val.data);
+	case tByteArray:
+	case tStringPalette:
+		delete static_cast<QByteArray *>( val.data );
+		break;
+	case tByteMatrix:
+		delete static_cast<ByteMatrix *>( val.data );
 		break;
 	case tBlob:
 		delete static_cast<QByteArray *>( val.data );
@@ -429,7 +395,7 @@ void NifValue::clear()
 	}
 
 	typ = tNone;
-	val.u64 = 0;
+	val.clear();
 }
 
 void NifValue::changeType( Type t )
@@ -450,14 +416,14 @@ void NifValue::changeType( Type t )
 	case tShortVector3:
 	case tUshortVector3:
 	case tByteVector3:
-		val.data = new Vector3();
-		break;
 	case tVector4:
-		val.data = new Vector4();
+	case tVector2:
+	case tHalfVector2:
+		val.f32v4 = FloatVector4( 0.0f );
 		return;
 	case tByteVector4:
 	case tUDecVector4:
-		val.data = new ByteVector4();
+		val.f32v4 = FloatVector4( 0.0f, 0.0f, 1.0f, 1.0f );
 		return;
 	case tMatrix:
 		val.data = new Matrix();
@@ -467,16 +433,11 @@ void NifValue::changeType( Type t )
 		return;
 	case tQuat:
 	case tQuatXYZW:
-		val.data = new Quat();
+		{
+			Quat	tmp;
+			std::memcpy( &( val.f32v4[0] ), &( tmp[0] ), sizeof( FloatVector4 ) );
+		}
 		return;
-	case tVector2:
-	case tHalfVector2:
-		val.data = new Vector2();
-		return;
-	case tTriangle:
-		val.data = new Triangle();
-		return;
-	case tString:
 	case tSizedString:
 	case tSizedString16:
 	case tText:
@@ -487,12 +448,10 @@ void NifValue::changeType( Type t )
 		val.data = new QString();
 		return;
 	case tColor3:
-		val.data = new Color3();
-		return;
 	case tColor4:
 	case tByteColor4:
 	case tByteColor4BGRA:
-		val.data = new Color4();
+		val.f32v4 = FloatVector4( 1.0f );
 		return;
 	case tByteArray:
 	case tStringPalette:
@@ -506,13 +465,13 @@ void NifValue::changeType( Type t )
 		val.u32 = 0xffffffff;
 		return;
 	case tBSVertexDesc:
-		val.data = new BSVertexDesc();
+		(void) new( &(val.u08) ) BSVertexDesc();
 		return;
 	case tBlob:
 		val.data = new QByteArray();
 		return;
 	default:
-		val.u64 = 0;
+		val.clear();
 		return;
 	}
 }
@@ -523,33 +482,6 @@ void NifValue::operator=( const NifValue & other )
 		changeType( other.typ );
 
 	switch ( typ ) {
-	case tVector3:
-	case tHalfVector3:
-	case tShortVector3:
-	case tUshortVector3:
-	case tByteVector3:
-		*static_cast<Vector3 *>( val.data ) = *static_cast<Vector3 *>( other.val.data );
-		return;
-	case tVector4:
-	case tByteVector4:
-	case tUDecVector4:
-		*static_cast<Vector4 *>( val.data ) = *static_cast<Vector4 *>( other.val.data );
-		return;
-	case tMatrix:
-		*static_cast<Matrix *>( val.data ) = *static_cast<Matrix *>( other.val.data );
-		return;
-	case tMatrix4:
-		*static_cast<Matrix4 *>( val.data ) = *static_cast<Matrix4 *>( other.val.data );
-		return;
-	case tQuat:
-	case tQuatXYZW:
-		*static_cast<Quat *>( val.data ) = *static_cast<Quat *>( other.val.data );
-		return;
-	case tVector2:
-	case tHalfVector2:
-		*static_cast<Vector2 *>( val.data ) = *static_cast<Vector2 *>( other.val.data );
-		return;
-	case tString:
 	case tSizedString:
 	case tSizedString16:
 	case tText:
@@ -559,13 +491,11 @@ void NifValue::operator=( const NifValue & other )
 	case tChar8String:
 		*static_cast<QString *>( val.data ) = *static_cast<QString *>( other.val.data );
 		return;
-	case tColor3:
-		*static_cast<Color3 *>( val.data ) = *static_cast<Color3 *>( other.val.data );
+	case tMatrix:
+		*static_cast<Matrix *>( val.data ) = *static_cast<Matrix *>( other.val.data );
 		return;
-	case tColor4:
-	case tByteColor4:
-	case tByteColor4BGRA:
-		*static_cast<Color4 *>( val.data ) = *static_cast<Color4 *>( other.val.data );
+	case tMatrix4:
+		*static_cast<Matrix4 *>( val.data ) = *static_cast<Matrix4 *>( other.val.data );
 		return;
 	case tByteArray:
 	case tStringPalette:
@@ -574,17 +504,11 @@ void NifValue::operator=( const NifValue & other )
 	case tByteMatrix:
 		*static_cast<ByteMatrix *>( val.data ) = *static_cast<ByteMatrix *>( other.val.data );
 		return;
-	case tTriangle:
-		*static_cast<Triangle *>( val.data ) = *static_cast<Triangle *>( other.val.data );
-		return;
 	case tBlob:
 		*static_cast<QByteArray *>( val.data ) = *static_cast<QByteArray *>( other.val.data );
 		return;
-	case tBSVertexDesc:
-		*static_cast<BSVertexDesc *>(val.data) = *static_cast<BSVertexDesc *>(other.val.data);
-		return;
 	default:
-		val = other.val;
+		std::memcpy( &val, &( other.val ), sizeof( val ) );
 		return;
 	}
 }
@@ -617,13 +541,49 @@ bool NifValue::operator==( const NifValue & other ) const
 	case tInt64:
 		return val.i64 == other.val.i64;
 	case tUInt64:
+	case tBSVertexDesc:
 		return val.u64 == other.val.u64;
 
 	case tNormbyte:
 	case tFloat:
 	case tHfloat:
 		return val.f32 == other.val.f32;
-	case tString:
+
+	case tVector2:
+	case tHalfVector2:
+	{
+		return ( val.f32v4[0] == other.val.f32v4[0] && val.f32v4[1] == other.val.f32v4[1] );
+	}
+
+	case tColor3:
+	case tVector3:
+	case tHalfVector3:
+	case tShortVector3:
+	case tUshortVector3:
+	case tByteVector3:
+	{
+		return ( val.f32v4[0] == other.val.f32v4[0] && val.f32v4[1] == other.val.f32v4[1]
+				&& val.f32v4[2] == other.val.f32v4[2] );
+	}
+
+	case tColor4:
+	case tByteColor4:
+	case tByteColor4BGRA:
+	case tQuat:
+	case tQuatXYZW:
+	case tVector4:
+	case tByteVector4:
+	case tUDecVector4:
+	{
+		return ( val.f32v4[0] == other.val.f32v4[0] && val.f32v4[1] == other.val.f32v4[1]
+				&& val.f32v4[2] == other.val.f32v4[2] && val.f32v4[3] == other.val.f32v4[3] );
+	}
+
+	case tTriangle:
+	{
+		return val.t == other.val.t;
+	}
+
 	case tSizedString:
 	case tSizedString16:
 	case tText:
@@ -631,7 +591,6 @@ bool NifValue::operator==( const NifValue & other ) const
 	case tHeaderString:
 	case tLineString:
 	case tChar8String:
-	case tFilePath:
 	{
 		QString * s1 = static_cast<QString *>(val.data);
 		QString * s2 = static_cast<QString *>(other.val.data);
@@ -640,107 +599,6 @@ bool NifValue::operator==( const NifValue & other ) const
 			return false;
 
 		return *s1 == *s2;
-	}
-
-	case tColor3:
-	{
-		Color3 * c1 = static_cast<Color3 *>(val.data);
-		Color3 * c2 = static_cast<Color3 *>(other.val.data);
-
-		if ( !c1 || !c2 )
-			return false;
-
-		return *c1 == *c2;
-	}
-
-	case tColor4:
-	case tByteColor4:
-	case tByteColor4BGRA:
-	{
-		Color4 * c1 = static_cast<Color4 *>(val.data);
-		Color4 * c2 = static_cast<Color4 *>(other.val.data);
-
-		if ( !c1 || !c2 )
-			return false;
-
-		return *c1 == *c2;
-	}
-
-	case tVector2:
-	case tHalfVector2:
-	{
-		Vector2 * vec1 = static_cast<Vector2 *>(val.data);
-		Vector2 * vec2 = static_cast<Vector2 *>(other.val.data);
-
-		if ( !vec1 || !vec2 )
-			return false;
-
-		return *vec1 == *vec2;
-	}
-
-	case tVector3:
-	case tHalfVector3:
-	case tShortVector3:
-	case tUshortVector3:
-	case tByteVector3:
-	{
-		Vector3 * vec1 = static_cast<Vector3 *>(val.data);
-		Vector3 * vec2 = static_cast<Vector3 *>(other.val.data);
-
-		if ( !vec1 || !vec2 )
-			return false;
-
-		return *vec1 == *vec2;
-	}
-
-	case tVector4:
-	case tByteVector4:
-	case tUDecVector4:
-	{
-		Vector4 * vec1 = static_cast<Vector4 *>(val.data);
-		Vector4 * vec2 = static_cast<Vector4 *>(other.val.data);
-
-		if ( !vec1 || !vec2 )
-			return false;
-
-		return *vec1 == *vec2;
-	}
-
-	case tQuat:
-	case tQuatXYZW:
-	{
-		Quat * quat1 = static_cast<Quat *>(val.data);
-		Quat * quat2 = static_cast<Quat *>(other.val.data);
-
-		if ( !quat1 || !quat2 )
-			return false;
-
-		return *quat1 == *quat2;
-	}
-
-	case tTriangle:
-	{
-		Triangle * tri1 = static_cast<Triangle *>(val.data);
-		Triangle * tri2 = static_cast<Triangle *>(other.val.data);
-
-		if ( !tri1 || !tri2 )
-			return false;
-
-		return *tri1 == *tri2;
-	}
-
-	case tByteArray:
-	case tByteMatrix:
-	case tStringPalette:
-	case tBlob:
-	{
-		QByteArray * a1 = static_cast<QByteArray *>(val.data);
-		QByteArray * a2 = static_cast<QByteArray *>(other.val.data);
-
-		if ( a1->isNull() || a2->isNull() )
-			return false;
-
-		return *a1 == *a2;
 	}
 
 	case tMatrix:
@@ -763,16 +621,21 @@ bool NifValue::operator==( const NifValue & other ) const
 
 		return *m1 == *m2;
 	}
-	case tBSVertexDesc:
-	{
-		auto d1 = static_cast<BSVertexDesc *>(val.data);
-		auto d2 = static_cast<BSVertexDesc *>(other.val.data);
 
-		if ( !d1 || !d2 )
+	case tByteArray:
+	case tByteMatrix:
+	case tStringPalette:
+	case tBlob:
+	{
+		QByteArray * a1 = static_cast<QByteArray *>(val.data);
+		QByteArray * a2 = static_cast<QByteArray *>(other.val.data);
+
+		if ( a1->isNull() || a2->isNull() )
 			return false;
 
-		return *d1 == *d2;
+		return *a1 == *a2;
 	}
+
 	case tNone:
 	default:
 		return false;
@@ -800,7 +663,7 @@ bool NifValue::setFromVariant( const QVariant & var )
 	if ( var.canConvert<NifValue>() ) {
 		operator=( var.value<NifValue>() );
 		return true;
-	} else if ( var.typeId() == QMetaType::QString ) {
+	} else if ( getQVariantMetaType( var ) == QMetaType::QString ) {
 		return set<QString>( var.toString(), nullptr, nullptr );
 	}
 
@@ -809,12 +672,13 @@ bool NifValue::setFromVariant( const QVariant & var )
 
 bool NifValue::setFromString( const QString & s, const BaseModel * model, const NifItem * item )
 {
+	if ( !isAllocated() ) [[likely]]
+		val.clear();
+
 	bool ok = false;
 
 	switch ( typ ) {
 	case tBool:
-		val.u64 = 0;
-
 		if ( s == QLatin1String("yes") || s == QLatin1String("true") ) {
 			val.u32 = 1;
 			ok = true;
@@ -827,7 +691,6 @@ bool NifValue::setFromString( const QString & s, const BaseModel * model, const 
 		}
 		break;
 	case tByte:
-		val.u64 = 0;
 		val.u08 = s.toUInt( &ok, 0 );
 		break;
 	case tWord:
@@ -835,7 +698,6 @@ bool NifValue::setFromString( const QString & s, const BaseModel * model, const 
 	case tStringOffset:
 	case tBlockTypeIndex:
 	case tShort:
-		val.u64 = 0;
 		val.u16 = s.toShort( &ok, 0 );
 		break;
 	case tInt:
@@ -843,7 +705,6 @@ bool NifValue::setFromString( const QString & s, const BaseModel * model, const 
 		break;
 	case tUInt:
 	case tULittle32:
-		val.u64 = 0;
 		val.u32 = s.toUInt( &ok, 0 );
 		break;
 	case tInt64:
@@ -853,24 +714,19 @@ bool NifValue::setFromString( const QString & s, const BaseModel * model, const 
 		val.u64 = s.toULongLong( &ok, 0 );
 		break;
 	case tStringIndex:
-		val.u64 = 0;
 		val.u32 = s.toUInt( &ok );
 		break;
 	case tLink:
 	case tUpLink:
-		val.u64 = 0;
 		val.i32 = s.toInt( &ok );
 		break;
 	case tFloat:
-		val.u64 = 0;
 		val.f32 = s.toDouble( &ok );
 		break;
 	case tHfloat:
 	case tNormbyte:
-		val.u64 = 0;
 		val.f32 = s.toDouble( &ok );
 		break;
-	case tString:
 	case tSizedString:
 	case tSizedString16:
 	case tText:
@@ -882,37 +738,55 @@ bool NifValue::setFromString( const QString & s, const BaseModel * model, const 
 		ok = true;
 		break;
 	case tColor3:
-		static_cast<Color3 *>( val.data )->fromQColor( QColor( s ) );
-		ok = true;
-		break;
 	case tColor4:
 	case tByteColor4:
 	case tByteColor4BGRA:
-		static_cast<Color4 *>( val.data )->fromQColor( QColor( s ) );
+		val.f32v4 = FloatVector4( Color4( QColor(s) ) );
 		ok = true;
 		break;
 	case tFileVersion:
-		val.u64 = 0;
 		val.u32 = NifModel::version2number( s );
 		ok = (val.u32 != 0);
 		break;
 	case tVector2:
-		static_cast<Vector2 *>( val.data )->fromString( s );
+	case tHalfVector2:
+		{
+			Vector2	tmp;
+			tmp.fromString( s );
+			val.f32v4[0] = tmp[0];
+			val.f32v4[1] = tmp[1];
+		}
 		ok = true;
 		break;
 	case tVector3:
-		static_cast<Vector3 *>( val.data )->fromString( s );
+	case tHalfVector3:
+	case tShortVector3:
+	case tUshortVector3:
+	case tByteVector3:
+		{
+			Vector3	tmp;
+			tmp.fromString( s );
+			val.f32v4 = FloatVector4( tmp );
+		}
 		ok = true;
 		break;
 	case tVector4:
 	case tByteVector4:
 	case tUDecVector4:
-		static_cast<Vector4 *>( val.data )->fromString( s );
+		{
+			Vector4	tmp;
+			tmp.fromString( s );
+			val.f32v4 = FloatVector4( tmp );
+		}
 		ok = true;
 		break;
 	case tQuat:
 	case tQuatXYZW:
-		static_cast<Quat *>( val.data )->fromString( s );
+		{
+			Quat	tmp;
+			tmp.fromString( s );
+			val.f32v4 = FloatVector4( &(tmp[0]) );
+		}
 		ok = true;
 		break;
 	default:
@@ -944,20 +818,19 @@ QString NifValue::toString() const
 	case tUInt64:
 		return QString::number( val.u64 );
 	case tShort:
-		return QString::number( (short)val.u16 );
+		return QString::number( qint16( val.u16 ) );
 	case tInt:
-		return QString::number( (int)val.u32 );
+		return QString::number( qint32( val.u32 ) );
 	case tLink:
 	case tUpLink:
 		return QString::number( val.i32 );
 	case tFloat:
-		if ( val.f32 == 0.0 )
+		if ( val.f32 == 0.0f )
 			return QString("0.0");
 		return NumOrMinMax( val.f32, 'G', 6 );
 	case tHfloat:
 	case tNormbyte:
 		return QString::number( val.f32, 'f', 4 );
-	case tString:
 	case tSizedString:
 	case tSizedString16:
 	case tText:
@@ -968,46 +841,35 @@ QString NifValue::toString() const
 		return *static_cast<QString *>( val.data );
 	case tColor3:
 		{
-			Color3 * col = static_cast<Color3 *>( val.data );
-			float r = col->red(), g = col->green(), b = col->blue();
+			FloatVector4	c = FloatVector4( 0.0f ).blendValues( val.f32v4, 0x07 );
 
 			// HDR Colors
-			if ( r > 1.0 || g > 1.0 || b > 1.0 )
-				return QString( "R %1 G %2 B %3" ).arg( r, 0, 'f', 3 ).arg( g, 0, 'f', 3 ).arg( b, 0, 'f', 3 );
+			if ( std::max( std::max( c[0], c[1] ), c[2] ) > 1.0f )
+				return QString( "R %1 G %2 B %3" ).arg( c[0], 0, 'f', 3 ).arg( c[1], 0, 'f', 3 ).arg( c[2], 0, 'f', 3 );
 
-			return QString( "#%1%2%3" )
-			       .arg( (int)( r * 0xff ), 2, 16, QChar( '0' ) )
-			       .arg( (int)( g * 0xff ), 2, 16, QChar( '0' ) )
-			       .arg( (int)( b * 0xff ), 2, 16, QChar( '0' ) );
+			// #RRGGBB
+			return QString( "#%1" ).arg( std::uint32_t( c.shuffleValues( 0xC6 ) * 255.0f ), 6, 16, QChar( '0' ) );
 		}
 	case tColor4:
 	case tByteColor4:
 	case tByteColor4BGRA:
 		{
-			Color4 * col = static_cast<Color4 *>( val.data );
-			float r = col->red(), g = col->green(), b = col->blue(), a = col->alpha();
+			FloatVector4	c = val.f32v4;
 
 			// HDR Colors
-			if ( r > 1.0 || g > 1.0 || b > 1.0 || a > 1.0 )
-				return QString( "R %1 G %2 B %3 A %4" ).arg( r, 0, 'f', 3 )
-						.arg( g, 0, 'f', 3 )
-						.arg( b, 0, 'f', 3 )
-						.arg( a, 0, 'f', 3 );
+			if ( std::max( std::max( c[0], c[1] ), std::max( c[2], c[3] ) ) > 1.0f )
+				return QString( "R %1 G %2 B %3 A %4" )
+						.arg( c[0], 0, 'f', 3 ).arg( c[1], 0, 'f', 3 ).arg( c[2], 0, 'f', 3 ).arg( c[3], 0, 'f', 3 );
 
-			return QString( "#%1%2%3%4" )
-			       .arg( (int)( r * 0xff ), 2, 16, QChar( '0' ) )
-			       .arg( (int)( g * 0xff ), 2, 16, QChar( '0' ) )
-			       .arg( (int)( b * 0xff ), 2, 16, QChar( '0' ) )
-			       .arg( (int)( a * 0xff ), 2, 16, QChar( '0' ) );
+			// #RRGGBBAA
+			return QString( "#%1" ).arg( std::uint32_t( c.shuffleValues( 0x1B ) * 255.0f ), 8, 16, QChar( '0' ) );
 		}
 	case tVector2:
 	case tHalfVector2:
 		{
-			Vector2 * v = static_cast<Vector2 *>( val.data );
-
 			return QString( "X %1 Y %2" )
-			       .arg( NumOrMinMax( (*v)[0], 'f', VECTOR_DECIMALS ) )
-			       .arg( NumOrMinMax( (*v)[1], 'f', VECTOR_DECIMALS ) );
+					.arg( NumOrMinMax( val.f32v4[0], 'f', VECTOR_DECIMALS ) )
+					.arg( NumOrMinMax( val.f32v4[1], 'f', VECTOR_DECIMALS ) );
 		}
 	case tVector3:
 	case tHalfVector3:
@@ -1015,24 +877,20 @@ QString NifValue::toString() const
 	case tUshortVector3:
 	case tByteVector3:
 		{
-			Vector3 * v = static_cast<Vector3 *>( val.data );
-
 			return QString( "X %1 Y %2 Z %3" )
-			       .arg( NumOrMinMax( (*v)[0], 'f', VECTOR_DECIMALS ) )
-			       .arg( NumOrMinMax( (*v)[1], 'f', VECTOR_DECIMALS ) )
-			       .arg( NumOrMinMax( (*v)[2], 'f', VECTOR_DECIMALS ) );
+					.arg( NumOrMinMax( val.f32v4[0], 'f', VECTOR_DECIMALS ) )
+					.arg( NumOrMinMax( val.f32v4[1], 'f', VECTOR_DECIMALS ) )
+					.arg( NumOrMinMax( val.f32v4[2], 'f', VECTOR_DECIMALS ) );
 		}
 	case tVector4:
 	case tByteVector4:
 	case tUDecVector4:
 		{
-			Vector4 * v = static_cast<Vector4 *>( val.data );
-
 			return QString( "X %1 Y %2 Z %3 W %4" )
-			       .arg( NumOrMinMax( (*v)[0], 'f', VECTOR_DECIMALS ) )
-			       .arg( NumOrMinMax( (*v)[1], 'f', VECTOR_DECIMALS ) )
-			       .arg( NumOrMinMax( (*v)[2], 'f', VECTOR_DECIMALS ) )
-			       .arg( NumOrMinMax( (*v)[3], 'f', VECTOR_DECIMALS ) );
+					.arg( NumOrMinMax( val.f32v4[0], 'f', VECTOR_DECIMALS ) )
+					.arg( NumOrMinMax( val.f32v4[1], 'f', VECTOR_DECIMALS ) )
+					.arg( NumOrMinMax( val.f32v4[2], 'f', VECTOR_DECIMALS ) )
+					.arg( NumOrMinMax( val.f32v4[3], 'f', VECTOR_DECIMALS ) );
 		}
 	case tMatrix:
 	case tQuat:
@@ -1043,7 +901,7 @@ QString NifValue::toString() const
 			if ( typ == tMatrix )
 				m = *( static_cast<Matrix *>( val.data ) );
 			else
-				m.fromQuat( *( static_cast<Quat *>( val.data ) ) );
+				m.fromQuat( Quat( val.f32v4[0], val.f32v4[1], val.f32v4[2], val.f32v4[3] ) );
 
 			float x, y, z;
 			QString pre, suf;
@@ -1054,9 +912,9 @@ QString NifValue::toString() const
 			}
 
 			return ( pre + QString( "R %1 P %2 Y %3" ) + suf )
-			       .arg( NumOrMinMax( rad2deg(x), 'f', ROTATION_COARSE ) )
-			       .arg( NumOrMinMax( rad2deg(y), 'f', ROTATION_COARSE ) )
-			       .arg( NumOrMinMax( rad2deg(z), 'f', ROTATION_COARSE ) );
+					.arg( NumOrMinMax( rad2deg(x), 'f', ROTATION_COARSE ) )
+					.arg( NumOrMinMax( rad2deg(y), 'f', ROTATION_COARSE ) )
+					.arg( NumOrMinMax( rad2deg(z), 'f', ROTATION_COARSE ) );
 		}
 	case tMatrix4:
 		{
@@ -1066,19 +924,18 @@ QString NifValue::toString() const
 			float xr, yr, zr;
 			r.toEuler( xr, yr, zr );
 			return QString( "Trans( X %1 Y %2 Z %3 ) Rot( R %4 P %5 Y %6 ) Scale( X %7 Y %8 Z %9 )" )
-			       .arg( t[0], 0, 'f', 3 )
-			       .arg( t[1], 0, 'f', 3 )
-			       .arg( t[2], 0, 'f', 3 )
-			       .arg( rad2deg(xr), 0, 'f', 3 )
-			       .arg( rad2deg(yr), 0, 'f', 3 )
-			       .arg( rad2deg(zr), 0, 'f', 3 )
-			       .arg( s[0], 0, 'f', 3 )
-			       .arg( s[1], 0, 'f', 3 )
-			       .arg( s[2], 0, 'f', 3 );
+					.arg( t[0], 0, 'f', 3 )
+					.arg( t[1], 0, 'f', 3 )
+					.arg( t[2], 0, 'f', 3 )
+					.arg( rad2deg(xr), 0, 'f', 3 )
+					.arg( rad2deg(yr), 0, 'f', 3 )
+					.arg( rad2deg(zr), 0, 'f', 3 )
+					.arg( s[0], 0, 'f', 3 )
+					.arg( s[1], 0, 'f', 3 )
+					.arg( s[2], 0, 'f', 3 );
 		}
 	case tByteArray:
-		return QString( "%1 bytes" )
-		       .arg( static_cast<QByteArray *>( val.data )->size() );
+		return QString( "%1 bytes" ).arg( static_cast<QByteArray *>( val.data )->size() );
 	case tStringPalette:
 		{
 			QByteArray * array = static_cast<QByteArray *>( val.data );
@@ -1095,31 +952,22 @@ QString NifValue::toString() const
 		{
 			ByteMatrix * array = static_cast<ByteMatrix *>( val.data );
 			return QString( "%1 bytes  [%2 x %3]" )
-			       .arg( array->count() )
-			       .arg( array->count( 0 ) )
-				   .arg( array->count( 1 ) );
+					.arg( array->count() )
+					.arg( array->count( 0 ) )
+					.arg( array->count( 1 ) );
 		}
 	case tFileVersion:
 		return NifModel::version2string( val.u32 );
 	case tTriangle:
 		{
-			Triangle * tri = static_cast<Triangle *>( val.data );
-			return QString( "%1 %2 %3" )
-			       .arg( tri->v1() )
-			       .arg( tri->v2() )
-			       .arg( tri->v3() );
-		}
-	case tFilePath:
-		{
-			return *static_cast<QString *>( val.data );
+			return QString( "%1 %2 %3" ).arg( val.t.v1() ).arg( val.t.v2() ).arg( val.t.v3() );
 		}
 	case tBSVertexDesc:
-		return static_cast<BSVertexDesc *>(val.data)->toString();
+		return reinterpret_cast<const BSVertexDesc *>( &(val.u08) )->toString();
 	case tBlob:
 		{
 			QByteArray * array = static_cast<QByteArray *>( val.data );
-			return QString( "%1 bytes" )
-				   .arg( array->size() );
+			return QString( "%1 bytes" ).arg( array->size() );
 		}
 	default:
 		return QString();
@@ -1186,8 +1034,6 @@ QString NifValue::getTypeDebugStr( NifValue::Type t )
 	case tFileVersion:      typeStr = "FileVersion"; break;
 	case tByteArray:        typeStr = "ByteArray"; break;
 	case tStringPalette:    typeStr = "StringPalette"; break;
-	case tString:           typeStr = "String"; break;
-	case tFilePath:         typeStr = "FilePath"; break;
 	case tByteMatrix:       typeStr = "ByteMatrix"; break;
 	case tBlob:             typeStr = "Blob"; break;
 	case tHfloat:           typeStr = "Hfloat"; break;
@@ -1210,16 +1056,15 @@ QColor NifValue::toColor( const BaseModel * model, const NifItem * item ) const
 {
 	switch ( type() ) {
 	case tColor3:
-		return static_cast<Color3 *>( val.data )->toQColor();
+		return Color3( val.f32v4[0], val.f32v4[1], val.f32v4[2] ).toQColor();
 	case tColor4:
 	case tByteColor4:
 	case tByteColor4BGRA:
-		return static_cast<Color4 *>( val.data )->toQColor();
+		return Color4( val.f32v4[0], val.f32v4[1], val.f32v4[2], val.f32v4[3] ).toQColor();
 	default:
 		if ( model )
 			reportConvertToError(model, item, "a color");
 		return QColor();
 	}
 }
-
 

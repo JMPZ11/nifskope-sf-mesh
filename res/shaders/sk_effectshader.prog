@@ -1,14 +1,8 @@
 # normal mapping, vertex colors -> emissive
 
 # Skyrim
-check HEADER/BS Header/BS Version >= 83
-check HEADER/BS Header/BS Version <= 100
+check BSVersion >= 83
+check BSVersion <= 100
 check BSEffectShaderProperty
-
-texcoords 0 base
-texcoords 1 tangents
-texcoords 2 bitangents
-texcoords 3 indices
-texcoords 4 weights
 
 shaders sk_effectshader.vert sk_effectshader.frag

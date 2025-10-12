@@ -51,30 +51,27 @@ class Material : public QObject
 	friend class NifModel;
 
 public:
-	Material( const QString & name, const NifModel * nif );
+	Material();
 
-	bool isValid() const;
+	bool isValid() const { return readable; }
 	bool hasAlphaBlend() const { return (bAlphaBlend != 0); }
 	bool hasAlphaTest() const { return (bAlphaTest != 0); }
 	bool hasDecal() const { return (bDecal != 0); }
-	QStringList textures() const;
-	QString getPath() const;
+	const QStringList & textures() const { return textureList; }
+	bool isEffectMaterial() const { return isBGEM; }
+	bool isShaderMaterial() const { return isBGSM; }
+	static void createMaterialData( QByteArray & data, const NifModel * nif, const QModelIndex & index );
 
 protected:
-	bool openFile();
-	virtual bool readFile();
+	bool openFile( const QString & name, const NifModel * nif, const QModelIndex & index );
+	virtual bool readFile( QDataStream & in );
 
 	QStringList textureList;
 
-	bool fileExists = false;
-	QString localPath;
-	//QString absolutePath;
-
-	QDataStream in;
-	QByteArray data;
-
 	// Is not JSON format or otherwise unreadable
 	bool readable = false;
+	bool isBGEM = false;
+	bool isBGSM = false;
 
 	// BGSM & BGEM shared variables
 
@@ -129,10 +126,10 @@ class ShaderMaterial : public Material
 	friend class NifModel;
 
 public:
-	ShaderMaterial( const QString & name, const NifModel * nif );
+	ShaderMaterial( const QString & name, const NifModel * nif, const QModelIndex & index );
 
 protected:
-	bool readFile() override final;
+	bool readFile( QDataStream & in ) override final;
 
 	quint8 bEnableEditorAlphaRef = 0;
 	quint8 bRimLighting = 0;
@@ -210,10 +207,10 @@ class EffectMaterial : public Material
 	friend class NifModel;
 
 public:
-	EffectMaterial( const QString & name, const NifModel * nif );
+	EffectMaterial( const QString & name, const NifModel * nif, const QModelIndex & index );
 
 protected:
-	bool readFile() override final;
+	bool readFile( QDataStream & in ) override final;
 
 	quint8 bBloodEnabled = 0;
 	quint8 bEffectLightingEnabled = 0;
@@ -237,6 +234,8 @@ protected:
 	Color3 cGlassFresnelColor;
 	float fGlassRefractionScaleBase = 0.0f;
 	float fGlassBlurScaleBase = 0.0f;
+	// version >= 22
+	float fGlassBlurScaleFactor = 0.0f;
 };
 
 

@@ -38,6 +38,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QString>
 #include <QVariant>
 
+#include "qt5compat.hpp"
 
 //! @file nifexpr.h NifExpr
 
@@ -153,7 +154,7 @@ private:
 	template <class F>
 	QVariant convertValue( const QVariant & v, const F & convert ) const
 	{
-		if ( v.typeId() >= QMetaType::User ) {
+		if ( getQVariantMetaType( v ) >= QMetaType::User ) {
 			if ( v.canConvert<NifExpr>() )
 				return v.value<NifExpr>().evaluateValue( convert );
 		}

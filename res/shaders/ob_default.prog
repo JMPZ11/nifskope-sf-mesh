@@ -1,15 +1,14 @@
 # Oblivion and Fallout 3/New Vegas
 
-check HEADER/BS Header/BS Version < 83
+check BSVersion < 83
+check BSVersion > 0
 
 checkgroup begin or
 	check NiTexturingProperty
 	check BSShaderPPLightingProperty
 	check BSShaderNoLightingProperty
+	check Lighting30ShaderProperty
+	check TallGrassShaderProperty
 checkgroup end
-
-texcoords 0 base
-texcoords 1 tangents
-texcoords 2 bitangents
 
 shaders ob_default.vert ob_default.frag

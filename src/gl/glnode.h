@@ -96,8 +96,6 @@ class Node : public IControllable
 public:
 	Node( Scene * scene, const QModelIndex & iBlock );
 
-	static int SELECTING;
-
 	int id() const { return nodeId; }
 
 	// IControllable
@@ -118,10 +116,17 @@ public:
 	virtual float viewDepth() const;
 	virtual class BoundSphere bounds() const;
 	virtual const Vector3 center() const;
+	static inline std::uint64_t viewTransKey( int n ) { return ( std::uint64_t(-2) << 32 ) | std::uint32_t( n ); }
+	static inline std::uint64_t worldTransKey( int n ) { return ( std::uint64_t(-1) << 32 ) | std::uint32_t( n ); }
+	static inline std::uint64_t localTransKey( int r, int n )
+	{
+		return ( std::uint64_t( std::max< int >( r, -1 ) ) << 32 ) | std::uint32_t( n );
+	}
+	static inline std::uint64_t bhkBodyTransKey( int n ) { return ( std::uint64_t(-3) << 32 ) | std::uint32_t( n ); }
 	virtual const Transform & viewTrans() const;
 	virtual const Transform & worldTrans() const;
 	virtual const Transform & localTrans() const { return local; }
-	virtual Transform localTrans( int parentNode ) const;
+	virtual const Transform & localTrans( int parentNode ) const;
 
 	virtual bool isHidden() const;
 	virtual QString textStats() const;
@@ -143,17 +148,28 @@ public:
 
 	Controller * findController( const QString & proptype, const QModelIndex & index );
 
-public slots:
-	void updateSettings();
-
 protected:
 	void setController( const NifModel * nif, const QModelIndex & controller ) override;
 	void updateImpl( const NifModel * nif, const QModelIndex & block ) override;
 
-	// Old Options API
-	//	TODO: Move away from the GL-like naming
-	void glHighlightColor() const;
-	void glNormalColor() const;
+	// set the vertex color override uniform for the current shader program
+	void setGLColor( FloatVector4 c ) const;
+
+	struct HvkShapeStackItem {
+		const QModelIndex & iShape;
+		HvkShapeStackItem * parent;
+		HvkShapeStackItem( const QModelIndex & index, HvkShapeStackItem * p ) : iShape( index ), parent( p ) {}
+	};
+
+	// mesh data needs to be bound before calling the following two functions
+	void drawVertexSelection( qsizetype numVerts, int i );
+	void drawTriangleSelection( const QVector<Triangle> & triangles, int i, int n = 1,
+								int startVertex = 0, int endVertex = -1 );
+	void drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t, int i );
+	void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, HvkShapeStackItem * stack,
+						Scene * scene, FloatVector4 origin_color4fv, const Matrix4 & parentTransform );
+	void drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, Scene * scene );
+	void drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosition );
 
 	QPointer<Node> parent;
 	NodeList children;
@@ -163,13 +179,6 @@ protected:
 	Transform local;
 
 	NodeFlags flags;
-
-	struct Settings
-	{
-		QColor highlight;
-		QColor wireframe;
-	} cfg;
-
 
 	bool presorted = false;
 

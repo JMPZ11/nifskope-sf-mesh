@@ -1,8 +1,12 @@
 #include "misc.h"
 #include "model/undocommands.h"
-#include "qtcompat.h"
 
+#include <QDialog>
 #include <QFileDialog>
+#include <QLabel>
+#include <QLayout>
+#include <QPushButton>
+#include <QSpinBox>
 
 // Brief description is deliberately not autolinked to class Spell
 /*! \file misc.cpp
@@ -227,7 +231,7 @@ public:
 		if ( item->isArray() && item->isBinary() ) {
 			parent = item;
 			iParent = index;
-			idx = QModelIndex_child( index );
+			idx = nif->getIndex( index, 0 );
 		}
 
 		QString filename = QFileDialog::getOpenFileName( qApp->activeWindow(), tr( "Import Binary File" ), "", "*.*" );
@@ -255,11 +259,11 @@ REGISTER_SPELL( spImportBinary )
 // definitions for spCollapseArray moved to misc.h
 bool spCollapseArray::isApplicable( const NifModel * nif, const QModelIndex & index )
 {
-	if ( nif->isArray( index ) && index.isValid()
-	     && ( nif->itemStrType( index ) == "Ref" || nif->itemStrType( index ) == "Ptr" ) )
-	{
-		// copy from spUpdateArray when that changes
-		return true;
+	if ( nif->isArray( index ) && index.isValid() ) {
+		if ( auto i = nif->getItem( index ); i && ( i->hasStrType( "Ref" ) || i->hasStrType( "Ptr" ) ) ) {
+			// copy from spUpdateArray when that changes
+			return true;
+		}
 	}
 
 	return false;
@@ -277,20 +281,24 @@ QModelIndex spCollapseArray::cast( NifModel * nif, const QModelIndex & index )
 
 QModelIndex spCollapseArray::numCollapser( NifModel * nif, QModelIndex & iNumElem, QModelIndex & iArray )
 {
-	if ( iNumElem.isValid() && iArray.isValid() ) {
-		QVector<qint32> links;
+	if ( iNumElem.isValid() && iArray.isValid() && isApplicable( nif, iArray ) ) {
+		QVector<qint32> links = nif->getLinkArray( iArray );
 
-		for ( int r = 0; r < nif->rowCount( iArray ); r++ ) {
-			qint32 l = nif->getLink( QModelIndex_child( iArray, r ) );
-
-			if ( l >= 0 )
-				links.append( l );
+		qsizetype r = 0;
+		for ( qsizetype i = 0; i < links.size(); i++ ) {
+			if ( qint32 l = links.at( i ); l >= 0 ) {
+				links[r] = l;
+				r++;
+			}
 		}
 
-		if ( links.count() < nif->rowCount( iArray ) ) {
-			nif->set<int>( iNumElem, links.count() );
+		if ( r < nif->rowCount( iArray ) ) {
+			nif->set<int>( iNumElem, int( r ) );
 			nif->updateArraySize( iArray );
-			nif->setLinkArray( iArray, links );
+			if ( r > 0 ) {
+				links.resize( r );
+				nif->setLinkArray( iArray, links );
+			}
 		}
 	}
 
@@ -299,3 +307,168 @@ QModelIndex spCollapseArray::numCollapser( NifModel * nif, QModelIndex & iNumEle
 
 REGISTER_SPELL( spCollapseArray )
 
+
+//! Move array items
+class spMoveArrayItem : public Spell
+{
+public:
+	static bool swapItems( NifModel * nif, NifItem * item1, NifItem * item2 );
+	static int moveArrayItem( NifModel * nif, const QModelIndex & iArray, int srcRow, int dstRow );
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override
+	{
+		if ( index.isValid() && nif ) {
+			if ( auto iParent = index.parent(); iParent.isValid() )
+				return ( nif->isArray( iParent ) && nif->rowCount( iParent ) >= 2 );
+		}
+		return false;
+	}
+};
+
+bool spMoveArrayItem::swapItems( NifModel * nif, NifItem * item1, NifItem * item2 )
+{
+	if ( !( item1 && item2 && item1->valueType() == item2->valueType() && item1->childCount() == item2->childCount() ) )
+		return false;
+
+	item1->invalidateVersionCondition();
+	item1->invalidateCondition();
+	item2->invalidateVersionCondition();
+	item2->invalidateCondition();
+
+	bool	r = true;
+	for ( int i = 0; i < item1->childCount(); i++ ) {
+		if ( !swapItems( nif, item1->child( i ), item2->child( i ) ) )
+			r = false;
+	}
+
+	NifValue	tmp( item1->value() );
+	nif->setItemValue( item1, item2->value() );
+	nif->setItemValue( item2, tmp );
+
+	return r;
+}
+
+int spMoveArrayItem::moveArrayItem( NifModel * nif, const QModelIndex & iArray, int srcRow, int dstRow )
+{
+	if ( !( iArray.isValid() && nif->isArray( iArray ) ) )
+		return srcRow;
+	int	n = nif->rowCount( iArray );
+	if ( n < 2 )
+		return srcRow;
+	if ( srcRow < 0 )
+		srcRow += n;
+	if ( dstRow < 0 )
+		dstRow += n;
+	srcRow = std::clamp< int >( srcRow, 0, n - 1 );
+	dstRow = std::clamp< int >( dstRow, 0, n - 1 );
+	if ( srcRow == dstRow )
+		return srcRow;
+	int	d = dstRow - srcRow;
+	if ( d == 1 || d == -1 ) {
+		if ( swapItems( nif, nif->getItem( iArray, srcRow, false ), nif->getItem( iArray, dstRow, false ) ) )
+			return dstRow;
+		return srcRow;
+	}
+
+	d = ( d < 0 ? -1 : 1 );
+	nif->setState( BaseModel::Processing );
+	do {
+		if ( !swapItems( nif, nif->getItem( iArray, srcRow, false ), nif->getItem( iArray, srcRow + d, false ) ) )
+			break;
+		srcRow += d;
+	} while ( srcRow != dstRow );
+	nif->restoreState();
+
+	return srcRow;
+}
+
+
+class spMoveArrayItemUp final : public spMoveArrayItem
+{
+public:
+	QString name() const override final { return Spell::tr( "Move Up" ); }
+	QKeySequence hotkey() const override final { return { Qt::ControlModifier | Qt::Key_Up }; }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	{
+		if ( !spMoveArrayItem::isApplicable( nif, index ) )
+			return false;
+		return ( index.row() > 0 );
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	{
+		int	srcRow = index.row();
+		return nif->getIndex( index.parent(), moveArrayItem( nif, index.parent(), srcRow, srcRow - 1 ) );
+	}
+};
+
+REGISTER_SPELL( spMoveArrayItemUp )
+
+
+class spMoveArrayItemDown final : public spMoveArrayItem
+{
+public:
+	QString name() const override final { return Spell::tr( "Move Down" ); }
+	QKeySequence hotkey() const override final { return { Qt::ControlModifier | Qt::Key_Down }; }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	{
+		if ( !spMoveArrayItem::isApplicable( nif, index ) )
+			return false;
+		return ( index.row() < ( nif->rowCount( index.parent() ) - 1 ) );
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	{
+		int	srcRow = index.row();
+		return nif->getIndex( index.parent(), moveArrayItem( nif, index.parent(), srcRow, srcRow + 1 ) );
+	}
+};
+
+REGISTER_SPELL( spMoveArrayItemDown )
+
+
+class spMoveArrayItemTo final : public spMoveArrayItem
+{
+public:
+	QString name() const override final { return Spell::tr( "Move To Row..." ); }
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	{
+		int	srcRow = index.row();
+		int	dstRow = srcRow;
+
+		{
+			QDialog dlg;
+			dlg.setWindowTitle( Spell::tr( "Move Array Item" ) );
+
+			QGridLayout * grid = new QGridLayout( &dlg );
+
+			QSpinBox * dstRowInput = new QSpinBox;
+			dstRowInput->setRange( -131072, 131071 );
+			dstRowInput->setValue( dstRow );
+
+			grid->addWidget( new QLabel( Spell::tr( "Destination row (-1: end of array)" ) ), 0, 0 );
+			grid->addWidget( dstRowInput, 0, 1 );
+
+			QPushButton * btOk = new QPushButton( Spell::tr( "Move" ) );
+			QObject::connect( btOk, &QPushButton::clicked, &dlg, &QDialog::accept );
+
+			QPushButton * btCancel = new QPushButton( Spell::tr( "Cancel" ) );
+			QObject::connect( btCancel, &QPushButton::clicked, &dlg, &QDialog::reject );
+
+			grid->addWidget( btOk, 1, 0 );
+			grid->addWidget( btCancel, 1, 1 );
+
+			if ( dlg.exec() != QDialog::Accepted )
+				return index;
+
+			dstRow = dstRowInput->value();
+		}
+
+		return nif->getIndex( index.parent(), moveArrayItem( nif, index.parent(), srcRow, dstRow ) );
+	}
+};
+
+REGISTER_SPELL( spMoveArrayItemTo )

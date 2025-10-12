@@ -41,6 +41,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gl/glparticles.h"
 #include "gl/gltex.h"
 #include "model/nifmodel.h"
+#include "glview.h"
+#include "nifskope.h"
 
 #include <QAction>
 #include <QOpenGLContext>
@@ -54,7 +56,9 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 	QObject( parent )
 {
 	currentBlock = currentIndex = QModelIndex();
+	selecting = 0;
 	animate = true;
+	defaultSkeletonRoot = -1;
 
 	time = 0.0;
 	sceneBoundsValid = timeBoundsValid = false;
@@ -94,6 +98,13 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 		options |= DoErrorColor;
 
 	settings.endGroup();
+
+	currentGLColor = FloatVector4( 0.0f );
+	currentGLLineWidth = 1.0f;
+	currentGLPointSize = 1.0f;
+	currentModelViewMatrix = modelViewMatrixStack;
+
+	updateSettings( settings );
 }
 
 Scene::~Scene()
@@ -102,16 +113,30 @@ Scene::~Scene()
 		delete renderer;
 }
 
-void Scene::setOpenGLContext( QOpenGLContext * context, QOpenGLFunctions * functions )
+void Scene::setOpenGLContext( QOpenGLContext * context )
 {
 	if ( renderer || !context )
 		return;
-	renderer = new Renderer( context, functions );
+	renderer = new Renderer( context );
 }
 
 void Scene::updateShaders()
 {
 	renderer->updateShaders();
+}
+
+void Scene::updateSettings( QSettings & settings )
+{
+	settings.beginGroup( "Settings/Render/Colors/" );
+
+	gridColor = FloatVector4( Color4( settings.value( "Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>() ) );
+	highlightColor = FloatVector4( Color4( settings.value( "Highlight", QColor( 255, 255, 0 ) ).value<QColor>() ) );
+	wireframeColor = FloatVector4( Color4( settings.value( "Wireframe", QColor( 0, 255, 0 ) ).value<QColor>() ) );
+
+	settings.endGroup();
+
+	int	tmp = settings.value( "Settings/Render/General/Default Skeleton Root", -1 ).toInt();
+	defaultSkeletonRoot = std::int16_t( std::clamp< int >( tmp, -1, 32767 ) );
 }
 
 void Scene::clear( [[maybe_unused]] bool flushTextures )
@@ -126,6 +151,8 @@ void Scene::clear( [[maybe_unused]] bool flushTextures )
 
 	//if ( flushTextures )
 	textures->flush();
+	if ( renderer )
+		renderer->flushCache();
 
 	sceneBoundsValid = timeBoundsValid = false;
 
@@ -209,6 +236,9 @@ void Scene::updateLodLevel( int level )
 	if ( Game::GameManager::get_game( nifModel ) != Game::STARFIELD )
 		level = std::min( level, 2 );
 	lodLevel = LodLevel( level );
+
+	for ( Shape * s : shapes )
+		s->updateLodLevel();
 }
 
 void Scene::make( NifModel * nif, bool flushTextures )
@@ -233,7 +263,7 @@ void Scene::make( NifModel * nif, bool flushTextures )
 Node * Scene::getNode( const NifModel * nif, const QModelIndex & iNode )
 {
 	if ( !nif || !iNode.isValid() )
-		return 0;
+		return nullptr;
 
 	Node * node = nodes.get( iNode );
 
@@ -316,9 +346,7 @@ void Scene::transform( const Transform & trans, float time )
 	view = trans;
 	this->time = time;
 
-	worldTrans.clear();
-	viewTrans.clear();
-	bhkBodyTrans.clear();
+	transformCache.clear();
 
 	for ( Property * prop : properties ) {
 		prop->transform();
@@ -339,6 +367,10 @@ void Scene::draw()
 {
 	drawShapes();
 
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_STENCIL_TEST );
+	glDisable( GL_FRAMEBUFFER_SRGB );
+
 	if ( hasOption(ShowNodes) )
 		drawNodes();
 	if ( hasOption(ShowCollision) )
@@ -358,7 +390,7 @@ void Scene::drawShapes()
 			node->drawShapes( &secondPass );
 		}
 
-		renderer->drawSkyBox( this );
+		drawGrid();
 
 		if ( secondPass.list().count() > 0 )
 			drawSelection(); // for transparency pass
@@ -373,8 +405,57 @@ void Scene::drawShapes()
 			node->drawShapes();
 		}
 
-		renderer->drawSkyBox( this );
+		drawGrid();
 	}
+}
+
+void Scene::drawGrid()
+{
+	// Draw the grid
+	NifSkope *	w;
+	if ( !hasOption(ShowGrid) || !nifModel || ( w = dynamic_cast< NifSkope * >( nifModel->getWindow() ) ) == nullptr )
+		return;
+	GLView *	v = w->getGLView();
+	if ( !v )
+		return;
+
+	glDisable( GL_FRAMEBUFFER_SRGB );
+	glEnable( GL_DEPTH_TEST );
+	glDepthMask( GL_TRUE );
+	glDepthFunc( GL_LESS );
+
+	FloatVector4	c0 = gridColor;
+	FloatVector4	c1( 1.0f, 0.0f, 0.0f, 1.0f );
+	FloatVector4	c2( 0.0f, 1.0f, 0.0f, 1.0f );
+
+	// Keep the grid "grounded" regardless of Up Axis
+	Transform gridTrans = view;
+	if ( v->cfg.upAxis != GLView::ZAxis ) {
+		static const float	axisRotation[27] = {
+			1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,		// Z
+			0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,		// Y
+			0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f		// X
+		};
+		const float *	ap = axisRotation;
+		if ( v->cfg.upAxis == GLView::YAxis ) {
+			ap = ap + 9;
+			c2 = c1;
+			c1.shuffleValues( 0xC6 );	// 2, 1, 0, 3
+		} else if ( v->cfg.upAxis == GLView::XAxis ) {
+			ap = ap + 18;
+			c1 = c2;
+			c2.shuffleValues( 0xD8 );	// 0, 2, 1, 3
+		}
+		gridTrans.rotation = gridTrans.rotation * Matrix( ap );
+	}
+	c1 = ( ( c1 + c0 ) * 0.5f ).blendValues( c0, 0x08 );
+	c2 = ( ( c2 + c0 ) * 0.5f ).blendValues( c0, 0x08 );
+
+	loadModelViewMatrix( gridTrans );
+
+	// TODO: Configurable grid in Settings
+	// 1024 game units, major lines every 128, minor lines every 64
+	drawGrid( ( nifModel->getBSVersion() >= 170 ? 16.0f : 1024.0f ), 16, 2, c0, c1, c2 );
 }
 
 void Scene::drawNodes()
@@ -400,7 +481,7 @@ void Scene::drawFurn()
 
 void Scene::drawSelection() const
 {
-	if ( Node::SELECTING )
+	if ( selecting )
 		return; // do not render the selection when selecting
 
 	for ( Node * node : nodes.list() ) {
@@ -475,3 +556,86 @@ QString Scene::textStats()
 	return QString();
 }
 
+
+Scene::TransformCache::TransformCache()
+	: hashTable( nullptr ), hashMask( 0 ), numTransforms( 0 )
+{
+	rehashCache();
+}
+
+Scene::TransformCache::~TransformCache()
+{
+	delete[] hashTable;
+}
+
+const Transform * Scene::TransformCache::find( std::uint64_t key ) const
+{
+	std::uint64_t	h = 0xFFFFFFFFU;
+	hashFunctionUInt64( h, key );
+	const std::pair< Transform *, std::uint64_t > *	p = hashTable;
+	std::uint32_t	m = hashMask;
+	for ( size_t i = size_t( h & m ); p[i].first; i = ( i + 1 ) & m ) {
+		if ( p[i].second == key ) [[likely]]
+			return p[i].first;
+	}
+	return nullptr;
+}
+
+bool Scene::TransformCache::find( Transform *& valuePtr, std::uint64_t key )
+{
+	std::uint64_t	h = 0xFFFFFFFFU;
+	hashFunctionUInt64( h, key );
+	std::pair< Transform *, std::uint64_t > *	p = hashTable;
+	std::uint32_t	m = hashMask;
+	size_t	i = size_t( h & m );
+	for ( ; p[i].first; i = ( i + 1 ) & m ) {
+		if ( p[i].second == key ) [[likely]] {
+			valuePtr = p[i].first;
+			return true;
+		}
+	}
+
+	Transform *	t = transformBuf.allocateObject< Transform >();
+	p[i].first = t;
+	p[i].second = key;
+	valuePtr = t;
+	numTransforms++;
+	if ( ( size_t( numTransforms ) * 3 ) >= ( size_t( m ) * 2 ) ) [[unlikely]]
+		rehashCache();
+
+	return false;
+}
+
+void Scene::TransformCache::rehashCache()
+{
+	size_t	m = hashMask;
+	while ( ( size_t( numTransforms ) * 3 ) >= ( m * 2 ) )
+		m = ( m << 1 ) | 0x3F;
+	size_t	n = m + 1;
+	std::pair< Transform *, std::uint64_t > *	tmp = new std::pair< Transform *, std::uint64_t >[n]();
+	if ( numTransforms > 0 ) {
+		for ( size_t i = 0; i <= hashMask; i++ ) {
+			if ( !hashTable[i].first )
+				continue;
+			std::uint64_t	h = 0xFFFFFFFFU;
+			hashFunctionUInt64( h, hashTable[i].second );
+			size_t	j = size_t( h & m );
+			while ( tmp[j].first )
+				j = ( j + 1 ) & m;
+			tmp[j] = hashTable[i];
+		}
+	}
+	delete[] hashTable;
+	hashTable = tmp;
+	hashMask = std::uint32_t( m );
+}
+
+void Scene::TransformCache::clear()
+{
+	delete[] hashTable;
+	hashTable = nullptr;
+	hashMask = 0;
+	numTransforms = 0;
+	transformBuf.clear();
+	rehashCache();
+}

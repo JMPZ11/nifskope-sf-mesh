@@ -55,7 +55,7 @@ namespace Ui {
 
 namespace nstypes
 {
-	QString operator"" _uip( const char * str, size_t sz );
+	QString operator""_uip( const char * str, size_t sz );
 }
 
 class GLView;
@@ -82,7 +82,7 @@ class QUdpSocket;
 namespace nstheme
 {
 	enum WindowColor { Base, BaseAlt, Text, Highlight, HighlightText, BrightText };
-	enum WindowTheme { ThemeDark, ThemeLight, ThemeWindows, ThemeWindowsXP };
+	enum WindowTheme { ThemeDark, ThemeLight };
 	enum ToolbarSize { ToolbarSmall, ToolbarLarge };
 }
 
@@ -160,6 +160,13 @@ public:
 		return ogl;
 	}
 
+	/*! For each NIF path on fileList, load the file, run processFunc() on the model, and save the modified file
+	 * if processFunc() returned true. The optional processFuncData pointer is passed to the function.
+	 * Returns true if processing has been successfully completed.
+	 */
+	bool batchProcessFiles( const QStringList & fileList,
+							bool (*processFunc)( NifModel *, void * ), void * processFuncData = nullptr );
+
 signals:
 	void beginLoading();
 	void completeLoading( bool, QString & );
@@ -195,6 +202,9 @@ public slots:
 
 	//! Reparse the nif.xml and kfm.xml files and reload the current file.
 	void on_aReload_triggered();
+
+	//! Open file browser for all resources
+	void on_aArchiveExtractor_triggered();
 
 	//! A slot that creates a new NifSkope application window.
 	void on_aWindow_triggered();

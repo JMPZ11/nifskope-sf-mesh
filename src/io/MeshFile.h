@@ -36,10 +36,10 @@ public:
 	//! Bitangents basis (bitangents[i] = cross(normals[i], tangents[i] * bitangentsBasis[i]))
 	QVector<float> bitangentsBasis;
 	//! UV coordinate sets
-	bool	haveTexCoord2 = false;
-	QVector<Vector4> coords;
-	//! Weights
-	QVector<BoneWeightsUNorm> weights;
+	QVector<Vector2> coords1;
+	QVector<Vector2> coords2;
+	//! Weights, numVerts * weightsPerVertex elements in (bone << 16) | weight format
+	QVector<std::uint32_t> weights;
 	quint8 weightsPerVertex = 0;
 	//! Triangles
 	QVector<Triangle> triangles;

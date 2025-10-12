@@ -64,15 +64,7 @@ QString NumOrMinMax( float val, char f, int prec )
 		return "<float_max>";
 
 	// display 0x80000000 as -0.0
-	union flt_int
-	{
-		float f;
-		quint32 i;
-	};
-	flt_int _val;
-	_val.f = val;
-
-	if ( _val.i == 0x80000000 )
+	if ( std::bit_cast< std::uint32_t >( val ) == 0x80000000U )
 		return QString( "-%1" ).arg( QString::number( val, f, prec ) );
 
 	// usual case
@@ -263,7 +255,7 @@ bool Matrix::toEuler( float & x, float & y, float & z ) const
 }
 
 
-Matrix Matrix::inverted () const
+Matrix Matrix::inverted() const
 {
 	Matrix i;
 
@@ -279,7 +271,7 @@ Matrix Matrix::inverted () const
 
 	float d = m[0][0] * i( 0, 0 ) + m[0][1] * i( 1, 0 ) + m[0][2] * i( 2, 0 );
 
-	if ( fabs( d ) <= 0.0 )
+	if ( std::fabs( d ) <= 0.0f )
 		return Matrix();
 
 	for ( int x = 0; x < 3; x++ ) {
@@ -293,20 +285,12 @@ Matrix Matrix::inverted () const
 
 Matrix Matrix::toYUp() const
 {
-	auto m1 = Matrix();
-	auto m2 = Matrix();
-	memcpy(m1.m, m, 36);
-	memcpy(m2.m, Y_UP, 36);
-	return m1 * m2;
+	return *this * Matrix( &(Y_UP[0][0]) );
 }
 
 Matrix Matrix::toZUp() const
 {
-	auto m1 = Matrix();
-	auto m2 = Matrix();
-	memcpy(m1.m, m, 36);
-	memcpy(m2.m, Z_UP, 36);
-	return m1 * m2;
+	return *this * Matrix( &(Z_UP[0][0]) );
 }
 
 QString Matrix::toHtml() const
@@ -335,17 +319,17 @@ QString Matrix4::toHtml() const
 {
 	return QString( "<table>" )
 	       + QString( "<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>" )
-	           .arg( m[0][0], 0, 'f', 4 ).arg( m[0][1], 0, 'f', 4 )
-	           .arg( m[0][2], 0, 'f', 4 ).arg( m[0][3], 0, 'f', 4 )
+	           .arg( m[0][0], 0, 'f', 4 ).arg( m[1][0], 0, 'f', 4 )
+	           .arg( m[2][0], 0, 'f', 4 ).arg( m[3][0], 0, 'f', 4 )
 	       + QString( "<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>" )
-	           .arg( m[1][0], 0, 'f', 4 ).arg( m[1][1], 0, 'f', 4 )
-	           .arg( m[1][2], 0, 'f', 4 ).arg( m[1][3], 0, 'f', 4 )
+	           .arg( m[0][1], 0, 'f', 4 ).arg( m[1][1], 0, 'f', 4 )
+	           .arg( m[2][1], 0, 'f', 4 ).arg( m[3][1], 0, 'f', 4 )
 	       + QString( "<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>" )
-	           .arg( m[2][0], 0, 'f', 4 ).arg( m[2][1], 0, 'f', 4 )
-	           .arg( m[2][2], 0, 'f', 4 ).arg( m[2][3], 0, 'f', 4 )
+	           .arg( m[0][2], 0, 'f', 4 ).arg( m[1][2], 0, 'f', 4 )
+	           .arg( m[2][2], 0, 'f', 4 ).arg( m[3][2], 0, 'f', 4 )
 	       + QString( "<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>" )
-	           .arg( m[3][0], 0, 'f', 4 ).arg( m[3][1], 0, 'f', 4 )
-	           .arg( m[3][2], 0, 'f', 4 ).arg( m[3][3], 0, 'f', 4 )
+	           .arg( m[0][3], 0, 'f', 4 ).arg( m[1][3], 0, 'f', 4 )
+	           .arg( m[2][3], 0, 'f', 4 ).arg( m[3][3], 0, 'f', 4 )
 	       + QString( "</table>" );
 }
 
@@ -390,7 +374,34 @@ void Matrix4::compose( const Vector3 & trans, const Matrix & rot, const Vector3 
 	}
 }
 
-bool gluInvertMatrix( const float m[16], float invOut[16] )
+Matrix4 Matrix4::fromFrustum( double left, double right, double bottom, double top, double nearVal, double farVal )
+{
+	Matrix4	m;
+	m.m[0][0] = float( 2.0 * nearVal / ( right - left ) );
+	m.m[1][1] = float( 2.0 * nearVal / ( top - bottom ) );
+	m.m[2][0] = float( ( right + left ) / ( right - left ) );
+	m.m[2][1] = float( ( top + bottom ) / ( top - bottom ) );
+	m.m[2][2] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
+	m.m[2][3] = -1.0f;
+	m.m[3][2] = float( 2.0 * nearVal * farVal / ( nearVal - farVal ) );
+	m.m[3][3] = 0.0f;
+	return m;
+}
+
+Matrix4 Matrix4::fromOrtho( double left, double right, double bottom, double top, double nearVal, double farVal )
+{
+	Matrix4	m;
+	m.m[0][0] = float( -2.0 / ( left - right ) );
+	m.m[1][1] = float( -2.0 / ( bottom - top ) );
+	m.m[2][2] = float( 2.0 / ( nearVal - farVal ) );
+	m.m[3][0] = float( ( left + right ) / ( left - right ) );
+	m.m[3][1] = float( ( bottom + top ) / ( bottom - top ) );
+	m.m[3][2] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
+	m.m[3][3] = 1.0f;
+	return m;
+}
+
+static bool gluInvertMatrix( const float m[16], float invOut[16] )
 {
 	float inv[16], det;
 	int i;
@@ -549,8 +560,8 @@ Matrix4 Matrix4::inverted() const
 void Quat::fromAxisAngle( Vector3 axis, float angle )
 {
 	axis.normalize();
-	float s = sin( angle / 2 );
-	wxyz[0] = cos( angle / 2 );
+	float s = std::sin( angle / 2 );
+	wxyz[0] = std::cos( angle / 2 );
 	wxyz[1] = s * axis[0];
 	wxyz[2] = s * axis[1];
 	wxyz[3] = s * axis[2];
@@ -561,11 +572,11 @@ void Quat::toAxisAngle( Vector3 & axis, float & angle ) const
 	float squaredLength = wxyz[1] * wxyz[1] + wxyz[2] * wxyz[2] + wxyz[3] * wxyz[3];
 
 	if ( squaredLength > 0.0 ) {
-		angle = acos( wxyz[0] ) * 2.0;
+		angle = std::acos( wxyz[0] ) * 2.0;
 		axis[0] = wxyz[1];
 		axis[1] = wxyz[2];
 		axis[2] = wxyz[3];
-		axis /= sqrt( squaredLength );
+		axis /= std::sqrt( squaredLength );
 	} else {
 		axis = { 1, 0, 0 };
 		angle = 0;
@@ -715,6 +726,15 @@ void Transform::writeBack( NifModel * nif, const QModelIndex & transform ) const
 	nif->set<float>( t, "Scale", scale );
 }
 
+Transform Transform::inverted() const
+{
+	Transform	t( *this );
+	t.rotation = t.rotation.inverted();
+	t.scale = 1.0f / t.scale;
+	t.translation = ( t.rotation * t.translation ) * ( t.scale * -1.0f );
+	return t;
+}
+
 QString Transform::toString() const
 {
 	float x, y, z;
@@ -724,19 +744,76 @@ QString Transform::toString() const
 
 Matrix4 Transform::toMatrix4() const
 {
-	Matrix4 m;
+	FloatVector4 m[4];
+	const float * r = rotation.data();
+	m[0] = FloatVector4( r );		// 0, 1, 2, 3
+	m[1] = FloatVector4( r + 4 );	// 4, 5, 6, 7
+	m[2] = FloatVector4( r + 5 );	// 5, 6, 7, 8
+	m[3] = FloatVector4::convertVector3( &(translation[0]) );
+	FloatVector4 s = FloatVector4( scale ).blendValues( m[3], 0x08 );
 
-	for ( int c = 0; c < 3; c++ ) {
-		for ( int d = 0; d < 3; d++ )
-			m( c, d ) = rotation( d, c ) * scale;
+	m[2].blendValues( m[0], 0x04 );	// 5, 6, 2, 8
+	m[1].blendValues( m[0], 0x02 );	// 4, 1, 6, 7
+	m[0].blendValues( m[2], 0x02 );	// 0, 6, 2, 3
+	m[2].shuffleValues( 0x72 );		// 2, 5, 8, 6
+	m[1].shuffleValues( 0xB1 );		// 1, 4, 7, 6
+	m[0].shuffleValues( 0x9C );		// 0, 3, 6, 2
+	m[2] *= s;
+	m[1] *= s;
+	m[0] *= s;
+	m[3][3] = 1.0f;
 
-		m( 3, c ) = translation[ c ];
-	}
-
-	m( 0, 3 ) = 0.0;
-	m( 1, 3 ) = 0.0;
-	m( 2, 3 ) = 0.0;
-	m( 3, 3 ) = 1.0;
-	return m;
+	return Matrix4( &(m[0][0]) );
 }
 
+Matrix4 Matrix4::operator*( const Matrix4 & m2 ) const
+{
+	FloatVector4 m_0( &(m[0][0]) );
+	FloatVector4 m_1( &(m[1][0]) );
+	FloatVector4 m_2( &(m[2][0]) );
+	FloatVector4 m_3( &(m[3][0]) );
+
+	FloatVector4 m3[4];
+	m3[0] = ( m_0 * m2.m[0][0] ) + ( m_1 * m2.m[0][1] ) + ( m_2 * m2.m[0][2] ) + ( m_3 * m2.m[0][3] );
+	m3[1] = ( m_0 * m2.m[1][0] ) + ( m_1 * m2.m[1][1] ) + ( m_2 * m2.m[1][2] ) + ( m_3 * m2.m[1][3] );
+	m3[2] = ( m_0 * m2.m[2][0] ) + ( m_1 * m2.m[2][1] ) + ( m_2 * m2.m[2][2] ) + ( m_3 * m2.m[2][3] );
+	m3[3] = ( m_0 * m2.m[3][0] ) + ( m_1 * m2.m[3][1] ) + ( m_2 * m2.m[3][2] ) + ( m_3 * m2.m[3][3] );
+
+	return Matrix4( &(m3[0][0]) );
+}
+
+Matrix4 Matrix4::operator*( const Transform & t ) const
+{
+	const float * r = t.rotation.data();
+	FloatVector4 m2_0 = FloatVector4( r ) * t.scale;
+	FloatVector4 m2_1 = FloatVector4( r + 3 ) * t.scale;
+	FloatVector4 m2_2 = FloatVector4::convertVector3( r + 6 ) * t.scale;
+	FloatVector4 m2_3 = FloatVector4::convertVector3( &(t.translation[0]) );
+
+	FloatVector4 m3[4];
+	m3[0] = ( FloatVector4( &(m[0][0]) ) * m2_0[0] ) + ( FloatVector4( &(m[1][0]) ) * m2_1[0] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_2[0] );
+	m3[1] = ( FloatVector4( &(m[0][0]) ) * m2_0[1] ) + ( FloatVector4( &(m[1][0]) ) * m2_1[1] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_2[1] );
+	m3[2] = ( FloatVector4( &(m[0][0]) ) * m2_0[2] ) + ( FloatVector4( &(m[1][0]) ) * m2_1[2] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_2[2] );
+	m3[3] = ( FloatVector4( &(m[0][0]) ) * m2_3[0] ) + ( FloatVector4( &(m[1][0]) ) * m2_3[1] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_3[2] ) + FloatVector4( &(m[3][0]) );
+
+	return Matrix4( &(m3[0][0]) );
+}
+
+Matrix4 & Matrix4::multiply4x3( const Matrix4 & m2 )
+{
+	FloatVector4 m_0( &(m[0][0]) );
+	FloatVector4 m_1( &(m[1][0]) );
+	FloatVector4 m_2( &(m[2][0]) );
+	FloatVector4 m_3( &(m[3][0]) );
+
+	( ( m_0 * m2.m[0][0] ) + ( m_1 * m2.m[0][1] ) + ( m_2 * m2.m[0][2] ) ).convertToFloats( &(m[0][0]) );
+	( ( m_0 * m2.m[1][0] ) + ( m_1 * m2.m[1][1] ) + ( m_2 * m2.m[1][2] ) ).convertToFloats( &(m[1][0]) );
+	( ( m_0 * m2.m[2][0] ) + ( m_1 * m2.m[2][1] ) + ( m_2 * m2.m[2][2] ) ).convertToFloats( &(m[2][0]) );
+	( ( m_0 * m2.m[3][0] ) + ( m_1 * m2.m[3][1] ) + ( m_2 * m2.m[3][2] ) + m_3 ).convertToFloats( &(m[3][0]) );
+
+	return *this;
+}

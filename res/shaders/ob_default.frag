@@ -1,4 +1,6 @@
-#version 120
+#version 410 core
+
+#include "uniforms.glsl"
 
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
@@ -19,11 +21,14 @@ uniform bool hasGlowMap;
 uniform bool hasCubeMap;
 uniform bool hasCubeMask;
 uniform float cubeMapScale;
-// <= 0: disabled, 1: simple parallax mapping using BaseMap.a, >= 2: POM using HeightMap.r
+// <= 0: disabled, 1 or 2: simple parallax mapping using BaseMap.a or HeightMap.r, >= 3: POM using HeightMap.r
 uniform int parallaxMaxSteps;
 uniform float parallaxScale;
 uniform float glowMult;
-uniform vec4 glowColor;
+
+uniform float alpha;
+uniform int alphaFlags;			// bits 0 to 2: alpha test mode, bit 3: alpha blending enabled
+uniform float alphaThreshold;
 
 uniform vec2 uvCenter;
 uniform vec2 uvScale;
@@ -32,15 +37,24 @@ uniform float uvRotation;
 
 uniform vec4 falloffParams;
 
-uniform mat4 worldMatrix;
+uniform vec4 frontMaterialDiffuse;
+uniform vec4 frontMaterialSpecular;
+uniform vec4 frontMaterialAmbient;
+uniform vec4 frontMaterialEmission;
+uniform float frontMaterialShininess;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in mat3 reflMatrix;
 
-varying vec4 C;
-varying vec4 D;
-varying vec4 A;
-varying float toneMapScale;
+in vec3 LightDir;
+in vec3 ViewDir;
+
+in vec2 texCoord;
+
+flat in vec4 A;
+in vec4 C;
+flat in vec4 D;
+
+out vec4 fragColor;
 
 
 vec3 tonemap(vec3 x)
@@ -52,9 +66,9 @@ vec3 tonemap(vec3 x)
 	float e = 0.02;
 	float f = 0.30;
 
-	vec3 z = x * x * gl_LightSource[0].diffuse.a * (toneMapScale * 4.22978723);
+	vec3 z = x * x * D.a * (A.a * 4.22978723);
 	z = (z * (a * z + b * c) + d * e) / (z * (a * z + b) + d * f) - e / f;
-	return sqrt(z / (toneMapScale * 0.93333333));
+	return sqrt(z / (A.a * 0.93333333));
 }
 
 // parallax occlusion mapping based on code from
@@ -62,8 +76,14 @@ vec3 tonemap(vec3 x)
 
 vec2 parallaxMapping( vec3 V, vec2 offset )
 {
-	if ( parallaxMaxSteps < 2 )
-		return offset + V.xy * ( ( 0.5 - texture2D( BaseMap, offset ).a ) * parallaxScale );
+	if ( parallaxMaxSteps < 3 ) {
+		float	h;
+		if ( parallaxMaxSteps < 2 )
+			h = texture( BaseMap, offset ).a;
+		else
+			h = texture( HeightMap, offset ).r;
+		return offset + V.xy * ( ( h - 0.5 ) * parallaxScale );
+	}
 
 	// determine optimal height of each layer
 	float	layerHeight = 1.0 / mix( max( float(parallaxMaxSteps), 4.0 ), 4.0, abs(V.z) );
@@ -77,7 +97,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 	dtex *= layerHeight;
 
 	// height from heightmap
-	float	heightFromTexture = texture2D( HeightMap, currentTextureCoords ).r;
+	float	heightFromTexture = texture( HeightMap, currentTextureCoords ).r;
 
 	// while point is above the surface
 	while ( curLayerHeight > heightFromTexture ) {
@@ -86,7 +106,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 		// shift of texture coordinates
 		currentTextureCoords -= dtex;
 		// new height from heightmap
-		heightFromTexture = texture2D( HeightMap, currentTextureCoords ).r;
+		heightFromTexture = texture( HeightMap, currentTextureCoords ).r;
 	}
 
 	// previous texture coordinates
@@ -94,7 +114,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 
 	// heights for linear interpolation
 	float	nextH = curLayerHeight - heightFromTexture;
-	float	prevH = curLayerHeight + layerHeight - texture2D( HeightMap, prevTCoords ).r;
+	float	prevH = curLayerHeight + layerHeight - texture( HeightMap, prevTCoords ).r;
 
 	// proportions for linear interpolation
 	float	weight = nextH / ( nextH - prevH );
@@ -103,61 +123,49 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 	return mix( currentTextureCoords, prevTCoords, weight );
 }
 
-void main( void )
+void main()
 {
 	vec3 L = normalize( LightDir );
 	vec3 E = normalize( ViewDir );
 
-	vec2 offset = gl_TexCoord[0].st - uvCenter;
+	vec2 offset = texCoord.st - uvCenter;
 	float r_c = cos( uvRotation );
 	float r_s = sin( uvRotation ) * -1.0;
 	offset = vec2( offset.x * r_c - offset.y * r_s, offset.x * r_s + offset.y * r_c ) * uvScale + uvCenter + uvOffset;
 	if ( parallaxMaxSteps >= 1 && parallaxScale >= 0.0005 )
 		offset = parallaxMapping( E, offset );
 
-	vec4 baseMap = texture2D( BaseMap, offset );
+	vec4 baseMap = texture( BaseMap, offset );
 	vec4 color = baseMap;
 
 	if ( isEffect ) {
-		float alphaMult = glowColor.a * glowColor.a;
+		float alphaMult = 1.0;
 
 		if ( falloffParams.y != falloffParams.x ) {
 			// TODO: When X and Y are both 0.0 or both 1.0 the effect is reversed.
 			float falloff = smoothstep( falloffParams.y, falloffParams.x, abs(E.z) );
 			falloff = mix( max(falloffParams.w, 0.0), min(falloffParams.z, 1.0), falloff );
-			alphaMult *= falloff;
+			alphaMult = falloff;
 		}
 
 		color *= C;
-		color.rgb = color.rgb * glowColor.rgb * glowMult;
+		if ( dot( frontMaterialEmission.rgb, vec3( 1.0 ) ) > 0.003 )
+			color.rgb = color.rgb * frontMaterialEmission.rgb;
+		color.rgb = color.rgb * glowMult;
 		color.a = color.a * alphaMult;
 	} else {
-		vec4 normalMap = texture2D( NormalMap, offset );
+		vec4 normalMap = texture( NormalMap, offset );
 
 		vec3 normal = normalize( normalMap.rgb * 2.0 - 1.0 );
-		if ( !gl_FrontFacing )
-			normal *= -1.0;
 
-		vec3 R = reflect( -L, normal );
-		vec3 H = normalize( L + E );
 		float NdotL = max( dot(normal, L), 0.0 );
 
-		// work around the lack of bitwise operators in GLSL 1.20
-		int tmp = vertexColorFlags;
-		bool vcfBit5 = ( tmp >= 32 );
-		if ( vcfBit5 )
-			tmp -= 32;
-		bool vcfBit4 = ( tmp >= 16 );
-		if ( vcfBit4 )
-			tmp -= 16;
-		bool vcfBit3 = ( tmp >= 8 );
-
-		if ( vcfBit3 && vcfBit5 ) {
+		if ( ( vertexColorFlags & 0x28 ) == 0x28 ) {
 			color *= C;
 			color.rgb *= A.rgb + ( D.rgb * NdotL );
-		} else if ( vcfBit3 ) {
-			color.rgb *= ( A.rgb * gl_FrontMaterial.ambient.rgb ) + ( D.rgb * gl_FrontMaterial.diffuse.rgb * NdotL );
-			color.a *= min( gl_FrontMaterial.ambient.a + gl_FrontMaterial.diffuse.a, 1.0 );
+		} else if ( ( vertexColorFlags & 0x08 ) != 0 ) {
+			color.rgb *= ( A.rgb * frontMaterialAmbient.rgb ) + ( D.rgb * frontMaterialDiffuse.rgb * NdotL );
+			color.a *= min( frontMaterialAmbient.a + frontMaterialDiffuse.a, 1.0 );
 		} else {
 			color.rgb *= A.rgb + ( D.rgb * NdotL );
 		}
@@ -166,35 +174,48 @@ void main( void )
 		// Environment
 		if ( hasCubeMap && cubeMapScale > 0.0 ) {
 			vec3 R = reflect( -E, normal );
-			vec3 reflectedWS = vec3( worldMatrix * ( gl_ModelViewMatrixInverse * vec4( R, 0.0 ) ) );
-			vec3 cube = textureCube( CubeMap, reflectedWS ).rgb;
+			vec3 reflectedWS = reflMatrix * R;
+			vec3 cube = texture( CubeMap, reflectedWS ).rgb;
 			if ( hasCubeMask )
-				cube *= texture2D( EnvironmentMap, offset ).r * cubeMapScale;
+				cube *= texture( EnvironmentMap, offset ).r * cubeMapScale;
 			else
 				cube *= normalMap.a * cubeMapScale;
-			color.rgb += cube * sqrt( gl_LightSource[0].ambient.rgb );
+			color.rgb += cube * A.rgb * ( 1.0 / 0.375 );
 		}
 
 		// Emissive
-		vec3 emissive = glowColor.rgb * glowMult;
-		if ( !vcfBit4 )
-			emissive *= gl_FrontMaterial.emission.rgb;
+		vec3 emissive = vec3( glowMult * glowScaleSRGB );
+		if ( ( vertexColorFlags & 0x10 ) == 0 )
+			emissive *= frontMaterialEmission.rgb * frontMaterialEmission.a;
 		else
 			emissive *= C.rgb;
 		if ( hasGlowMap )
-			color.rgb += emissive * baseMap.rgb * texture2D( GlowMap, offset ).rgb;
+			color.rgb += emissive * baseMap.rgb * texture( GlowMap, offset ).rgb;
 		else if ( hasEmit )
 			color.rgb += emissive * baseMap.rgb;
 
 		// Specular
 		if ( hasSpecular && NdotL > 0.0 ) {
+			vec3 H = normalize( L + E );
 			float NdotH = dot( normal, H );
 			if ( NdotH > 0.0 ) {
-				vec4 spec = gl_FrontMaterial.specular * pow( NdotH, gl_FrontMaterial.shininess );
-				color.rgb += spec.rgb * normalMap.a;
+				vec3 spec = frontMaterialSpecular.rgb * pow( NdotH, frontMaterialShininess );
+				color.rgb += spec * frontMaterialSpecular.a * normalMap.a;
 			}
 		}
 	}
 
-	gl_FragColor = vec4( tonemap( color.rgb ), color.a );
+	color.a *= alpha;
+
+	float	a = 1.0;
+	if ( alphaFlags > 0 ) {
+		// 0: always, 1: <, 2: ==, 3: <=, 4: >, 5: !=, 6: >=, 7: never
+		int	m = ( color.a < alphaThreshold ? 0x2B2B : ( color.a > alphaThreshold ? 0x7171 : 0x4D4D ) );
+		if ( ( m & ( 1 << alphaFlags ) ) == 0 )
+			discard;
+		if ( ( alphaFlags & 8 ) != 0 )
+			a = color.a;
+	}
+
+	fragColor = vec4( tonemap( color.rgb ), a );
 }

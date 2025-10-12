@@ -143,8 +143,11 @@ void SpellBook::cast( NifModel * nif, const QModelIndex & index, SpellPtr spell 
 		nif->invalidateHeaderConditions();
 		nif->updateHeader();
 
-		if ( noSignals && nif->getProcessingResult() ) {
-			emit nif->dataChanged( idx, idx );
+		if ( nif->getProcessingResult() ) {
+			QModelIndex i = idx;
+			if ( !i.isValid() )
+				i = nif->getRootIndex();
+			emit nif->dataChanged( i, i );
 		}
 
 		emit sigIndex( idx );
@@ -208,10 +211,9 @@ void SpellBook::checkActions( QMenu * menu, const QString & page )
 
 void SpellBook::newSpellRegistered( SpellPtr spell )
 {
-	if ( spell->page().isEmpty() ) {
-		Map.insert( addAction( spell->icon(), spell->name() ), spell );
-	} else {
-		QMenu * menu = nullptr;
+	QMenu * menu = nullptr;
+
+	if ( !spell->page().isEmpty() ) {
 		for ( QAction * action : actions() ) {
 			if ( action->menu() && action->menu()->title() == spell->page() ) {
 				menu = action->menu();
@@ -223,11 +225,15 @@ void SpellBook::newSpellRegistered( SpellPtr spell )
 			menu = new QMenu( spell->page(), this );
 			addMenu( menu );
 		}
-
-		QAction * act = menu->addAction( spell->icon(), spell->name() );
-		act->setShortcut( spell->hotkey() );
-		Map.insert( act, spell );
 	}
+
+	QAction * act;
+	if ( menu )
+		act = menu->addAction( spell->icon(), spell->name() );
+	else
+		act = addAction( spell->icon(), spell->name() );
+	act->setShortcut( spell->hotkey() );
+	Map.insert( act, spell );
 }
 
 void SpellBook::registerSpell( SpellPtr spell )
@@ -271,17 +277,18 @@ SpellPtr SpellBook::lookup( const QString & id )
 	return nullptr;
 }
 
-SpellPtr SpellBook::lookup( const QKeySequence & hotkey )
+QList<SpellPtr> SpellBook::lookup( const QKeySequence & hotkey )
 {
-	if ( hotkey.isEmpty() )
-		return nullptr;
+	QList<SpellPtr> spellsFound;
 
-	for ( SpellPtr spell : spells() ) {
-		if ( spell->hotkey() == hotkey )
-			return spell;
+	if ( !hotkey.isEmpty() ) {
+		for ( SpellPtr spell : spells() ) {
+			if ( spell->hotkey() == hotkey )
+				spellsFound.append( spell );
+		}
 	}
 
-	return nullptr;
+	return spellsFound;
 }
 
 SpellPtr SpellBook::instant( const NifModel * nif, const QModelIndex & index )

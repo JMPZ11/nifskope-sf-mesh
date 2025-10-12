@@ -47,6 +47,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ui/widgets/inspect.h"
 #include "ui/about_dialog.h"
 #include "ui/settingsdialog.h"
+#include "qt5compat.hpp"
 
 #include <QAction>
 #include <QActionGroup>
@@ -70,6 +71,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QListView>
 #include <QTreeView>
 #include <QStandardItemModel>
+#include <QStyleFactory>
 
 #include "ba2file.hpp"
 #include "bsamodel.h"
@@ -197,6 +199,10 @@ NifSkope::NifSkope()
 {
 	// Init UI
 	ui->setupUi( this );
+
+	for ( const auto & s : QStyleFactory::keys() ) {
+		ui->mTheme->addAction( s )->setCheckable( true );
+	}
 
 	qApp->installEventFilter( this );
 
@@ -381,6 +387,9 @@ void NifSkope::exitRequested()
 
 NifSkope::~NifSkope()
 {
+	// work around crash that would occur if the UV editor is still open and it is the last window
+	disconnect( qApp, &QApplication::lastWindowClosed, this, &NifSkope::exitRequested );
+
 	delete ui;
 	if ( currentArchive )
 		delete currentArchive;
@@ -603,15 +612,25 @@ int updateRecentActions( QAction * acts[], const QStringList & files )
 {
 	int numRecentFiles = std::min< qsizetype >( files.size(), NifSkope::NumRecentFiles );
 
-	for ( int i = 0; i < numRecentFiles; ++i ) {
-		QString text = QString( "&%1 %2" ).arg( i + 1 ).arg( strippedName( files[i] ) );
+	for ( int i = 0; i < NifSkope::NumRecentFiles; ++i ) {
+		QString fileName;
+		QString text;
+		if ( i >= numRecentFiles ) {
+			if ( i > 0 ) {
+				acts[i]->setVisible( false );
+				continue;
+			}
+			text = "<None>";
+		} else {
+			fileName = files[i];
+			text = QString( "&%1 %2" ).arg( i + 1 ).arg( strippedName( files[i] ) );
+		}
 		acts[i]->setText( text );
-		acts[i]->setData( files[i] );
-		acts[i]->setStatusTip( files[i] );
+		acts[i]->setData( fileName );
+		acts[i]->setStatusTip( fileName );
 		acts[i]->setVisible( true );
 	}
-	for ( int j = numRecentFiles; j < NifSkope::NumRecentFiles; ++j )
-		acts[j]->setVisible( false );
+	acts[0]->setEnabled( numRecentFiles > 0 );
 
 	return numRecentFiles;
 }
@@ -631,10 +650,7 @@ void NifSkope::updateRecentFileActions()
 	QSettings settings;
 	QStringList files = settings.value( "File/Recent File List" ).toStringList();
 
-	int numRecentFiles = ::updateRecentActions( recentFileActs, files );
-
-	aRecentFilesSeparator->setVisible( numRecentFiles > 0 );
-	ui->mRecentFiles->setEnabled( numRecentFiles > 0 );
+	::updateRecentActions( recentFileActs, files );
 }
 
 void NifSkope::updateAllRecentFileActions()
@@ -729,12 +745,13 @@ void NifSkope::setCurrentArchive( bool isArchiveFolder )
 		archiveName += "/*.bsa,*.ba2";
 	currentArchiveNames += archiveName;
 
-	QSettings settings;
-	QStringList files = settings.value( "File/Recent Archive List" ).toStringList();
-	::updateRecentFiles( files, currentArchivePath );
+	{
+		QSettings settings;
+		QStringList files = settings.value( "File/Recent Archive List" ).toStringList();
+		::updateRecentFiles( files, currentArchivePath );
 
-	settings.setValue( "File/Recent Archive List", files );
-
+		settings.setValue( "File/Recent Archive List", files );
+	}
 	updateAllRecentFileActions();
 }
 
@@ -762,9 +779,7 @@ void NifSkope::updateRecentArchiveActions()
 	QSettings settings;
 	QStringList files = settings.value( "File/Recent Archive List" ).toStringList();
 
-	int numRecentFiles = ::updateRecentActions( recentArchiveActs, files );
-
-	ui->mRecentArchives->setEnabled( numRecentFiles > 0 );
+	::updateRecentActions( recentArchiveActs, files );
 }
 
 void NifSkope::updateRecentArchiveFileActions()
@@ -772,14 +787,11 @@ void NifSkope::updateRecentArchiveFileActions()
 	QSettings settings;
 	QHash<QString, QVariant> hash = settings.value( "File/Recent Archive Files" ).toHash();
 
-	if ( !currentArchive || currentArchiveNames.empty() )
-		return;
+	QStringList files;
+	if ( currentArchive && !currentArchiveNames.empty() )
+		files = hash.value( currentArchiveNames.back() ).toStringList();
 
-	QStringList files = hash.value( currentArchiveNames.back() ).toStringList();
-
-	int numRecentFiles = ::updateRecentActions( recentArchiveFileActs, files );
-
-	mRecentArchiveFiles->setEnabled( numRecentFiles > 0 );
+	::updateRecentActions( recentArchiveFileActs, files );
 }
 
 QModelIndex NifSkope::currentNifIndex() const
@@ -876,7 +888,7 @@ bool NifSkope::loadArchivesFromFolder( QString archive )
 			size_t	prvCnt = currentArchive->getArchiveFileCnt();
 			currentArchive->loadArchivePath( fullPath.toStdString().c_str(), &archiveFilterFunction );
 			if ( currentArchive->getArchiveFileCnt() > prvCnt )
-				currentArchiveNames += archiveNames[i].mid( 1 );
+				currentArchiveNames += archiveNames[i];
 		} catch ( std::exception & ) {
 			qCWarning( nsIo ) << QString( "The BSA %1 could not be opened." ).arg( fullPath );
 		}
@@ -969,8 +981,14 @@ void NifSkope::openArchive( const QString & archive )
 			auto text = ui->bsaFilter->text();
 
 			bsaProxyModel->setFilterRegularExpression(
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+				QRegularExpression( QRegularExpression::wildcardToRegularExpression( text ).chopped( 2 ).mid( 2 ),
+									QRegularExpression::CaseInsensitiveOption )
+#else
 				QRegularExpression::fromWildcard(
-					text, Qt::CaseInsensitive, QRegularExpression::UnanchoredWildcardConversion ) );
+					text, Qt::CaseInsensitive, QRegularExpression::UnanchoredWildcardConversion )
+#endif
+			);
 			bsaView->expandAll();
 
 			if ( text.isEmpty() ) {
@@ -1425,7 +1443,7 @@ void NifSkope::migrateSettings() const
 		QStringList keys = settings.allKeys();
 
 		for ( const auto& key : keys ) {
-			if ( settings.value( key ).typeId() == QMetaType::QByteArray ) {
+			if ( getQVariantMetaType( settings.value( key ) ) == QMetaType::QByteArray ) {
 				qDebug() << "Removing Qt version-specific settings" << key
 					<< "while migrating settings from previous version";
 				settings.remove( key );
@@ -1435,4 +1453,89 @@ void NifSkope::migrateSettings() const
 		settings.setValue( "Qt Version", curQtVer );
 	}
 #endif
+}
+
+bool NifSkope::batchProcessFiles(
+	const QStringList & fileList, bool (*processFunc)( NifModel *, void * ), void * processFuncData )
+{
+	qsizetype	n = fileList.size();
+	if ( n < 1 || !processFunc )
+		return true;
+
+	QDialog	dlg;
+	QLabel *	lb = new QLabel( &dlg );
+	lb->setText( QString( "Processing file %1..." ).arg( fileList.first() ) );
+	QProgressBar *	pb = new QProgressBar( &dlg );
+	pb->setMinimum( 0 );
+	pb->setMaximum( int( n ) );
+	QPushButton *	cb = new QPushButton( "Cancel", &dlg );
+	QGridLayout *	grid = new QGridLayout;
+	dlg.setLayout( grid );
+	grid->addWidget( lb, 0, 0, 1, 3 );
+	grid->addWidget( pb, 1, 0, 1, 3 );
+	grid->addWidget( cb, 2, 1, 1, 1 );
+	QObject::connect( cb, &QPushButton::clicked, &dlg, &QDialog::reject );
+	dlg.setModal( true );
+	dlg.setResult( QDialog::Accepted );
+	dlg.show();
+
+	NifModel *	tmpNif = nullptr;
+	bool	noErrors = true;
+	for ( qsizetype i = 0; i < n; i++ ) {
+		const QString &	filePath = fileList[i];
+		lb->setText( QString( "Processing file %1..." ).arg( filePath ) );
+		try {
+			QCoreApplication::processEvents();
+			if ( dlg.result() == QDialog::Rejected )
+				return false;
+
+			QString	fileName( QDir::fromNativeSeparators( filePath ) );
+			tmpNif = new NifModel();
+			tmpNif->setBatchProcessingMode( true );
+			{
+				QFile	f( fileName );
+				if ( !f.open( QIODevice::ReadOnly ) )
+					throw NifSkopeError( "error opening file" );
+				std::string	tmp( fileName.toStdString() );
+				tmpNif->load( f, tmp.c_str() );
+			}
+			if ( !tmpNif->getMessages().isEmpty() )
+				throw NifSkopeError( "error parsing NIF data" );
+
+			QCoreApplication::processEvents();
+			if ( dlg.result() == QDialog::Rejected )
+				return false;
+
+			bool	saveFlag = processFunc( tmpNif, processFuncData );
+			tmpNif->setBatchProcessingMode( false );
+
+			QCoreApplication::processEvents();
+			if ( dlg.result() == QDialog::Rejected )
+				return false;
+
+			if ( saveFlag ) {
+				QFile	f( fileName );
+				if ( !f.open( QIODevice::WriteOnly ) )
+					throw NifSkopeError( "error opening file" );
+				tmpNif->save( f );
+			}
+
+			delete tmpNif;
+			tmpNif = nullptr;
+		} catch ( std::exception & e ) {
+			if ( tmpNif ) {
+				delete tmpNif;
+				tmpNif = nullptr;
+			}
+			if ( QMessageBox::critical( this, "NifSkope error",
+										QString( "Error processing '%1': %2. Continue?" ).arg( filePath ).arg( e.what() ),
+										QMessageBox::Yes | QMessageBox::No ) != QMessageBox::Yes ) {
+				return false;
+			}
+			noErrors = false;
+		}
+		pb->setValue( int( i + 1 ) );
+	}
+
+	return noErrors;
 }

@@ -1,14 +1,8 @@
 # effect shader
 
 # Fallout 76
-check HEADER/BS Header/BS Version >= 151
-check HEADER/BS Header/BS Version < 170
+check BSVersion >= 151
+check BSVersion < 170
 check BSEffectShaderProperty
-
-texcoords 0 base
-texcoords 1 tangents
-texcoords 2 bitangents
-texcoords 3 indices
-texcoords 4 weights
 
 shaders f76_default.vert f76_effectshader.frag

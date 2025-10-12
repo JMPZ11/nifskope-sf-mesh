@@ -56,8 +56,6 @@ public:
 	static Color3 choose( const Color3 & color, QWidget * parent = nullptr );
 	static Color4 choose( const Color4 & color, QWidget * parent = nullptr );
 
-	static QIcon getIcon();
-
 	ColorWheel( QWidget * parent = nullptr );
 	ColorWheel( const QColor & c, QWidget * parent = nullptr );
 

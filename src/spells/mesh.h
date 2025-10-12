@@ -40,11 +40,11 @@ public:
 	{
 		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
 			return true;
-		return nif->blockInherits( index, "BSTriShape" ) && nif->getIndex( index, "Vertex Data" ).isValid();
+		return nif->blockInherits( index, "BSTriShape" );
 	}
 
-	static void calculateSFBoneBounds(
-		NifModel * nif, const QPersistentModelIndex & iBoneList, int numBones, const MeshFile & meshFile );
+	static bool calculateBoneBounds(
+		NifModel * nif, const QPersistentModelIndex & iBlock, const MeshFile * meshFile = nullptr );
 	static QModelIndex cast_Starfield( NifModel * nif, const QModelIndex & index );
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final;
@@ -63,36 +63,38 @@ public:
 			return false;
 		if ( !index.isValid() )
 			return true;
-		return ( nif->blockInherits( index, "BSGeometry" ) && ( nif->get<quint32>(index, "Flags") & 0x0200 ) != 0 );
+		return nif->isNiBlock( index, "BSGeometry" );
 	}
 
 	static void clearMeshlets( NifModel * nif, const QModelIndex & iMeshData );
 	static void updateMeshlets( NifModel * nif, const QPersistentModelIndex & iMeshData, const MeshFile & meshFile );
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final;
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
 
 //! Removes unused vertices
-class spRemoveWasteVertices final : public Spell
+class spRemoveWasteVertices : public Spell
 {
 public:
-	QString name() const override final { return Spell::tr( "Remove Unused Vertices" ); }
+	QString name() const override { return Spell::tr( "Remove Unused Vertices" ); }
 	QString page() const override final { return Spell::tr( "Mesh" ); }
 
 	static QModelIndex getShape( const NifModel * nif, const QModelIndex & index );
 	static void cast_Starfield( NifModel * nif, const QModelIndex & index, bool noMessages = false );
 
-	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override
 	{
 		if ( !nif )
 			return false;
-		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
-			return bool( nif->get<quint32>(index, "Flags") & 0x0200 );
+		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
+			return true;
 		if ( nif->blockInherits( index, "BSTriShape" ) )
 			return nif->getIndex( index, "Vertex Data" ).isValid();
 		return getShape( nif, index ).isValid();
 	}
 
-	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final;
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override;
+	static void updateBSTriShape( NifModel * nif, const QModelIndex & index, bool dataSizeOnly = false );
 };
 
 #endif

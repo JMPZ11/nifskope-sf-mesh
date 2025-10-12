@@ -41,6 +41,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "model/kfmmodel.h"
 #include "model/nifmodel.h"
 #include "model/nifproxymodel.h"
+#include "ui/widgets/filebrowser.h"
 #include "ui/widgets/fileselect.h"
 #include "ui/widgets/floatslider.h"
 #include "ui/widgets/floatedit.h"
@@ -51,7 +52,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "ui/widgets/xmlcheck.h"
 #include "ui/about_dialog.h"
 #include "ui/settingsdialog.h"
-#include "qtcompat.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -203,16 +203,16 @@ void NifSkope::initActions()
 		ShowCollision = 0x8,
 		ShowConstraints = 0x10,
 		ShowMarkers = 0x20,
-		DoDoubleSided = 0x40, // Not implemented
+		DoDoubleSided = 0x40,       // Not implemented
 		DoVertexColors = 0x80,
 		DoSpecular = 0x100,
 		DoGlow = 0x200,
 		DoTexturing = 0x400,
-		DoBlending = 0x800,   // Not implemented
-		DoMultisampling = 0x1000, // Not implemented
+		DoBlending = 0x800,         // Not implemented
+		DoMultisampling = 0x1000,   // Not implemented
 		DoLighting = 0x2000,
 		DoCubeMapping = 0x4000,
-		DisableShaders = 0x8000,
+		DisableShaders = 0x8000,    // Not implemented
 		ShowHidden = 0x10000
 	*/
 
@@ -231,7 +231,6 @@ void NifSkope::initActions()
 	ui->aGlow->setData( Scene::DoGlow );
 	ui->aCubeMapping->setData( Scene::DoCubeMapping );
 	ui->aLighting->setData( Scene::DoLighting );
-	ui->aDisableShading->setData( Scene::DisableShaders );
 
 	ui->aSelectObject->setData( Scene::SelObject );
 	ui->aSelectVertex->setData( Scene::SelVertex );
@@ -256,7 +255,7 @@ void NifSkope::initActions()
 	connect( showActions, &QActionGroup::triggered, ogl->getScene(), &Scene::updateSceneOptionsGroup );
 	connect( showActions, &QActionGroup::triggered, ogl, &GLView::updateScene );
 
-	shadingActions = agroup( { ui->aTextures, ui->aVertexColors, ui->aSpecular, ui->aGlow, ui->aCubeMapping, ui->aLighting, ui->aDisableShading }, false );
+	shadingActions = agroup( { ui->aTextures, ui->aVertexColors, ui->aSpecular, ui->aGlow, ui->aCubeMapping, ui->aLighting }, false );
 	connect( shadingActions, &QActionGroup::triggered, ogl->getScene(), &Scene::updateSceneOptionsGroup );
 	connect( shadingActions, &QActionGroup::triggered, ogl, &GLView::updateScene );
 
@@ -488,7 +487,7 @@ void NifSkope::initMenu()
 
 	updateRecentFileActions();
 	updateRecentArchiveActions();
-	//updateRecentArchiveFileActions();
+	updateRecentArchiveFileActions();
 
 	// Lighting Menu
 	auto mLight = lightingWidget();
@@ -841,7 +840,7 @@ void NifSkope::onLoadComplete( bool success, QString & fname )
 
 		header->setRootIndex( nif->getHeaderIndex() );
 		// Refresh the header rows
-		header->updateConditions( QModelIndex_child( nif->getHeaderIndex() ), QModelIndex_child( nif->getHeaderIndex(), 20 ) );
+		header->updateConditions( nif->getIndex( nif->getHeaderIndex(), 0 ), nif->getIndex( nif->getHeaderIndex(), 20 ) );
 
 		ogl->setOrientation( ogl->cfg.startupDirection );
 
@@ -873,8 +872,9 @@ void NifSkope::onLoadComplete( bool success, QString & fname )
 	// Center the model on load
 	ogl->center();
 
-	// Expand the top level of Block List tree
-	ui->list->expandToDepth(0);
+	// Only in tree view mode: expand the top level of Block List tree
+	if ( ui->list->model() != nif )
+		ui->list->expandToDepth(0);
 
 	// Hide Progress Bar
 	QTimer::singleShot( timeout, progress, SLOT( hide() ) );
@@ -1032,6 +1032,13 @@ void NifSkope::restoreUi()
 
 	auto isPersp = settings.value( "GLView/Perspective", true ).toBool();
 	ui->aViewPerspective->setChecked( isPersp );
+	int viewDir = settings.value( "Settings/Render/General/Camera/Startup Direction", 1 ).toInt();
+	if ( viewDir == 0 )
+		ui->aViewLeft->setChecked( true );
+	else if ( viewDir == 1 )
+		ui->aViewFront->setChecked( true );
+	else if ( viewDir == 2 )
+		ui->aViewTop->setChecked( true );
 
 	ogl->setProjection( isPersp );
 
@@ -1071,8 +1078,16 @@ void NifSkope::reloadTheme()
 void NifSkope::loadTheme()
 {
 	QSettings settings;
-	theme = WindowTheme( settings.value( "Theme", ThemeDark ).toInt() );
-	ui->mTheme->actions()[theme]->setChecked( true );
+	auto	a = ui->mTheme->actions();
+	{
+		int	n = settings.value( "Theme", ThemeDark ).toInt();
+		if ( n < 0 || n >= a.size() ) {
+			n = 0;
+			settings.setValue( "Theme", n );
+		}
+		theme = WindowTheme( n );
+		a[theme]->setChecked( true );
+	}
 
 	toolbarSize = ToolbarSize( settings.value( "Settings/Theme/Large Icons", ToolbarLarge ).toBool() );
 
@@ -1081,20 +1096,26 @@ void NifSkope::loadTheme()
 
 	switch ( theme )
 	{
-	case ThemeWindowsXP:
-		QApplication::setStyle( QStyleFactory::create( "WindowsXP" ) );
-		qApp->setStyleSheet("");
-		qApp->setPalette( style()->standardPalette() );
-		return;
-	case ThemeWindows:
-		QApplication::setStyle( QStyleFactory::create( "WindowsVista" ) );
-		qApp->setStyleSheet("");
-		qApp->setPalette( style()->standardPalette() );
-		return;
+	default:
+		{
+			qsizetype	n = a.size();
+			qsizetype	i = std::min< qsizetype >( std::max< qsizetype >( qsizetype( theme ), 0 ), n - 1 );
+			if ( i != qsizetype( theme ) ) {
+				theme = nstheme::WindowTheme( i );
+				settings.setValue( "Theme", theme );
+			}
+			if ( theme != ThemeDark && theme != ThemeLight ) {
+				QApplication::setStyle( QStyleFactory::create( a.at( i )->text() ) );
+				qApp->setStyleSheet("");
+				qApp->setPalette( style()->standardPalette() );
+				return;
+			}
+		}
+		[[fallthrough]];
 	case ThemeDark:
 	case ThemeLight:
-	default:
 		QApplication::setStyle( QStyleFactory::create( "Fusion" ) );
+		break;
 	}
 
 	QPalette pal;
@@ -1347,7 +1368,7 @@ void NifSkope::contextMenu( const QPoint & pos )
 		idx = header->indexAt( pos );
 		p = header->mapToGlobal( pos );
 	} else if ( sender() == graphicsView ) {
-		idx = ogl->indexAt( pos );
+		idx = ogl->indexAt( pos, ogl->contextMenuShiftModifier );
 		p = graphicsView->mapToGlobal( pos );
 	} else {
 		return;
@@ -1404,6 +1425,17 @@ void NifSkope::on_aReload_triggered()
 	if ( NifModel::loadXML() ) {
 		reload();
 	}
+}
+
+void NifSkope::on_aArchiveExtractor_triggered()
+{
+	if ( !nif )
+		return;
+	std::set< std::string_view >	filePaths;
+	nif->listResourceFiles( filePaths );
+	FileBrowserWidget	fileBrowser( 640, 600, "Browse Resources", filePaths, std::string_view(),
+										&( nif->getGameResources() ), true );
+	(void) fileBrowser.exec();
 }
 
 void NifSkope::on_aSelectFont_triggered()

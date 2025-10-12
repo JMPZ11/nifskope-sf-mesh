@@ -2,7 +2,6 @@
 
 #include "gl/gltools.h"
 #include "spells/blocks.h"
-#include "qtcompat.h"
 
 #include "lib/nvtristripwrapper.h"
 #include "lib/qhull.h"
@@ -241,8 +240,8 @@ public:
 				nif->set<uint>( iListShape, "Num Sub Shapes", shapeLinks.size() );
 				nif->updateArraySize( iListShape, "Sub Shapes" );
 				nif->setLinkArray( iListShape, "Sub Shapes", shapeLinks );
-				nif->set<uint>( iListShape, "Num Unknown Ints", shapeLinks.size() );
-				nif->updateArraySize( iListShape, "Unknown Ints" );
+				nif->set<uint>( iListShape, "Num Filters", shapeLinks.size() );
+				nif->updateArraySize( iListShape, "Filters" );
 				replace = false;
 			}
 		}
@@ -451,7 +450,7 @@ public:
 				QModelIndex iPoints = nif->getIndex( iData, "Points" );
 
 				for ( int x = 0; x < nif->rowCount( iPoints ); x++ ) {
-					tris += triangulate( nif->getArray<quint16>( QModelIndex_child( iPoints, x ) ) );
+					tris += triangulate( nif->getArray<quint16>( nif->getIndex( iPoints, x ) ) );
 				}
 
 				QMutableVectorIterator<Triangle> it( tris );
@@ -470,8 +469,9 @@ public:
 					tri[2] += vertices.count();
 				}
 
+				float scale = ( nif->getBSVersion() < 47 ? 0.142875f : 0.0142875f );
 				for ( const Vector3& v : vrts ) {
-					vertices += v / 7;
+					vertices += v * scale;
 				}
 				triangles += tris;
 				normals += nrms;
@@ -485,15 +485,17 @@ public:
 
 		QPersistentModelIndex iPackedShape = nif->insertNiBlock( "bhkPackedNiTriStripsShape", nif->getBlockNumber( iShape ) );
 
-		nif->set<int>( iPackedShape, "Num Sub Shapes", 1 );
-		QModelIndex iSubShapes = nif->getIndex( iPackedShape, "Sub Shapes" );
-		nif->updateArraySize( iSubShapes );
-		nif->set<int>( QModelIndex_child( iSubShapes ), "Layer", 1 );
-		nif->set<int>( QModelIndex_child( iSubShapes ), "Num Vertices", vertices.count() );
-		nif->set<int>( QModelIndex_child( iSubShapes ), "Material", nif->get<int>( iShape, "Material" ) );
-		nif->setArray<float>( iPackedShape, "Unknown Floats", { 0.0f, 0.0f, 0.1f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.1f } );
-		nif->set<float>( iPackedShape, "Scale", 1.0f );
-		nif->setArray<float>( iPackedShape, "Unknown Floats 2", { 1.0f, 1.0f, 1.0f } );
+		if ( nif->getVersionNumber() <= 0x14000005 ) {	// until 20.0.0.5
+			nif->set<int>( iPackedShape, "Num Sub Shapes", 1 );
+			QModelIndex iSubShapes = nif->getIndex( iPackedShape, "Sub Shapes" );
+			nif->updateArraySize( iSubShapes );
+			QModelIndex iSubShape = nif->getIndex( iSubShapes, 0 );
+			nif->set<int>( nif->getIndex( iSubShape, "Havok Filter" ), "Layer", 1 );
+			nif->set<int>( iSubShape, "Num Vertices", vertices.count() );
+			nif->set<int>( iSubShape, "Material", nif->get<int>( iShape, "Material" ) );
+		}
+		nif->set<Vector4>( iPackedShape, "Scale", FloatVector4( 1.0f ) );
+		nif->set<Vector4>( iPackedShape, "Scale Copy", FloatVector4( 1.0f ) );
 
 		QModelIndex iPackedData = nif->insertNiBlock( "hkPackedNiTriStripsData", nif->getBlockNumber( iPackedShape ) );
 		nif->setLink( iPackedShape, "Data", nif->getBlockNumber( iPackedData ) );
@@ -503,8 +505,9 @@ public:
 		nif->updateArraySize( iTriangles );
 
 		for ( int t = 0; t < triangles.size(); t++ ) {
-			nif->set<Triangle>( QModelIndex_child( iTriangles, t ), "Triangle", triangles[ t ] );
-			nif->set<Vector3>( QModelIndex_child( iTriangles, t ), "Normal", normals.value( t ) );
+			nif->set<Triangle>( nif->getIndex( iTriangles, t ), "Triangle", triangles[ t ] );
+			if ( nif->getVersionNumber() <= 0x14000005 )
+				nif->set<Vector3>( nif->getIndex( iTriangles, t ), "Normal", normals.value( t ) );
 		}
 
 		nif->set<int>( iPackedData, "Num Vertices", vertices.count() );
@@ -587,10 +590,10 @@ public:
 		auto iLS = nif->insertNiBlock( "bhkListShape" );
 
 		nif->set<uint>( iLS, "Num Sub Shapes", nif->get<uint>( iShape, "Num Sub Shapes" ) );
-		nif->set<uint>( iLS, "Num Unknown Ints", nif->get<uint>( iShape, "Num Sub Shapes" ) );
+		nif->set<uint>( iLS, "Num Filters", nif->get<uint>( iShape, "Num Sub Shapes" ) );
 		nif->set<uint>( iLS, "Material", nif->get<uint>( iShape, "Material" ) );
 		nif->updateArraySize( iLS, "Sub Shapes" );
-		nif->updateArraySize( iLS, "Unknown Ints" );
+		nif->updateArraySize( iLS, "Filters" );
 
 		nif->setLinkArray( iLS, "Sub Shapes", nif->getLinkArray( iShape, "Sub Shapes" ) );
 		nif->setLinkArray( iShape, "Sub Shapes", {} );

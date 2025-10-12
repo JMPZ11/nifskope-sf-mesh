@@ -217,7 +217,7 @@ public:
 
 	// QAbstractItemModel
 
-	/*! Creates a model index for the given row and column
+	/*! Creates a model index for the given row and column. If parent is not valid, the root index is returned
 	 * @see QAbstractItemModel::createIndex()
 	 */
 	QModelIndex index( int row, int column, const QModelIndex & parent = QModelIndex() ) const override;
@@ -288,6 +288,8 @@ public:
 public:
 	QModelIndex itemToIndex( const NifItem * item, int column = 0 ) const;
 
+	inline QModelIndex getRootIndex() const { return createIndex( 0, 0, root ); }
+
 	//! Checks if the item is a direct child of the root.
 	bool isTopItem( const NifItem * item ) const;
 	//! Checks if the model index is a direct child of the root.
@@ -329,7 +331,7 @@ protected:
 	// NifItem getters
 protected:
 	const NifItem * getItemInternal( const NifItem * parent, const QString & name, bool reportErrors ) const;
-	const NifItem * getItemInternal( const NifItem * parent, const QLatin1String & name, bool reportErrors ) const;
+	const NifItem * getItemInternal( const NifItem * parent, const QLatin1StringView & name, bool reportErrors ) const;
 
 public:
 	//! Get a child NifItem from its parent and name.
@@ -337,9 +339,9 @@ public:
 	//! Get a child NifItem from its parent and name.
 	NifItem * getItem( const NifItem * parent, const QString & name, bool reportErrors = false );
 	//! Get a child NifItem from its parent and name.
-	const NifItem * getItem( const NifItem * parent, const QLatin1String & name, bool reportErrors = false ) const;
+	const NifItem * getItem( const NifItem * parent, const QLatin1StringView & name, bool reportErrors = false ) const;
 	//! Get a child NifItem from its parent and name.
-	NifItem * getItem( const NifItem * parent, const QLatin1String & name, bool reportErrors = false );
+	NifItem * getItem( const NifItem * parent, const QLatin1StringView & name, bool reportErrors = false );
 	//! Get a child NifItem from its parent and name.
 	const NifItem * getItem( const NifItem * parent, const char * name, bool reportErrors = false ) const;
 	//! Get a child NifItem from its parent and name.
@@ -357,9 +359,9 @@ public:
 	//! Get a child NifItem from its parent and name.
 	NifItem * getItem( const QModelIndex & parent, const QString & name, bool reportErrors = false );
 	//! Get a child NifItem from its parent and name.
-	const NifItem * getItem( const QModelIndex & parent, const QLatin1String & name, bool reportErrors = false ) const;
+	const NifItem * getItem( const QModelIndex & parent, const QLatin1StringView & name, bool reportErrors = false ) const;
 	//! Get a child NifItem from its parent and name.
-	NifItem * getItem( const QModelIndex & parent, const QLatin1String & name, bool reportErrors = false );
+	NifItem * getItem( const QModelIndex & parent, const QLatin1StringView & name, bool reportErrors = false );
 	//! Get a child NifItem from its parent and name.
 	const NifItem * getItem( const QModelIndex & parent, const char * name, bool reportErrors = false ) const;
 	//! Get a child NifItem from its parent and name.
@@ -371,12 +373,12 @@ public:
 
 protected:
 	//! Find a NifItem by name, going up from 'item' in the load order.
-	const NifItem * getItemX( const NifItem * item, const QLatin1String & name ) const;
+	const NifItem * getItemX( const NifItem * item, const QLatin1StringView & name ) const;
 	//! Find a NifItem by name, going up from 'item' in the load order.
 	const NifItem * getItemX( const NifItem * item, const char * name ) const;
 
 	//! Find a NifItem by name, first in parent, then in parent's parent, etc.
-	const NifItem * findItemX( const NifItem * parent, const QLatin1String & name ) const;
+	const NifItem * findItemX( const NifItem * parent, const QLatin1StringView & name ) const;
 	//! Find a NifItem by name, first in parent, then in parent's parent, etc.
 	const NifItem * findItemX( const NifItem * parent, const char * name ) const;
 
@@ -385,15 +387,17 @@ public:
 	//! Get the model index of a child item.
 	QModelIndex getIndex( const NifItem * itemParent, const QString & itemName, int column = 0 ) const;
 	//! Get the model index of a child item.
-	QModelIndex getIndex( const NifItem * itemParent, const QLatin1String & itemName, int column = 0 ) const;
+	QModelIndex getIndex( const NifItem * itemParent, const QLatin1StringView & itemName, int column = 0 ) const;
 	//! Get the model index of a child item.
 	QModelIndex getIndex( const NifItem * itemParent, const char * itemName, int column = 0 ) const;
 	//! Get the model index of a child item.
 	QModelIndex getIndex( const QModelIndex & itemParent, const QString & itemName, int column = 0 ) const;
 	//! Get the model index of a child item.
-	QModelIndex getIndex( const QModelIndex & itemParent, const QLatin1String & itemName, int column = 0 ) const;
+	QModelIndex getIndex( const QModelIndex & itemParent, const QLatin1StringView & itemName, int column = 0 ) const;
 	//! Get the model index of a child item.
 	QModelIndex getIndex( const QModelIndex & itemParent, const char * itemName, int column = 0 ) const;
+	//! Get the model index of a child item. If itemParent is not valid, QModelIndex() is returned
+	QModelIndex getIndex( const QModelIndex & itemParent, int row, int column = 0 ) const;
 
 	// Item value getters
 public:
@@ -404,7 +408,7 @@ public:
 	//! Get the value of a child item.
 	template <typename T> T get( const NifItem * itemParent, const QString & itemName ) const;
 	//! Get the value of a child item.
-	template <typename T> T get( const NifItem * itemParent, const QLatin1String & itemName ) const;
+	template <typename T> T get( const NifItem * itemParent, const QLatin1StringView & itemName ) const;
 	//! Get the value of a child item.
 	template <typename T> T get( const NifItem * itemParent, const char * itemName ) const;
 	//! Get the value of a model index.
@@ -414,12 +418,15 @@ public:
 	//! Get the value of a child item.
 	template <typename T> T get( const QModelIndex & itemParent, const QString & itemName ) const;
 	//! Get the value of a child item.
-	template <typename T> T get( const QModelIndex & itemParent, const QLatin1String & itemName ) const;
+	template <typename T> T get( const QModelIndex & itemParent, const QLatin1StringView & itemName ) const;
 	//! Get the value of a child item.
 	template <typename T> T get( const QModelIndex & itemParent, const char * itemName ) const;
 
 	// Item value setters
 public:
+	//! Set an item value
+	bool setItemValue( NifItem * item, const NifValue & v );
+
 	//! Set the value of an item.
 	template <typename T> bool set( NifItem * item, const T & val );
 	//! Set the value of a child item.
@@ -427,7 +434,7 @@ public:
 	//! Set the value of a child item.
 	template <typename T> bool set( const NifItem * itemParent, const QString & itemName, const T & val );
 	//! Set the value of a child item.
-	template <typename T> bool set( const NifItem * itemParent, const QLatin1String & itemName, const T & val );
+	template <typename T> bool set( const NifItem * itemParent, const QLatin1StringView & itemName, const T & val );
 	//! Set the value of a child item.
 	template <typename T> bool set( const NifItem * itemParent, const char * itemName, const T & val );
 	//! Set the value of a model index.
@@ -437,7 +444,7 @@ public:
 	//! Set the value of a child item.
 	template <typename T> bool set( const QModelIndex & itemParent, const QString & itemName, const T & val );
 	//! Set the value of a child item.
-	template <typename T> bool set( const QModelIndex & itemParent, const QLatin1String & itemName, const T & val );
+	template <typename T> bool set( const QModelIndex & itemParent, const QLatin1StringView & itemName, const T & val );
 	//! Set the value of a child item.
 	template <typename T> bool set( const QModelIndex & itemParent, const char * itemName, const T & val );
 
@@ -454,7 +461,7 @@ public:
 	//! Update the size of a child array from its conditions (append missing or remove excess items).
 	bool updateArraySize( const NifItem * arrayParent, const QString & arrayName );
 	//! Update the size of a child array from its conditions (append missing or remove excess items).
-	bool updateArraySize( const NifItem * arrayParent, const QLatin1String & arrayName );
+	bool updateArraySize( const NifItem * arrayParent, const QLatin1StringView & arrayName );
 	//! Update the size of a child array from its conditions (append missing or remove excess items).
 	bool updateArraySize( const NifItem * arrayParent, const char * arrayName );
 	//! Update the size of a model index array from its conditions (append missing or remove excess items).
@@ -464,7 +471,7 @@ public:
 	//! Update the size of a child array from its conditions (append missing or remove excess items).
 	bool updateArraySize( const QModelIndex & arrayParent, const QString & arrayName );
 	//! Update the size of a child array from its conditions (append missing or remove excess items).
-	bool updateArraySize( const QModelIndex & arrayParent, const QLatin1String & arrayName );
+	bool updateArraySize( const QModelIndex & arrayParent, const QLatin1StringView & arrayName );
 	//! Update the size of a child array from its conditions (append missing or remove excess items).
 	bool updateArraySize( const QModelIndex & arrayParent, const char * arrayName );
 
@@ -477,7 +484,7 @@ public:
 	//! Get a child array as a QVector.
 	template <typename T> QVector<T> getArray( const NifItem * arrayParent, const QString & arrayName ) const;
 	//! Get a child array as a QVector.
-	template <typename T> QVector<T> getArray( const NifItem * arrayParent, const QLatin1String & arrayName ) const;
+	template <typename T> QVector<T> getArray( const NifItem * arrayParent, const QLatin1StringView & arrayName ) const;
 	//! Get a child array as a QVector.
 	template <typename T> QVector<T> getArray( const NifItem * arrayParent, const char * arrayName ) const;
 	//! Get a model index array as a QVector.
@@ -487,7 +494,7 @@ public:
 	//! Get a child array as a QVector.
 	template <typename T> QVector<T> getArray( const QModelIndex & arrayParent, const QString & arrayName ) const;
 	//! Get a child array as a QVector.
-	template <typename T> QVector<T> getArray( const QModelIndex & arrayParent, const QLatin1String & arrayName ) const;
+	template <typename T> QVector<T> getArray( const QModelIndex & arrayParent, const QLatin1StringView & arrayName ) const;
 	//! Get a child array as a QVector.
 	template <typename T> QVector<T> getArray( const QModelIndex & arrayParent, const char * arrayName ) const;
 
@@ -500,7 +507,7 @@ public:
 	//! Write a QVector to a child array.
 	template <typename T> void setArray( const NifItem * arrayParent, const QString & arrayName, const QVector<T> & array );
 	//! Write a QVector to a child array.
-	template <typename T> void setArray( const NifItem * arrayParent, const QLatin1String & arrayName, const QVector<T> & array );
+	template <typename T> void setArray( const NifItem * arrayParent, const QLatin1StringView & arrayName, const QVector<T> & array );
 	//! Write a QVector to a child array.
 	template <typename T> void setArray( const NifItem * arrayParent, const char * arrayName, const QVector<T> & array );
 	//! Write a QVector to a model index array.
@@ -510,7 +517,7 @@ public:
 	//! Write a QVector to a child array.
 	template <typename T> void setArray( const QModelIndex & arrayParent, const QString & arrayName, const QVector<T> & array );
 	//! Write a QVector to a child array.
-	template <typename T> void setArray( const QModelIndex & arrayParent, const QLatin1String & arrayName, const QVector<T> & array );
+	template <typename T> void setArray( const QModelIndex & arrayParent, const QLatin1StringView & arrayName, const QVector<T> & array );
 	//! Write a QVector to a child array.
 	template <typename T> void setArray( const QModelIndex & arrayParent, const char * arrayName, const QVector<T> & array );
 
@@ -523,7 +530,7 @@ public:
 	//! Fill a child array with a value.
 	template <typename T> void fillArray( const NifItem * arrayParent, const QString & arrayName, const T & val );
 	//! Fill a child array with a value.
-	template <typename T> void fillArray( const NifItem * arrayParent, const QLatin1String & arrayName, const T & val );
+	template <typename T> void fillArray( const NifItem * arrayParent, const QLatin1StringView & arrayName, const T & val );
 	//! Fill a child array with a value.
 	template <typename T> void fillArray( const NifItem * arrayParent, const char * arrayName, const T & val );
 	//! Fill a model index array with a value.
@@ -533,7 +540,7 @@ public:
 	//! Fill a child array with a value.
 	template <typename T> void fillArray( const QModelIndex & arrayParent, const QString & arrayName, const T & val );
 	//! Fill a child array with a value.
-	template <typename T> void fillArray( const QModelIndex & arrayParent, const QLatin1String & arrayName, const T & val );
+	template <typename T> void fillArray( const QModelIndex & arrayParent, const QLatin1StringView & arrayName, const T & val );
 	//! Fill a child array with a value.
 	template <typename T> void fillArray( const QModelIndex & arrayParent, const char * arrayName, const T & val );
 
@@ -544,9 +551,6 @@ signals:
 	void sigProgress( int c, int m ) const;
 
 protected:
-	//! Set an item value
-	bool setItemValue( NifItem * item, const NifValue & v );
-
 	//! Convert a version number to a string
 	virtual QString ver2str( quint32 ) const = 0;
 	//! Convert a version string to a number
@@ -672,17 +676,17 @@ inline NifItem * BaseModel::getItem( const NifItem * parent, const QString & nam
 {
 	return _BASEMODEL_NONCONST_GETITEM_3( parent, name, reportErrors );
 }
-inline NifItem * BaseModel::getItem( const NifItem * parent, const QLatin1String & name, bool reportErrors )
+inline NifItem * BaseModel::getItem( const NifItem * parent, const QLatin1StringView & name, bool reportErrors )
 {
 	return _BASEMODEL_NONCONST_GETITEM_3( parent, name, reportErrors );
 }
 inline const NifItem * BaseModel::getItem( const NifItem * parent, const char * name, bool reportErrors ) const
 {
-	return getItem( parent, QLatin1String(name), reportErrors );
+	return getItem( parent, QLatin1StringView(name), reportErrors );
 }
 inline NifItem * BaseModel::getItem( const NifItem * parent, const char * name, bool reportErrors )
 {
-	return _BASEMODEL_NONCONST_GETITEM_3( parent, QLatin1String(name), reportErrors );
+	return _BASEMODEL_NONCONST_GETITEM_3( parent, QLatin1StringView(name), reportErrors );
 }
 inline NifItem * BaseModel::getItem( const NifItem * parent, int childIndex, bool reportErrors )
 {
@@ -700,21 +704,21 @@ inline NifItem * BaseModel::getItem( const QModelIndex & parent, const QString &
 {
 	return _BASEMODEL_NONCONST_GETITEM_3( getItem(parent), name, reportErrors );
 }
-inline const NifItem * BaseModel::getItem( const QModelIndex & parent, const QLatin1String & name, bool reportErrors ) const
+inline const NifItem * BaseModel::getItem( const QModelIndex & parent, const QLatin1StringView & name, bool reportErrors ) const
 {
 	return getItem( getItem(parent), name, reportErrors );
 }
-inline NifItem * BaseModel::getItem( const QModelIndex & parent, const QLatin1String & name, bool reportErrors )
+inline NifItem * BaseModel::getItem( const QModelIndex & parent, const QLatin1StringView & name, bool reportErrors )
 {
 	return _BASEMODEL_NONCONST_GETITEM_3( getItem(parent), name, reportErrors );
 }
 inline const NifItem * BaseModel::getItem( const QModelIndex & parent, const char * name, bool reportErrors ) const
 {
-	return getItem( getItem(parent), QLatin1String(name), reportErrors );
+	return getItem( getItem(parent), QLatin1StringView(name), reportErrors );
 }
 inline NifItem * BaseModel::getItem( const QModelIndex & parent, const char * name, bool reportErrors )
 {
-	return _BASEMODEL_NONCONST_GETITEM_3( getItem(parent), QLatin1String(name), reportErrors );
+	return _BASEMODEL_NONCONST_GETITEM_3( getItem(parent), QLatin1StringView(name), reportErrors );
 }
 inline const NifItem * BaseModel::getItem( const QModelIndex & parent, int childIndex, bool reportErrors ) const
 {
@@ -727,12 +731,12 @@ inline NifItem * BaseModel::getItem( const QModelIndex & parent, int childIndex,
 
 inline const NifItem * BaseModel::getItemX( const NifItem * item, const char * name ) const
 {
-	return getItemX( item, QLatin1String(name) );
+	return getItemX( item, QLatin1StringView(name) );
 }
 
 inline const NifItem * BaseModel::findItemX( const NifItem * parent, const char * name ) const
 {
-	return findItemX( parent, QLatin1String(name) );
+	return findItemX( parent, QLatin1StringView(name) );
 }
 
 
@@ -742,25 +746,25 @@ inline QModelIndex BaseModel::getIndex( const NifItem * itemParent, const QStrin
 {
 	return itemToIndex( getItem(itemParent, itemName), column );
 }
-inline QModelIndex BaseModel::getIndex( const NifItem * itemParent, const QLatin1String & itemName, int column ) const
+inline QModelIndex BaseModel::getIndex( const NifItem * itemParent, const QLatin1StringView & itemName, int column ) const
 {
 	return itemToIndex( getItem(itemParent, itemName), column );
 }
 inline QModelIndex BaseModel::getIndex( const NifItem * itemParent, const char * itemName, int column ) const
 {
-	return itemToIndex( getItem(itemParent, QLatin1String(itemName)), column );
+	return itemToIndex( getItem(itemParent, QLatin1StringView(itemName)), column );
 }
 inline QModelIndex BaseModel::getIndex( const QModelIndex & itemParent, const QString & itemName, int column ) const
 {
 	return itemToIndex( getItem(itemParent, itemName), column );
 }
-inline QModelIndex BaseModel::getIndex( const QModelIndex & itemParent, const QLatin1String & itemName, int column ) const
+inline QModelIndex BaseModel::getIndex( const QModelIndex & itemParent, const QLatin1StringView & itemName, int column ) const
 {
 	return itemToIndex( getItem(itemParent, itemName), column );
 }
 inline QModelIndex BaseModel::getIndex( const QModelIndex & itemParent, const char * itemName, int column ) const
 {
-	return itemToIndex( getItem(itemParent, QLatin1String(itemName)), column );
+	return itemToIndex( getItem(itemParent, QLatin1StringView(itemName)), column );
 }
 
 
@@ -778,13 +782,13 @@ template <typename T> inline T BaseModel::get( const NifItem * itemParent, const
 {
 	return NifItem::get<T>( getItem(itemParent, itemName) );
 }
-template <typename T> inline T BaseModel::get( const NifItem * itemParent, const QLatin1String & itemName ) const
+template <typename T> inline T BaseModel::get( const NifItem * itemParent, const QLatin1StringView & itemName ) const
 {
 	return NifItem::get<T>( getItem(itemParent, itemName) );
 }
 template <typename T> inline T BaseModel::get( const NifItem * itemParent, const char * itemName ) const
 {
-	return NifItem::get<T>( getItem(itemParent, QLatin1String(itemName)) );
+	return NifItem::get<T>( getItem(itemParent, QLatin1StringView(itemName)) );
 }
 template <typename T> inline T BaseModel::get( const QModelIndex & index ) const
 {
@@ -798,13 +802,13 @@ template <typename T> inline T BaseModel::get( const QModelIndex & itemParent, c
 {
 	return NifItem::get<T>( getItem(itemParent, itemName) );
 }
-template <typename T> inline T BaseModel::get( const QModelIndex & itemParent, const QLatin1String & itemName ) const
+template <typename T> inline T BaseModel::get( const QModelIndex & itemParent, const QLatin1StringView & itemName ) const
 {
 	return NifItem::get<T>( getItem(itemParent, itemName) );
 }
 template <typename T> inline T BaseModel::get( const QModelIndex & itemParent, const char * itemName ) const
 {
-	return NifItem::get<T>( getItem(itemParent, QLatin1String(itemName)) );
+	return NifItem::get<T>( getItem(itemParent, QLatin1StringView(itemName)) );
 }
 
 
@@ -827,13 +831,13 @@ template <typename T> inline bool BaseModel::set( const NifItem * itemParent, co
 {
 	return set( getItem(itemParent, itemName, true), val );
 }
-template <typename T> inline bool BaseModel::set( const NifItem * itemParent, const QLatin1String & itemName, const T & val )
+template <typename T> inline bool BaseModel::set( const NifItem * itemParent, const QLatin1StringView & itemName, const T & val )
 {
 	return set( getItem(itemParent, itemName, true), val );
 }
 template <typename T> inline bool BaseModel::set( const NifItem * itemParent, const char * itemName, const T & val )
 {
-	return set( getItem(itemParent, QLatin1String(itemName), true), val );
+	return set( getItem(itemParent, QLatin1StringView(itemName), true), val );
 }
 template <typename T> inline bool BaseModel::set( const QModelIndex & index, const T & val )
 {
@@ -847,13 +851,13 @@ template <typename T> inline bool BaseModel::set( const QModelIndex & itemParent
 {
 	return set( getItem(itemParent, itemName, true), val );
 }
-template <typename T> inline bool BaseModel::set( const QModelIndex & itemParent, const QLatin1String & itemName, const T & val )
+template <typename T> inline bool BaseModel::set( const QModelIndex & itemParent, const QLatin1StringView & itemName, const T & val )
 {
 	return set( getItem(itemParent, itemName, true), val );
 }
 template <typename T> inline bool BaseModel::set( const QModelIndex & itemParent, const char * itemName, const T & val )
 {
-	return set( getItem(itemParent, QLatin1String(itemName), true), val );
+	return set( getItem(itemParent, QLatin1StringView(itemName), true), val );
 }
 
 
@@ -871,13 +875,13 @@ inline bool BaseModel::updateArraySize( const NifItem * arrayParent, const QStri
 {
 	return updateArraySizeImpl( getItem(arrayParent, arrayName, true) );
 }
-inline bool BaseModel::updateArraySize( const NifItem * arrayParent, const QLatin1String & arrayName )
+inline bool BaseModel::updateArraySize( const NifItem * arrayParent, const QLatin1StringView & arrayName )
 {
 	return updateArraySizeImpl( getItem(arrayParent, arrayName, true) );
 }
 inline bool BaseModel::updateArraySize( const NifItem * arrayParent, const char * arrayName )
 {
-	return updateArraySizeImpl( getItem(arrayParent, QLatin1String(arrayName), true) );
+	return updateArraySizeImpl( getItem(arrayParent, QLatin1StringView(arrayName), true) );
 }
 inline bool BaseModel::updateArraySize( const QModelIndex & iArray )
 {
@@ -891,13 +895,13 @@ inline bool BaseModel::updateArraySize( const QModelIndex & arrayParent, const Q
 {
 	return updateArraySizeImpl( getItem(arrayParent, arrayName, true) );
 }
-inline bool BaseModel::updateArraySize( const QModelIndex & arrayParent, const QLatin1String & arrayName )
+inline bool BaseModel::updateArraySize( const QModelIndex & arrayParent, const QLatin1StringView & arrayName )
 {
 	return updateArraySizeImpl( getItem(arrayParent, arrayName, true) );
 }
 inline bool BaseModel::updateArraySize( const QModelIndex & arrayParent, const char * arrayName )
 {
-	return updateArraySizeImpl( getItem(arrayParent, QLatin1String(arrayName), true) );
+	return updateArraySizeImpl( getItem(arrayParent, QLatin1StringView(arrayName), true) );
 }
 
 
@@ -915,13 +919,13 @@ template <typename T> inline QVector<T> BaseModel::getArray( const NifItem * arr
 {
 	return NifItem::getArray<T>( getItem(arrayParent, arrayName) );
 }
-template <typename T> inline QVector<T> BaseModel::getArray( const NifItem * arrayParent, const QLatin1String & arrayName ) const
+template <typename T> inline QVector<T> BaseModel::getArray( const NifItem * arrayParent, const QLatin1StringView & arrayName ) const
 {
 	return NifItem::getArray<T>( getItem(arrayParent, arrayName) );
 }
 template <typename T> inline QVector<T> BaseModel::getArray( const NifItem * arrayParent, const char * arrayName ) const
 {
-	return NifItem::getArray<T>( getItem(arrayParent, QLatin1String(arrayName)) );
+	return NifItem::getArray<T>( getItem(arrayParent, QLatin1StringView(arrayName)) );
 }
 template <typename T> inline QVector<T> BaseModel::getArray( const QModelIndex & iArray ) const
 {
@@ -935,13 +939,13 @@ template <typename T> inline QVector<T> BaseModel::getArray( const QModelIndex &
 {
 	return NifItem::getArray<T>( getItem(arrayParent, arrayName));
 }
-template <typename T> inline QVector<T> BaseModel::getArray( const QModelIndex & arrayParent, const QLatin1String & arrayName ) const
+template <typename T> inline QVector<T> BaseModel::getArray( const QModelIndex & arrayParent, const QLatin1StringView & arrayName ) const
 {
 	return NifItem::getArray<T>( getItem(arrayParent, arrayName) );
 }
 template <typename T> inline QVector<T> BaseModel::getArray( const QModelIndex & arrayParent, const char * arrayName ) const
 {
-	return NifItem::getArray<T>( getItem(arrayParent, QLatin1String(arrayName)) );
+	return NifItem::getArray<T>( getItem(arrayParent, QLatin1StringView(arrayName)) );
 }
 
 
@@ -962,13 +966,13 @@ template <typename T> inline void BaseModel::setArray( const NifItem * arrayPare
 {
 	setArray( getItem(arrayParent, arrayName, true), array );
 }
-template <typename T> inline void BaseModel::setArray( const NifItem * arrayParent, const QLatin1String & arrayName, const QVector<T> & array )
+template <typename T> inline void BaseModel::setArray( const NifItem * arrayParent, const QLatin1StringView & arrayName, const QVector<T> & array )
 {
 	setArray( getItem(arrayParent, arrayName, true), array );
 }
 template <typename T> inline void BaseModel::setArray( const NifItem * arrayParent, const char * arrayName, const QVector<T> & array )
 {
-	setArray( getItem(arrayParent, QLatin1String(arrayName), true), array );
+	setArray( getItem(arrayParent, QLatin1StringView(arrayName), true), array );
 }
 template <typename T> inline void BaseModel::setArray( const QModelIndex & iArray, const QVector<T> & array )
 {
@@ -982,13 +986,13 @@ template <typename T> inline void BaseModel::setArray( const QModelIndex & array
 {
 	setArray( getItem(arrayParent, arrayName, true), array );
 }
-template <typename T> inline void BaseModel::setArray( const QModelIndex & arrayParent, const QLatin1String & arrayName, const QVector<T> & array )
+template <typename T> inline void BaseModel::setArray( const QModelIndex & arrayParent, const QLatin1StringView & arrayName, const QVector<T> & array )
 {
 	setArray( getItem(arrayParent, arrayName, true), array );
 }
 template <typename T> inline void BaseModel::setArray( const QModelIndex & arrayParent, const char * arrayName, const QVector<T> & array )
 {
-	setArray( getItem(arrayParent, QLatin1String(arrayName), true), array );
+	setArray( getItem(arrayParent, QLatin1StringView(arrayName), true), array );
 }
 
 
@@ -1009,13 +1013,13 @@ template <typename T> inline void BaseModel::fillArray( const NifItem * arrayPar
 {
 	fillArray( getItem(arrayParent, arrayName, true), val );
 }
-template <typename T> inline void BaseModel::fillArray( const NifItem * arrayParent, const QLatin1String & arrayName, const T & val )
+template <typename T> inline void BaseModel::fillArray( const NifItem * arrayParent, const QLatin1StringView & arrayName, const T & val )
 {
 	fillArray( getItem(arrayParent, arrayName, true), val );
 }
 template <typename T> inline void BaseModel::fillArray( const NifItem * arrayParent, const char * arrayName, const T & val )
 {
-	fillArray( getItem(arrayParent, QLatin1String(arrayName), true), val );
+	fillArray( getItem(arrayParent, QLatin1StringView(arrayName), true), val );
 }
 template <typename T> inline void BaseModel::fillArray( const QModelIndex & iArray, const T & val )
 {
@@ -1029,13 +1033,13 @@ template <typename T> inline void BaseModel::fillArray( const QModelIndex & arra
 {
 	fillArray( getItem(arrayParent, arrayName, true), val );
 }
-template <typename T> inline void BaseModel::fillArray( const QModelIndex & arrayParent, const QLatin1String & arrayName, const T & val )
+template <typename T> inline void BaseModel::fillArray( const QModelIndex & arrayParent, const QLatin1StringView & arrayName, const T & val )
 {
 	fillArray( getItem(arrayParent, arrayName, true), val );
 }
 template <typename T> inline void BaseModel::fillArray( const QModelIndex & arrayParent, const char * arrayName, const T & val )
 {
-	fillArray( getItem(arrayParent, QLatin1String(arrayName), true), val );
+	fillArray( getItem(arrayParent, QLatin1StringView(arrayName), true), val );
 }
 
 #endif

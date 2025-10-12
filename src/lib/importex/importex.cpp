@@ -37,13 +37,18 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "model/nifproxymodel.h"
 #include "ui/widgets/nifview.h"
 
+#include <QApplication>
 #include <QDockWidget>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QMenu>
 #include <QModelIndex>
+#include <QSettings>
 
 #include <string>
 #include <functional>
+
+#define tr( x ) QApplication::tr( x )
 
 
 void exportObj( const NifModel * nif, const Scene* scene, const QModelIndex & index );
@@ -72,7 +77,7 @@ struct ImportExportOption
 QVector<ImportExportOption> impexOptions{
 	ImportExportOption{ ".OBJ", importObj, exportObj, 0, 169 },
 	ImportExportOption{ ".OBJ as Collision", importObjAsCollision, nullptr, 0, 169 },
-	ImportExportOption{ ".glTF", importGltf, exportGltf, 170 },
+	ImportExportOption{ ".glTF", importGltf, exportGltf, 83 },
 };
 
 
@@ -128,3 +133,77 @@ void NifSkope::sltExport( QAction* a )
 		impex.exportFn(nif, ogl->scene, index);
 	}
 }
+
+
+QString getImportexFileName( const NifModel * nif, const char * fileType, bool isImport )
+{
+	QString fileTypeStr = QLatin1StringView(fileType);
+	QString suffix( QChar('.') );
+	suffix.append( fileTypeStr.toLower() );
+
+	QString nifPath;
+	if ( auto w = qobject_cast< const NifSkope * >( nif->getWindow() ); w ) {
+		if ( nifPath = w->getCurrentFile(); !nifPath.isEmpty() ) {
+			if ( nifPath.endsWith( QLatin1StringView(".nif"), Qt::CaseInsensitive )
+				|| nifPath.endsWith( QLatin1StringView(".bto"), Qt::CaseInsensitive )
+				|| nifPath.endsWith( QLatin1StringView(".btr"), Qt::CaseInsensitive ) ) {
+				nifPath.chop( 4 );
+			}
+#ifdef Q_OS_WIN32
+			nifPath.replace( QChar('\\'), QChar('/') );
+#endif
+			nifPath.remove( 0, nifPath.lastIndexOf( QChar('/') ) + 1 );
+		}
+	}
+
+	QString	fileName = nif->getFolder();
+	bool usingLastImportexPath = false;
+	if ( fileName.isEmpty()
+		|| fileName.contains( QLatin1StringView(".ba2/"), Qt::CaseInsensitive )
+		|| fileName.contains( QLatin1StringView(".bsa/"), Qt::CaseInsensitive ) ) {
+		QSettings	settings;
+		if ( fileTypeStr.isEmpty() ) {
+			fileName = settings.value( "Spells//Extract File/Last File Path", QString() ).toString();
+		} else {
+			fileName = settings.value( QString("Import-Export/%1/File Name").arg(fileTypeStr), QString() ).toString();
+			if ( isImport || nifPath.isEmpty() ) {
+				usingLastImportexPath = true;
+			} else {
+#ifdef Q_OS_WIN32
+				fileName.replace( QChar('\\'), QChar('/') );
+#endif
+				fileName.truncate( fileName.lastIndexOf( QChar('/') ) + 1 );
+			}
+		}
+	}
+	if ( !usingLastImportexPath && !nifPath.isEmpty() ) {
+		if ( !fileName.isEmpty() && !fileName.endsWith( QChar('/') ) )
+			fileName.append( QChar('/') );
+		fileName.append( nifPath );
+		fileName.append( suffix );
+	}
+
+	QString fileFilter;
+	if ( isImport && fileTypeStr == "glTF" )
+		fileFilter = QLatin1StringView("glTF (*.glb *.gltf)");
+	else
+		fileFilter = QString( QLatin1StringView("%1 (*%2)") ).arg( fileTypeStr ).arg( suffix );
+
+	if ( isImport ) {
+		fileName = QFileDialog::getOpenFileName( qApp->activeWindow(),
+													tr("Choose a .%1 file for import").arg(fileTypeStr),
+													fileName, fileFilter );
+	} else {
+		fileName = QFileDialog::getSaveFileName( qApp->activeWindow(),
+													tr("Choose a .%1 file for export").arg(fileTypeStr),
+													fileName, fileFilter );
+	}
+
+	if ( !fileName.isEmpty() ) {
+		QSettings settings;
+		settings.setValue( QString("Import-Export/%1/File Name").arg(fileTypeStr), fileName );
+	}
+
+	return fileName;
+}
+

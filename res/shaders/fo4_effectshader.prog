@@ -1,13 +1,8 @@
 # effect shader
 
 # Fallout 4
-check HEADER/BS Header/BS Version == 130
+check BSVersion >= 130
+check BSVersion <= 139
 check BSEffectShaderProperty
-
-texcoords 0 base
-texcoords 1 tangents
-texcoords 2 bitangents
-texcoords 3 indices
-texcoords 4 weights
 
 shaders fo4_default.vert fo4_effectshader.frag

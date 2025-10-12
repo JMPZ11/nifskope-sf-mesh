@@ -1,6 +1,5 @@
 #include "io/MeshFile.h"
 #include "model/nifmodel.h"
-#include "qtcompat.h"
 
 #include <QByteArray>
 #include <QDataStream>
@@ -37,8 +36,8 @@ void MeshFile::clear()
 	colors.clear();
 	tangents.clear();
 	bitangentsBasis.clear();
-	haveTexCoord2 = false;
-	coords.clear();
+	coords1.clear();
+	coords2.clear();
 	weights.clear();
 	weightsPerVertex = 0;
 	triangles.clear();
@@ -113,29 +112,28 @@ void MeshFile::update( const void * data, size_t size )
 
 	quint32 numCoord1;
 	in >> numCoord1;
-	coords.resize( numCoord1 );
+	coords1.resize( numCoord1 );
 
-	for ( int i = 0; i < int(numCoord1); i++ ) {
-		uint32_t uv;
+	for ( quint32 i = 0; i < numCoord1; i++ ) {
+		std::uint32_t uv;
 
 		in >> uv;
+		FloatVector4 uv_f( FloatVector4::convertFloat16(uv) );
 
-		coords[i] = Vector4(FloatVector4::convertFloat16(uv));
+		coords1[i] = Vector2( uv_f[0], uv_f[1] );
 	}
 
 	quint32 numCoord2;
 	in >> numCoord2;
-	numCoord2 = std::min( numCoord2, numCoord1 );
-	haveTexCoord2 = bool( numCoord2 );
+	coords2.resize( numCoord2 );
 
 	for ( quint32 i = 0; i < numCoord2; i++ ) {
-		uint32_t uv;
+		std::uint32_t uv;
 
 		in >> uv;
-		FloatVector4  uv_f(FloatVector4::convertFloat16(uv));
+		FloatVector4 uv_f( FloatVector4::convertFloat16(uv) );
 
-		coords[i][2] = uv_f[0];
-		coords[i][3] = uv_f[1];
+		coords2[i] = Vector2( uv_f[0], uv_f[1] );
 	}
 
 	quint32 numColor;
@@ -177,21 +175,13 @@ void MeshFile::update( const void * data, size_t size )
 	quint32 numWeights;
 	in >> numWeights;
 	if ( numWeights > 0 && numWeightsPerVertex > 0 ) {
-		weights.resize(numWeights / numWeightsPerVertex);
+		weights.resize( numWeights );
 	}
-	for ( int i = 0; i < weights.count(); i++ ) {
-		QVector<QPair<quint16, quint16>> weightsUNORM;
-		for ( quint32 j = 0; j < 8; j++ ) {
-			if ( j < numWeightsPerVertex ) {
-				quint16 b, w;
-				in >> b;
-				in >> w;
-				weightsUNORM.append({ b, w });
-			} else {
-				weightsUNORM.append({0, 0});
-			}
-		}
-		weights[i] = BoneWeightsUNorm(weightsUNORM, i);
+	for ( qsizetype i = 0; i < weights.size(); i++ ) {
+		std::uint16_t	b, w;
+		in >> b;
+		in >> w;
+		weights[i] = ( std::uint32_t(b) << 16 ) | w;
 	}
 
 	if ( magic ) {
@@ -279,27 +269,19 @@ void MeshFile::update( const NifModel * nif, const QModelIndex & index )
 	auto	uvItem1 = nif->getItem( meshData, "UVs" );
 	if ( !uvItem1 )
 		numCoord1 = 0;
-	coords.resize( numCoord1 );
+	coords1.resize( numCoord1 );
 
-	for ( int i = 0; i < int(numCoord1); i++ ) {
-		HalfVector2	uv = nif->get<HalfVector2>( uvItem1->child( i ) );
-
-		coords[i] = Vector4( uv[0], uv[1], 0.0f, 0.0f );
-	}
+	for ( int i = 0; i < int(numCoord1); i++ )
+		coords1[i] = nif->get<Vector2>( uvItem1->child( i ) );
 
 	quint32 numCoord2 = nif->get<quint32>( meshData, "Num UVs 2" );
 	auto	uvItem2 = nif->getItem( meshData, "UVs 2" );
 	if ( !uvItem2 )
 		numCoord2 = 0;
-	numCoord2 = std::min( numCoord2, numCoord1 );
-	haveTexCoord2 = bool( numCoord2 );
+	coords2.resize( numCoord2 );
 
-	for ( quint32 i = 0; i < numCoord2; i++ ) {
-		HalfVector2	uv = nif->get<HalfVector2>( uvItem2->child( i ) );
-
-		coords[i][2] = uv[0];
-		coords[i][3] = uv[1];
-	}
+	for ( int i = 0; i < int(numCoord2); i++ )
+		coords2[i] = nif->get<Vector2>( uvItem2->child( i ) );
 
 	quint32 numColor = nif->get<quint32>( meshData, "Num Vertex Colors" );
 	auto	colorsIndex = nif->getIndex( meshData, "Vertex Colors" );
@@ -338,25 +320,16 @@ void MeshFile::update( const NifModel * nif, const QModelIndex & index )
 	if ( !weightsItem )
 		numWeights = 0;
 	if ( numWeights > 0 && numWeightsPerVertex > 0 ) {
-		weights.resize(numWeights / numWeightsPerVertex);
+		weights.resize( numWeights );
 	}
-	int	k = 0;
-	for ( int i = 0; i < weights.count(); i++ ) {
-		QVector<QPair<quint16, quint16>> weightsUNORM;
-		for ( quint32 j = 0; j < 8; j++ ) {
-			quint16	b = 0;
-			quint16	w = 0;
-			if ( j < numWeightsPerVertex ) {
-				auto	weightItem = weightsItem->child( k );
-				if ( weightItem ) {
-					b = nif->get<quint16>( weightItem->child( 0 ) );
-					w = nif->get<quint16>( weightItem->child( 1 ) );
-				}
-				k++;
-			}
-			weightsUNORM.append({ b, w });
+	for ( qsizetype i = 0; i < weights.size(); i++ ) {
+		quint16	b = 0;
+		quint16	w = 0;
+		if ( auto weightItem = weightsItem->child( int(i) ); weightItem ) {
+			b = nif->get<quint16>( weightItem->child( 0 ) );
+			w = nif->get<quint16>( weightItem->child( 1 ) );
 		}
-		weights[i] = BoneWeightsUNorm(weightsUNORM, i);
+		weights[i] = ( std::uint32_t(b) << 16 ) | w;
 	}
 
 	quint32	numLODs = 0;

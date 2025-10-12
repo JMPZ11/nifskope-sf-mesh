@@ -56,7 +56,7 @@
       <attribute name="title">
        <string>User Interface</string>
       </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_1">
+      <layout class="QVBoxLayout" name="verticalLayout_2">
        <item>
         <widget class="QGroupBox" name="grpLanguage">
          <property name="sizePolicy">
@@ -71,7 +71,7 @@
          <property name="flat">
           <bool>true</bool>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_2">
+         <layout class="QVBoxLayout" name="verticalLayout_3">
           <item>
            <widget class="QComboBox" name="language">
             <property name="enabled">
@@ -139,7 +139,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="groupBox_1">
+        <widget class="QGroupBox" name="groupBox_2">
          <property name="title">
           <string>Misc</string>
          </property>
@@ -147,14 +147,66 @@
           <bool>true</bool>
          </property>
          <layout class="QGridLayout" name="gridLayout_2">
-          <item row="0" column="0">
+          <item row="0" column="0" colspan="2">
            <widget class="QCheckBox" name="suppressSaveConfirmation">
             <property name="text">
              <string>Suppress Save Confirmation</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="0">
+          <item row="1" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkBrowsersUseLastPath">
+            <property name="text">
+             <string>Resource File Choosers Default to the Path of the File Last Selected</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QSpinBox" name="texturePreviewDefaultSize">
+            <property name="maximumSize">
+             <size>
+              <width>50</width>
+              <height>26</height>
+             </size>
+            </property>
+            <property name="minimum">
+             <number>256</number>
+            </property>
+            <property name="maximum">
+             <number>1024</number>
+            </property>
+            <property name="singleStep">
+             <number>64</number>
+            </property>
+            <property name="value">
+             <number>512</number>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLabel" name="lblTexPreviewDefaultSize">
+            <property name="text">
+             <string>Texture Preview Default Size</string>
+            </property>
+            <property name="buddy">
+             <cstring>texturePreviewDefaultSize</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
+           <widget class="QCheckBox" name="chkUVWidgetStaysOnTop">
+            <property name="text">
+             <string>UV Editor Window Stays on Top</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0" colspan="2">
            <spacer name="verticalSpacer">
             <property name="orientation">
              <enum>Qt::Vertical</enum>
@@ -176,20 +228,14 @@
       <attribute name="title">
        <string>NIF</string>
       </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_3">
+      <layout class="QVBoxLayout" name="verticalLayout_4">
        <item>
         <widget class="QGroupBox" name="startupDefaults">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Maximum" vsizetype="Maximum">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
          <property name="title">
           <string>Startup Defaults</string>
          </property>
-         <layout class="QFormLayout" name="formLayout">
-          <item row="0" column="0">
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <item>
            <widget class="QLabel" name="lblVersion">
             <property name="text">
              <string>Version</string>
@@ -199,14 +245,20 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="1">
+          <item>
            <widget class="QLineEdit" name="version">
+            <property name="maximumSize">
+             <size>
+              <width>110</width>
+              <height>30</height>
+             </size>
+            </property>
             <property name="text">
-             <string>20.0.0.5</string>
+             <string>20.2.0.7</string>
             </property>
            </widget>
           </item>
-          <item row="1" column="0">
+          <item alignment="Qt::AlignRight">
            <widget class="QLabel" name="lblUserVersion">
             <property name="text">
              <string>User Version</string>
@@ -216,14 +268,20 @@
             </property>
            </widget>
           </item>
-          <item row="1" column="1">
+          <item>
            <widget class="QLineEdit" name="userVersion">
+            <property name="maximumSize">
+             <size>
+              <width>110</width>
+              <height>30</height>
+             </size>
+            </property>
             <property name="text">
-             <string>11</string>
+             <string>12</string>
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
+          <item alignment="Qt::AlignRight">
            <widget class="QLabel" name="lblUserVersion2">
             <property name="text">
              <string>User Version 2</string>
@@ -233,10 +291,16 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="1">
+          <item>
            <widget class="QLineEdit" name="userVersion2">
+            <property name="maximumSize">
+             <size>
+              <width>110</width>
+              <height>30</height>
+             </size>
+            </property>
             <property name="text">
-             <string>11</string>
+             <string>100</string>
             </property>
            </widget>
           </item>
@@ -244,14 +308,14 @@
         </widget>
        </item>
        <item>
-        <widget class="QGroupBox" name="groupBox_2">
+        <widget class="QGroupBox" name="groupBox_3">
          <property name="title">
           <string>nif.xml</string>
          </property>
          <property name="flat">
           <bool>true</bool>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_4">
+         <layout class="QVBoxLayout" name="verticalLayout_5">
           <item>
            <widget class="QCheckBox" name="checkBox">
             <property name="text">
@@ -270,105 +334,8 @@
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
-        <widget class="QCheckBox" name="sfConvertExtMeshes">
-         <property name="text">
-          <string>Convert Starfield meshes to internal geometry on load</string>
-         </property>
-         <property name="checked">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer_3">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="groupBox_3">
-         <property name="title">
-          <string>glTF import and export</string>
-         </property>
-         <property name="flat">
-          <bool>true</bool>
-         </property>
-         <layout class="QGridLayout" name="gridLayout_3">
-          <item row="0" column="0">
-           <widget class="QCheckBox" name="gltfEnableLOD">
-            <property name="text">
-             <string>Enable LOD</string>
-            </property>
-            <property name="checked">
-             <bool>false</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QCheckBox" name="gltfFullMatPaths">
-            <property name="text">
-             <string>Export full material paths</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="2" alignment="Qt::AlignRight">
-           <widget class="QLabel" name="lblGLTFExportMipLevel">
-            <property name="text">
-             <string>Export texture mip level</string>
-            </property>
-            <property name="buddy">
-             <cstring>glTFExportMipLevel</cstring>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="3">
-           <widget class="QSpinBox" name="glTFExportMipLevel">
-            <property name="maximumSize">
-             <size>
-              <width>60</width>
-              <height>40</height>
-             </size>
-            </property>
-            <property name="minimum">
-             <number>-1</number>
-            </property>
-            <property name="maximum">
-             <number>15</number>
-            </property>
-            <property name="singleStep">
-             <number>1</number>
-            </property>
-            <property name="value">
-             <number>1</number>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer_4">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
+         <property name="sizeType">
+          <enum>QSizePolicy::Fixed</enum>
          </property>
          <property name="sizeHint" stdset="0">
           <size>
@@ -380,13 +347,19 @@
        </item>
        <item>
         <widget class="QGroupBox" name="groupBox_4">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="title">
           <string>Starfield meshlet algorithm</string>
          </property>
          <property name="flat">
           <bool>true</bool>
          </property>
-         <layout class="QVBoxLayout" name="verticalLayout_5">
+         <layout class="QVBoxLayout" name="verticalLayout_6">
           <item>
            <widget class="QComboBox" name="starfieldMeshletAlgorithm">
             <property name="maximumSize">
@@ -429,19 +402,6 @@
         </widget>
        </item>
        <item>
-        <spacer name="verticalSpacer_5">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
         <widget class="QGroupBox" name="groupBox_5">
          <property name="title">
           <string>Starfield LOD generation settings</string>
@@ -449,7 +409,7 @@
          <property name="flat">
           <bool>true</bool>
          </property>
-         <layout class="QGridLayout" name="gridLayout_4">
+         <layout class="QGridLayout" name="gridLayout_3">
           <item row="0" column="0">
            <widget class="QLabel" name="lblSFLODGenTargetCnt1">
             <property name="text">
@@ -701,6 +661,290 @@
              <number>50</number>
             </property>
            </widget>
+          </item>
+          <item row="3" column="0">
+           <spacer name="verticalSpacer_3">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="importex">
+      <attribute name="title">
+       <string>Import/Export</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_7">
+       <item>
+        <widget class="QGroupBox" name="groupBox_6">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>Starfield mesh import and export settings</string>
+         </property>
+         <property name="flat">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QCheckBox" name="sfConvertExtMeshes">
+            <property name="text">
+             <string>Convert meshes to internal geometry on load</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item alignment="Qt::AlignRight">
+           <widget class="QLabel" name="lblMeshExportDir">
+            <property name="text">
+             <string>Export geometry folder name</string>
+            </property>
+            <property name="buddy">
+             <cstring>meshExportDir</cstring>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="meshExportDir">
+            <property name="maximumSize">
+             <size>
+              <width>180</width>
+              <height>30</height>
+             </size>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_4">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Fixed</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBox_7">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>glTF import and export</string>
+         </property>
+         <property name="flat">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QCheckBox" name="gltfEnableLOD">
+            <property name="text">
+             <string>Enable LOD</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="gltfFullMatPaths">
+            <property name="text">
+             <string>Export full material paths</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item alignment="Qt::AlignRight">
+           <widget class="QLabel" name="lblGLTFExportMipLevel">
+            <property name="text">
+             <string>Export texture mip level</string>
+            </property>
+            <property name="buddy">
+             <cstring>glTFExportMipLevel</cstring>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="glTFExportMipLevel">
+            <property name="maximumSize">
+             <size>
+              <width>60</width>
+              <height>40</height>
+             </size>
+            </property>
+            <property name="minimum">
+             <number>-1</number>
+            </property>
+            <property name="maximum">
+             <number>15</number>
+            </property>
+            <property name="singleStep">
+             <number>1</number>
+            </property>
+            <property name="value">
+             <number>1</number>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer_5">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeType">
+          <enum>QSizePolicy::Fixed</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBox_8">
+         <property name="title">
+          <string>OBJ import as collision</string>
+         </property>
+         <property name="flat">
+          <bool>true</bool>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_4">
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblOBJImportCollLayer">
+            <property name="text">
+             <string>Layer</string>
+            </property>
+            <property name="buddy">
+             <cstring>objImportCollisionLayer</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="objImportCollisionLayer">
+            <property name="maximumSize">
+             <size>
+              <width>300</width>
+              <height>40</height>
+             </size>
+            </property>
+            <property name="currentIndex">
+             <number>0</number>
+            </property>
+            <item>
+             <property name="text">
+              <string>Static</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Clutter</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>AnimStatic</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Tree</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Weapon</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Biped</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Props</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>NonCollidable</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblOBJImportCollMat">
+            <property name="text">
+             <string>Material</string>
+            </property>
+            <property name="buddy">
+             <cstring>objImportCollisionMat</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="objImportCollisionMat">
+            <property name="maximumSize">
+             <size>
+              <width>180</width>
+              <height>30</height>
+             </size>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <spacer name="verticalSpacer_6">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
           </item>
          </layout>
         </widget>

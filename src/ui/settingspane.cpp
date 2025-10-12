@@ -72,7 +72,7 @@ void SettingsPane::modifyPane()
 	}
 }
 
-QString humanize( QString str )
+static QString humanize( QString str )
 {
 	str = str.replace( QRegularExpression( "(?<=[A-Z])(?=[A-Z][a-z])|(?<=[^A-Z])(?=[A-Z])|(?<=[A-Za-z])(?=[^A-Za-z])" ), " " );
 	str[0] = str[0].toUpper();
@@ -109,7 +109,11 @@ void SettingsPane::readPane( QWidget * w, QSettings & settings )
 			if ( !val.isNull() )
 				chk->setChecked( val.toBool() );
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
 			connect( chk, &QCheckBox::stateChanged, this, &SettingsPane::modifyPane );
+#else
+			connect( chk, &QCheckBox::checkStateChanged, this, &SettingsPane::modifyPane );
+#endif
 		}
 
 		auto cmb = qobject_cast<QComboBox *>(c);
@@ -252,8 +256,13 @@ SettingsGeneral::SettingsGeneral( QWidget * parent ) :
 	QLocale locale( "en" );
 	QString txtLang = QLocale::languageToString( locale.language() );
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+	if ( locale.country() != QLocale::AnyCountry )
+		txtLang.append( " (" ).append( QLocale::countryToString( locale.country() ) ).append( ")" );
+#else
 	if ( locale.territory() != QLocale::AnyTerritory )
 		txtLang.append( " (" ).append( QLocale::territoryToString( locale.territory() ) ).append( ")" );
+#endif
 
 	ui->language->addItem( txtLang, locale );
 	ui->language->setCurrentIndex( 0 );
@@ -276,8 +285,13 @@ SettingsGeneral::SettingsGeneral( QWidget * parent ) :
 			if ( ui->language->findData( fileLocale ) < 0 ) {
 				QString txtLang = QLocale::languageToString( fileLocale.language() );
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+				if ( fileLocale.country() != QLocale::AnyCountry )
+					txtLang.append( " (" + QLocale::countryToString( fileLocale.country() ) + ")" );
+#else
 				if ( fileLocale.territory() != QLocale::AnyTerritory )
 					txtLang.append( " (" + QLocale::territoryToString( fileLocale.territory() ) + ")" );
+#endif
 
 				ui->language->addItem( txtLang, fileLocale );
 			}
@@ -381,6 +395,8 @@ SettingsRender::SettingsRender( QWidget * parent ) :
 	ui->setupUi( this );
 	SettingsDialog::registerPage( parent, ui->name->text() );
 
+	connect( ui->btnDetectMSAA, &QPushButton::clicked, this, &SettingsRender::detectMSAAMaxSamples );
+
 	auto color = [this]( const QString & str, ColorWheel * w, ColorLineEdit * e, const QColor & color ) {
 		e->setWheel( w, str );
 		w->setColor( color );
@@ -392,14 +408,15 @@ SettingsRender::SettingsRender( QWidget * parent ) :
 	color( "Background", ui->colorBackground, ui->background, QColor( 46, 46, 46 ) );
 	color( "Wireframe", ui->colorWireframe, ui->wireframe, QColor( 0, 255, 0 ) );
 	color( "Highlight", ui->colorHighlight, ui->highlight, QColor( 255, 255, 0 ) );
+	color( "Grid", ui->colorGrid, ui->gridColor, QColor( 99, 99, 99 ) );
 
 
-	auto alphaSlider = [this]( ColorWheel * c, ColorLineEdit * e, QHBoxLayout * l ) {
+	auto alphaSlider = [this]( ColorWheel * c, ColorLineEdit * e, QHBoxLayout * l, float a = 1.0f ) {
 		auto alpha = new AlphaSlider( Qt::Vertical );
 		alpha->setParent( this );
 
 		c->setAlpha( true );
-		e->setAlpha( 1.0 );
+		e->setAlpha( a );
 		l->addWidget( alpha );
 
 		connect( c, &ColorWheel::sigColor, alpha, &AlphaSlider::setColor );
@@ -412,6 +429,7 @@ SettingsRender::SettingsRender( QWidget * parent ) :
 
 	alphaSlider( ui->colorWireframe, ui->wireframe, ui->layAlphaWire );
 	alphaSlider( ui->colorHighlight, ui->highlight, ui->layAlphaHigh );
+	alphaSlider( ui->colorGrid, ui->gridColor, ui->layAlphaGrid, 0.8f );
 
 	connect( ui->btnClearCubeCache, &QPushButton::clicked, this, &SettingsRender::clearCubeCache );
 	connect( ui->btnLoadF76CubeMap, &QPushButton::clicked, this, &SettingsRender::selectF76CubeMap );
@@ -490,6 +508,24 @@ void SettingsRender::selectSTFCubeMap()
 		modifyPane();
 }
 
+void SettingsRender::detectMSAAMaxSamples()
+{
+	GLint	maxSamples = -1;
+	GLint	maxSamplesI = -1;
+	glGetIntegerv( GL_MAX_SAMPLES, &maxSamples );
+	glGetIntegerv( GL_MAX_INTEGER_SAMPLES, &maxSamplesI );
+	if ( maxSamples <= 0 || ( maxSamplesI > 0 && maxSamplesI < maxSamples ) )
+		maxSamples = maxSamplesI;
+	if ( maxSamples <= 0 )
+		return;
+
+	int	n = std::min< int >( std::bit_width( (unsigned int) maxSamples ) - 1, 4 );
+	if ( n != ui->msaaSamples->currentIndex() ) {
+		ui->msaaSamples->setCurrentIndex( n );
+		modifyPane();
+	}
+}
+
 /*
  * Resources
  */
@@ -519,6 +555,7 @@ SettingsResources::SettingsResources( QWidget * parent ) :
 	connect( ui->foldersList, &QListView::doubleClicked, this, &SettingsPane::modifyPane );
 	connect( ui->chkAlternateExt, &QCheckBox::clicked, this, &SettingsPane::modifyPane );
 	connect( ui->chkOtherGamesFallback, &QCheckBox::clicked, this, &SettingsPane::modifyPane );
+	connect( ui->chkIgnoreArchiveErrors, &QCheckBox::clicked, this, &SettingsPane::modifyPane );
 
 	// Move Up / Move Down Behavior
 	connect( ui->foldersList->selectionModel(), &QItemSelectionModel::currentChanged,
@@ -553,6 +590,7 @@ void SettingsResources::read()
 
 	ui->chkAlternateExt->setChecked( settings.value( "Settings/Resources/Alternate Extensions", false ).toBool() );
 	ui->chkOtherGamesFallback->setChecked( settings.value("Settings/Resources/Other Games Fallback", false ).toBool() );
+	ui->chkIgnoreArchiveErrors->setChecked( settings.value("Settings/Resources/Ignore Archive Errors", true ).toBool() );
 
 	setModified( false );
 }
@@ -678,17 +716,18 @@ void SettingsResources::onBrowseClicked()
 	SettingsPane::modifyPane();
 }
 
-QString SettingsResources::currentFolderItem()
+Game::GameMode SettingsResources::currentFolderItem()
 {
 	if ( !ui->foldersGameList->currentItem() )
-		return {};
-	return ui->foldersGameList->currentItem()->text();
+		return Game::OTHER;
+	return Game::ModeForString( ui->foldersGameList->currentItem()->text() );
 }
 
 void SettingsResources::modifyPane()
 {
 	GameManager::update_folders( currentFolderItem(), folders->stringList() );
 	GameManager::update_other_games_fallback( ui->chkOtherGamesFallback->isChecked() );
+	GameManager::update_ignore_archive_errors( ui->chkIgnoreArchiveErrors->isChecked() );
 	SettingsPane::modifyPane();
 }
 
@@ -780,19 +819,47 @@ void SettingsResources::on_btnFolderUp_clicked()
 
 void SettingsResources::on_btnFolderAutoDetect_clicked()
 {
+	QStringList folders_list = folders->stringList() + GameManager::find_paths( currentFolderItem() );
+	GameManager::remove_invalid_paths( folders_list );
+	folders->setStringList( folders_list );
+
+	ui->foldersList->setCurrentIndex( folders->index(0, 0) );
+
+	modifyPane();
+}
+
+void SettingsResources::on_btnSubfoldersAdd_clicked()
+{
+	QFileDialog dialog( this );
+	dialog.setFileMode( QFileDialog::Directory );
+	dialog.setDirectory( GameManager::data(currentFolderItem()) );
+
+	QString path;
+	if ( dialog.exec() )
+		path = dialog.selectedFiles().at( 0 );
+
+	if ( path.isEmpty() )
+		return;
+
+	QStringList folders_list = folders->stringList() + GameManager::find_paths( currentFolderItem(), path );
+	GameManager::remove_invalid_paths( folders_list );
+	folders->setStringList( folders_list );
+
+	ui->foldersList->setCurrentIndex( folders->index(0, 0) );
+
+	modifyPane();
+}
+
+void SettingsResources::on_btnRemoveInvalidPaths_clicked()
+{
 	QStringList folders_list = folders->stringList();
-	for ( const auto& f : GameManager::find_paths(currentFolderItem()) ) {
-		qsizetype	i;
-		while ( ( i = folders_list.indexOf( f, Qt::CaseInsensitive ) ) >= 0 )
-			folders_list.removeAt( i );
-		folders_list << f;
-	}
+	qsizetype	prvSize = folders_list.size();
+	GameManager::remove_invalid_paths( folders_list, currentFolderItem() );
+	if ( folders_list.size() == prvSize )
+		return;
+	folders->setStringList( folders_list );
 
-	folders_list.removeDuplicates();
-
-	folders->setStringList(folders_list);
-
-	ui->foldersList->setCurrentIndex(folders->index(0, 0));
+	ui->foldersList->setCurrentIndex( folders->index(0, 0) );
 
 	modifyPane();
 }

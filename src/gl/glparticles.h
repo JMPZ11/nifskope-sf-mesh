@@ -67,7 +67,6 @@ protected:
 	QVector<Vector3> verts;
 	QVector<Color4> colors;
 	QVector<float> sizes;
-	QVector<Vector3> transVerts;
 
 	int active = 0;
 	float size = 0;

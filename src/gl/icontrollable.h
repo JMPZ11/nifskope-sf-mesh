@@ -72,7 +72,7 @@ public:
 
 	Controller * findController( const QModelIndex & index );
 
-	QString getName() const;
+	inline const QString & getName() const { return name; }
 
 protected:
 	//! Sets the Controller

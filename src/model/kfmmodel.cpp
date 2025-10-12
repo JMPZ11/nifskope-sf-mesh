@@ -201,8 +201,8 @@ void KfmModel::insertType( NifItem * parent, const NifData & data, int at )
 
 			for ( NifData & d : compound->types ) {
 				if ( d.type() == XMLTMPL ) {
-					d.setType( tmp );
-					d.value.changeType( NifValue::type( tmp ) );
+					d.setStrType( tmp );
+					d.changeType( NifValue::type( tmp ) );
 				}
 
 				if ( d.arg() == XMLARG )  d.setArg( data.arg() );
@@ -287,7 +287,7 @@ bool KfmModel::load( NifItem * parent, NifIStream & stream )
 	if ( !parent )
 		return false;
 
-	for ( NifItem * child: parent->childIter() ) {
+	for ( auto child : parent->children() ) {
 		child->invalidateCondition();
 
 		if ( evalCondition( child ) ) {

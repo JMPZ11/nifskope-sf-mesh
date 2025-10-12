@@ -33,6 +33,17 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nifitem.h"
 #include "model/basemodel.h"
 
+#include <new>
+
+bool NifData::compareStrings( const QChar * s, const char * t, size_t l )
+{
+	for ( size_t i = 0; i < l; i++ ) {
+		if ( s[i] != t[i] )
+			return false;
+	}
+	return true;
+}
+
 bool NifItem::isDescendantOf( const NifItem * testAncestor ) const
 {
 	if ( testAncestor ) {
@@ -81,98 +92,197 @@ const NifItem * NifItem::ancestorAt( int testLevel ) const
 
 void NifItem::registerChild( NifItem * item, int at )
 {
-	int nOldChildren = childItems.count();
+	int nOldChildren = childItemsSize;
+	if ( nOldChildren >= childItemsCapacity ) [[unlikely]]
+		reserveChildItems( nOldChildren + 1 );
 	if ( at < 0 || at >= nOldChildren ) {
 		at = nOldChildren;
-		childItems.append( item );
+		childItems[at] = item;
+		childItemsSize++;
 		item->rowIdx = at;
-		updateLinkCache( at, false );
 	} else {
-		childItems.insert( at, item );
+		std::memmove( childItems + ( at + 1 ), childItems + at, size_t( nOldChildren - at ) * sizeof( NifItem * ) );
+		childItems[at] = item;
+		childItemsSize++;
 		item->rowIdx = at;
 		updateChildRows( at + 1 );
-		updateLinkCache( at, true );
 	}
+	if ( item->isLink() || item->hasChildLinks() ) [[unlikely]]
+		item->registerInParentLinkCache();
 }
 
 NifItem * NifItem::unregisterChild( int at )
 {
-	if ( at >= 0 && at < childItems.count() ) {
-		NifItem * item = childItems.at( at );
-		childItems.remove( at );
-		updateChildRows( at );
-		updateLinkCache( at, true );
-		return item;
+	if ( !( at >= 0 && at < childItemsSize ) ) [[unlikely]]
+		return nullptr;
+
+	NifItem * item = childItems[at];
+
+	int n = childItemsSize - ( at + 1 );
+	if ( n > 0 )
+		std::memmove( childItems + at, childItems + ( at + 1 ), size_t( n ) * sizeof( NifItem * ) );
+	childItemsSize = at + n;
+	updateChildRows( at );
+
+	return item;
+}
+
+void NifItem::removeChildren( int row, int count )
+{
+	int iStart = std::max( row, 0 );
+	int iEnd = std::min( row + count, childItemsSize );
+	if ( iStart < iEnd ) [[likely]] {
+		for ( int i = iStart; i < iEnd; i++ )
+			delete childItems[i];
+		int n = childItemsSize - iEnd;
+		if ( n > 0 )
+			std::memmove( childItems + iStart, childItems + iEnd, size_t( n ) * sizeof( NifItem * ) );
+		childItemsSize = iStart + n;
+		updateChildRows( iStart );
+	}
+}
+
+size_t NifItem::findLinkRow( int n ) const
+{
+	size_t	i0 = 0;
+	size_t	i2 = linkRowsSize;
+	while ( i2 > i0 ) {
+		size_t	i1 = ( i0 + i2 ) >> 1;
+		if ( linkRows[i1] < n )
+			i0 = i1 + 1;
+		else
+			i2 = i1;
+	}
+	// return the index of the first element of linkRows not less than 'n'
+	return i0;
+}
+
+void NifItem::insertLinkRow( int n )
+{
+	if ( !linkRows || linkRowsSize >= (unsigned int) *( linkRows - 1 ) ) [[unlikely]] {
+		size_t	linkRowsCapacity = size_t( linkRowsSize ) + 1;
+		linkRowsCapacity = ( linkRowsCapacity + ( linkRowsCapacity >> 1 ) ) | 3;
+		int *	tmp = new int[linkRowsCapacity + 1];
+		tmp[0] = int( linkRowsCapacity );
+		if ( linkRowsSize > 0 )
+			std::memcpy( tmp + 1, linkRows, size_t( linkRowsSize ) * sizeof( int ) );
+		if ( linkRows )
+			delete[] ( linkRows - 1 );
+		linkRows = tmp + 1;
 	}
 
-	return nullptr;
+	size_t	i = linkRowsSize;
+	if ( i && linkRows[i - 1] >= n ) {
+		i = findLinkRow( n );
+		if ( linkRows[i] == n )
+			return;
+		std::memmove( linkRows + ( i + 1 ), linkRows + i, ( size_t( linkRowsSize ) - i ) * sizeof( int ) );
+	}
+	if ( linkRowsSize >= 65535U )
+		throw std::bad_alloc();
+	linkRows[i] = n;
+	linkRowsSize++;
 }
 
 void NifItem::registerInParentLinkCache()
 {
 	NifItem * c = this;
-	NifItem * p = parentItem;
-	while( p ) {
-		bool bOldHasChildLinks = p->hasChildLinks(); 
-		p->linkAncestorRows.append( c->row() );
+	for ( NifItem * p = parentItem; p; p = c->parentItem ) {
+		bool bOldHasChildLinks = p->hasChildLinks();
+		int	i = c->row();
+		if ( i >= 0 )
+			p->insertLinkRow( i );
 		if ( bOldHasChildLinks )
 			break; // Do NOT register p in its parent (again) if c is NOT a first registered child link for p
 		c = p;
-		p = c->parentItem;
 	}
 }
 
 void NifItem::unregisterInParentLinkCache()
 {
 	NifItem * c = this;
-	NifItem * p = parentItem;
-	while( p ) {
-		int iRemove = p->linkAncestorRows.indexOf( c->row() );
-		if ( iRemove < 0 ) 
-			break; // c is not even registered in p...
-		p->linkAncestorRows.remove( iRemove );
-		if ( p->hasChildLinks() ) 
+	for ( NifItem * p = parentItem; p; p = c->parentItem ) {
+		p->removeLinkRow( c->row() );
+		if ( p->linkRowsSize )
 			break; // Do NOT unregister p in its parent if p still has other registered child links
 		c = p;
-		p = c->parentItem;
 	}
 }
 
-static void cleanupChildIndexVector( QVector<ushort> & v, int iStartChild )
+void NifItem::removeLinkRow( int n )
 {
-	for ( int i = v.count() - 1; i >= 0; i-- ) {
-		if ( v.at(i) >= iStartChild )
-			v.remove( i );
+	size_t	i = findLinkRow( n );
+	if ( i < linkRowsSize && linkRows[i] == n ) {
+		if ( ( i + 1 ) < linkRowsSize )
+			std::memmove( linkRows + i, linkRows + ( i + 1 ), ( size_t( linkRowsSize ) - ( i + 1 ) ) * sizeof( int ) );
+		linkRowsSize--;
 	}
 }
 
-void NifItem::updateLinkCache( int iStartChild, bool bDoCleanup )
+void NifItem::updateChildRows( int iStartChild )
 {
-	bool bOldHasChildLinks = hasChildLinks();
-
-	// Clear outdated links
-	if ( bDoCleanup ) {
-		cleanupChildIndexVector( linkRows, iStartChild );
-		cleanupChildIndexVector( linkAncestorRows, iStartChild );
+	for ( int i = iStartChild; i < childItemsSize; i++ ) {
+		NifItem *	c = childItems[i];
+		if ( c ) [[likely]]
+			c->rowIdx = i;
 	}
+	if ( !hasChildLinks() ) [[likely]]
+		return;
+	updateLinkRows( iStartChild );
+}
 
-	// Add new links
-	for ( int i = iStartChild; i < childItems.count(); i++ ) {
-		const NifItem * c = childItems.at( i );
-		if ( c->isLink() )
-			linkRows.append( i );
-		if ( c->hasChildLinks() )
-			linkAncestorRows.append( i );
+void NifItem::updateLinkRows( int iStartChild )
+{
+	size_t	i = linkRowsSize;
+	while ( i > 0 && linkRows[i - 1] >= iStartChild )
+		i--;
+	if ( i >= linkRowsSize )
+		return;
+	linkRowsSize = i;
+	for ( int n = iStartChild; n < childItemsSize; n++ ) {
+		NifItem *	c = childItems[n];
+		if ( c && ( c->isLink() || c->hasChildLinks() ) )
+			insertLinkRow( n );
 	}
+	if ( !( isLink() || hasChildLinks() ) )
+		unregisterInParentLinkCache();
+}
 
-	// Update parent link caches if needed
-	if ( hasChildLinks() ) {
-		if ( !bOldHasChildLinks )
-			registerInParentLinkCache();
-	} else { // not hasChildLinks
-		if ( bOldHasChildLinks )
-			unregisterInParentLinkCache();
+int NifItem::updateRowIndex() const
+{
+	if ( !parentItem ) {
+		rowIdx = 0;
+		return 0;
 	}
+	const NifItem * const *	p = parentItem->childItems;
+	qsizetype	n = parentItem->childItemsSize;
+	for ( qsizetype i = 0; i < n; i++ ) {
+		if ( p[i] == this ) {
+			rowIdx = int( i );
+			return rowIdx;
+		}
+	}
+	rowIdx = -1;
+	return -1;
+}
+
+void NifItem::reserveChildItems( int n )
+{
+	if ( n <= childItemsCapacity ) [[unlikely]]
+		return;
+	n = std::max< int >( n, ( ( childItemsCapacity + ( childItemsCapacity >> 1 ) ) | 1 ) + 1 );
+	void *	tmp = std::realloc( childItems, size_t( n ) * sizeof( NifItem * ) );
+	if ( !tmp )
+		throw std::bad_alloc();
+	childItems = reinterpret_cast< NifItem ** >( tmp );
+	childItemsCapacity = n;
+}
+
+void NifItem::deleteChildItems()
+{
+	for ( auto c : children() )
+		delete c;
+	childItemsSize = 0;
 }
 
 void NifItem::onParentItemChange()
@@ -181,7 +291,7 @@ void NifItem::onParentItemChange()
 	vercondStatus   = -1;
 	conditionStatus = -1;
 
-	for ( NifItem * c : childItems )
+	for ( auto c : children() )
 		c->onParentItemChange();
 }
 
