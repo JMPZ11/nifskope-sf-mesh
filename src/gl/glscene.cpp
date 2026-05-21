@@ -137,6 +137,9 @@ void Scene::updateSettings( QSettings & settings )
 
 	int	tmp = settings.value( "Settings/Render/General/Default Skeleton Root", -1 ).toInt();
 	defaultSkeletonRoot = std::int16_t( std::clamp< int >( tmp, -1, 32767 ) );
+
+	tmp = settings.value( "Settings/Render/General/Bound Sphere Quality", 4 ).toInt();
+	boundSphereQuality = (unsigned char) std::clamp< int >( tmp, 2, 42 );
 }
 
 void Scene::clear( [[maybe_unused]] bool flushTextures )

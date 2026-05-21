@@ -23,6 +23,8 @@ public:
     void addTree( NifModel * nif, qint32 block, QList<qint32> & newblocks );
 
     QModelIndex cast( NifModel * nif, const QModelIndex & ) override final;
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
 
 // Base class for all warning and error checkers

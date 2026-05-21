@@ -136,6 +136,10 @@ public:
 
 	Node * findChild( int id ) const;
 	Node * findChild( const QString & str ) const;
+	inline const NodeList & getChildren() const
+	{
+		return children;
+	}
 
 	Node * findParent( int id ) const;
 	Node * parentNode() const { return parent; }

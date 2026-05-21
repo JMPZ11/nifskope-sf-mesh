@@ -679,13 +679,13 @@ void Node::drawTriangleSelection( const QVector<Triangle> & triangles, int i, in
 		return;
 	}
 
-	int	startPos = 0;
-	int	endPos = 0;
+	int	startPos = i;
+	int	endPos = i;
 	for ( ; n > 0; i++, n-- ) {
 		const Triangle &	tri = triangles.at( i );
 		if ( int( tri[0] ) >= startVertex && int( tri[0] ) < endVertex ) {
 			if ( std::min< int >( tri[1], tri[2] ) >= startVertex && std::max< int >( tri[1], tri[2] ) < endVertex ) {
-				endPos++;
+				endPos = i + 1;
 				continue;
 			}
 			qDebug() << "triangle with multiple materials?" << i;

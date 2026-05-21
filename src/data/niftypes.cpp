@@ -700,28 +700,44 @@ bool Transform::canConstruct( const NifModel * nif, const QModelIndex & parent )
 
 Transform::Transform( const NifModel * nif, const QModelIndex & transform )
 {
-	QModelIndex t = nif->getIndex( transform, "Transform" );
-	if ( !t.isValid() ) {
-		t = nif->getIndex( transform, "Skin Transform" );
-		if ( !t.isValid() )
-			t = transform;
+	const NifItem * i = nif->getItem( transform, false );
+	if ( !i )
+		return;
+	const NifItem * t = nif->getItem( i, "Transform" );
+	if ( !t ) {
+		t = nif->getItem( i, "Skin Transform" );
+		if ( !t )
+			t = i;
 	}
 
-	rotation = nif->get<Matrix>( t, "Rotation" );
+	if ( const NifItem * r = nif->getItem( t, "Rotation" ); r ) {
+		if ( r->hasValueType( NifValue::tQuat ) )
+			rotation.fromQuat( nif->get<Quat>( r ) );
+		else
+			rotation = nif->get<Matrix>( r );
+	}
 	translation = nif->get<Vector3>( t, "Translation" );
 	scale = nif->get<float>( t, "Scale" );
 }
 
 void Transform::writeBack( NifModel * nif, const QModelIndex & transform ) const
 {
-	QModelIndex t = nif->getIndex( transform, "Transform" );
-	if ( !t.isValid() ) {
-		t = nif->getIndex( transform, "Skin Transform" );
-		if ( !t.isValid() )
-			t = transform;
+	NifItem * i = nif->getItem( transform, false );
+	if ( !i )
+		return;
+	NifItem * t = nif->getItem( i, "Transform" );
+	if ( !t ) {
+		t = nif->getItem( i, "Skin Transform" );
+		if ( !t )
+			t = i;
 	}
 
-	nif->set<Matrix>( t, "Rotation", rotation );
+	if ( NifItem * r = nif->getItem( t, "Rotation" ); r ) {
+		if ( r->hasValueType( NifValue::tQuat ) )
+			nif->set<Quat>( r, rotation.toQuat() );
+		else
+			nif->set<Matrix>( r, rotation );
+	}
 	nif->set<Vector3>( t, "Translation", translation );
 	nif->set<float>( t, "Scale", scale );
 }

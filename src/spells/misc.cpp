@@ -1,10 +1,12 @@
 #include "misc.h"
 #include "model/undocommands.h"
 
+#include <QAction>
 #include <QDialog>
 #include <QFileDialog>
 #include <QLabel>
 #include <QLayout>
+#include <QMenu>
 #include <QPushButton>
 #include <QSpinBox>
 
@@ -472,3 +474,101 @@ public:
 };
 
 REGISTER_SPELL( spMoveArrayItemTo )
+
+
+//! Select a vertex attribute (same element of a different array)
+class spSelectVertexAttr final : public Spell
+{
+public:
+	QString name() const override final { return Spell::tr( "Vertex Attribute..." ); }
+	QString page() const override final { return QString(); }
+	bool constant() const override final { return true; }
+
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	{
+		if ( !( nif && index.isValid() ) )
+			return false;
+		const NifItem *	p = nif->getItem( index.parent(), false );
+		if ( !( p && p->isArray() ) )
+			return false;
+		if ( nif->blockInherits( p, "NiGeometryData" ) ) {
+			if ( p->hasName( "Vertices" ) || p->hasName( "Normals" ) || p->hasName( "Tangents" )
+				|| p->hasName( "Bitangents" ) || p->hasName( "Vertex Colors" ) ) {
+				return true;
+			}
+			return ( p->hasName( "UV Sets" ) && !nif->isArray( index ) );
+		} else if ( nif->blockInherits( p, "BSGeometry" ) ) {
+			return ( p->hasName( "Vertices" ) || p->hasName( "UVs" ) || p->hasName( "UVs 2" )
+					|| p->hasName( "Vertex Colors" ) || p->hasName( "Normals" ) || p->hasName( "Tangents" )
+					|| p->hasName( "Weights" ) );
+		}
+		return false;
+	}
+
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	{
+		const NifItem *	attrItems[8] = {
+			nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr
+		};
+		static const char *	attrNames[8] = {
+			"Position", "Normal", "Tangent", "Bitangent", "Color", "UV 1", "UV 2", "Weights"
+		};
+
+		int	n = index.row();
+		if ( nif->blockInherits( index, "NiGeometryData" ) ) {
+			QModelIndex	iData = nif->getBlockIndex( index );
+			if ( auto i = nif->getIndex( iData, "Vertices" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[0] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Normals" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[1] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Tangents" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[2] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Bitangents" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[3] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Vertex Colors" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[4] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "UV Sets" ); i.isValid() && nif->rowCount( i ) > 0 ) {
+				if ( auto j = nif->getIndex( i, 0 ); j.isValid() && nif->rowCount( j ) > n )
+					attrItems[5] = nif->getItem( nif->getIndex( j, n ), false );
+				if ( nif->rowCount( i ) > 1 ) {
+					if ( auto j = nif->getIndex( i, 1 ); j.isValid() && nif->rowCount( j ) > n )
+						attrItems[6] = nif->getItem( nif->getIndex( j, n ), false );
+				}
+			}
+		} else if ( nif->blockInherits( index, "BSGeometry" ) ) {
+			QModelIndex	iData = index.parent().parent();
+			int	d = std::max( nif->get<int>( iData, "Weights Per Vertex" ), 1 );
+			if ( const NifItem * p = nif->getItem( index.parent() ); p && p->hasName( "Weights" ) )
+				n = n / d;
+			if ( auto i = nif->getIndex( iData, "Vertices" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[0] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Normals" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[1] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Tangents" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[2] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Vertex Colors" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[4] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "UVs" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[5] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "UVs 2" ); i.isValid() && nif->rowCount( i ) > n )
+				attrItems[6] = nif->getItem( nif->getIndex( i, n ), false );
+			if ( auto i = nif->getIndex( iData, "Weights" ); i.isValid() && nif->rowCount( i ) > ( n * d ) )
+				attrItems[7] = nif->getItem( nif->getIndex( i, n * d ), false );
+		}
+
+		QMenu	menu;
+		for ( int i = 0; i < 8; i++ ) {
+			if ( attrItems[i] ) {
+				auto	a = menu.addAction( QString( attrNames[i] ) );
+				a->setData( QVariant( i ) );
+			}
+		}
+
+		if ( QAction * a = menu.exec( QCursor::pos() ); a )
+			return nif->itemToIndex( attrItems[a->data().toInt()] );
+
+		return index;
+	}
+};
+
+REGISTER_SPELL( spSelectVertexAttr )

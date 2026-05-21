@@ -1,4 +1,5 @@
 #include "blocks.h"
+#include "mesh.h"
 
 #include <QApplication>
 #include <QBuffer>
@@ -1860,7 +1861,48 @@ public:
 		if ( newType.isEmpty() )
 			return index;
 
+		QVector<Vector4> dynamicVertexData;
+		if ( btype == "BSDynamicTriShape" ) {
+			if ( auto i = nif->getIndex( index, "Vertices" ); i.isValid() )
+				dynamicVertexData = nif->getArray<Vector4>( i );
+		}
+
 		nif->convertNiBlock( newType, index );
+
+		if ( !dynamicVertexData.isEmpty() ) {
+			auto vertexDesc = nif->get<BSVertexDesc>( index, "Vertex Desc" );
+			vertexDesc.SetFlag( VF_VERTEX );
+			vertexDesc.RemoveFlag( VF_FULLPREC );
+			if ( auto i = nif->getItem( index ); i )
+				i->invalidateCondition();
+			nif->set<BSVertexDesc>( index, "Vertex Desc", vertexDesc );
+		}
+
+		if ( btype == "BSTriShape" || newType == "BSTriShape" )
+			spRemoveWasteVertices::updateBSTriShape( nif, index );
+
+		if ( !dynamicVertexData.isEmpty() ) {
+			if ( auto iVertexData = nif->getIndex( index, "Vertex Data" ); iVertexData.isValid() ) {
+				int n = nif->rowCount( iVertexData );
+				for ( int i = 0; i < n; i++ ) {
+					if ( auto iVertex = nif->getIndex( iVertexData, i ); iVertex.isValid() ) {
+						if ( i < dynamicVertexData.size() ) {
+							Vector4 v = dynamicVertexData.at( i );
+							if ( auto j = nif->getItem( iVertex, "Vertex" ); j ) {
+								if ( j->hasValueType( NifValue::tHalfVector3 ) )
+									nif->set<HalfVector3>( j, HalfVector3( Vector3( v ) ) );
+								else
+									nif->set<Vector3>( j, Vector3( v ) );
+							}
+							if ( auto j = nif->getItem( iVertex, "Bitangent X" ); j )
+								nif->set<float>( j, v[3] );
+							else if ( auto j = nif->getItem( iVertex, "Unused W" ); j )
+								nif->set<float>( j, v[3] );
+						}
+					}
+				}
+			}
+		}
 
 		if ( newType != "BSDismemberSkinInstance" )
 			return index;

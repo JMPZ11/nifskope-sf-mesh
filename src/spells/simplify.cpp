@@ -857,7 +857,15 @@ public:
 
 		return QModelIndex();
 	}
+
+	static QModelIndex cast_Static( NifModel * nif, const QModelIndex & index );
 };
+
+QModelIndex spSimplifyAllBSTriShapes::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spSimplifyAllBSTriShapes	sp;
+	return sp.cast( nif, index );
+}
 
 REGISTER_SPELL( spSimplifyAllBSTriShapes )
 

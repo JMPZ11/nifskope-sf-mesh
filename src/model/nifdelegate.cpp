@@ -282,14 +282,26 @@ public:
 			quint32 value = v.value<NifValue>().toCount( nullptr, nullptr );
 			QMapIterator<quint32, QPair<QString, QString> > it( eo.o );
 
-			while ( it.hasNext() ) {
-				it.next();
-				bool ok = false;
+			if ( eo.t == NifValue::eDefault && t.endsWith( QLatin1StringView("HavokMaterial") ) ) {
+				// sort Havok material enumerations alphabetically instead of by CRC32 hash value
+				QMap<QString, bool> matNames;
+				while ( it.hasNext() ) {
+					it.next();
+					matNames.insert( it.value().first, ( value == it.key() ) );
+				}
+				for ( auto i = matNames.cbegin(); i != matNames.cend(); i++ )
+					cedit->addItem( i.key(), i.value() );
 
-				if ( eo.t == NifValue::eFlags ) {
-					cedit->addItem( it.value().first, ok = ( value & ( 1 << it.key() ) ) );
-				} else {
-					cedit->addItem( it.value().first, ok = ( value == it.key() ) );
+			} else {
+				while ( it.hasNext() ) {
+					it.next();
+					bool ok = false;
+
+					if ( eo.t == NifValue::eFlags ) {
+						cedit->addItem( it.value().first, ok = ( value & ( 1 << it.key() ) ) );
+					} else {
+						cedit->addItem( it.value().first, ok = ( value == it.key() ) );
+					}
 				}
 			}
 

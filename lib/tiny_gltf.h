@@ -1711,7 +1711,11 @@ class TinyGLTF {
 #endif  // __GNUC__
 
 #ifndef TINYGLTF_NO_INCLUDE_JSON
-#ifndef TINYGLTF_USE_RAPIDJSON
+#ifdef TINYGLTF_USE_CUSTOM_JSON
+#ifndef TINYGLTF_NO_INCLUDE_CUSTOM_JSON
+#include "tinygltf_json.h"
+#endif
+#elif !defined(TINYGLTF_USE_RAPIDJSON)
 #include "json.hpp"
 #else
 #ifndef TINYGLTF_NO_INCLUDE_RAPIDJSON
@@ -1799,7 +1803,10 @@ class TinyGLTF {
 
 namespace tinygltf {
 namespace detail {
-#ifdef TINYGLTF_USE_RAPIDJSON
+#ifdef TINYGLTF_USE_CUSTOM_JSON
+// Types and JsonParse are provided by tinygltf_json.h (already included above)
+// via 'namespace tinygltf { namespace detail { ... } }' declarations.
+#elif defined(TINYGLTF_USE_RAPIDJSON)
 
 #ifdef TINYGLTF_USE_RAPIDJSON_CRTALLOCATOR
 // This uses the RapidJSON CRTAllocator.  It is thread safe and multiple
@@ -1871,6 +1878,7 @@ using json_const_array_iterator = json_const_iterator;
 using JsonDocument = json;
 #endif
 
+#ifndef TINYGLTF_USE_CUSTOM_JSON
 void JsonParse(JsonDocument &doc, const char *str, size_t length,
                bool throwExc = false) {
 #ifdef TINYGLTF_USE_RAPIDJSON
@@ -1880,6 +1888,7 @@ void JsonParse(JsonDocument &doc, const char *str, size_t length,
   doc = detail::json::parse(str, str + length, nullptr, throwExc);
 #endif
 }
+#endif  // !TINYGLTF_USE_CUSTOM_JSON
 }  // namespace detail
 }  // namespace tinygltf
 
@@ -2451,9 +2460,8 @@ inline unsigned char from_hex(unsigned char ch) {
 }
 
 static const std::string urldecode(const std::string &str) {
-  using namespace std;
-  string result;
-  string::size_type i;
+  std::string result;
+  std::string::size_type i;
   for (i = 0; i < str.size(); ++i) {
     if (str[i] == '+') {
       result += ' ';
@@ -3437,6 +3445,7 @@ bool DecodeDataURI(std::vector<unsigned char> *out, std::string &mime_type,
   return true;
 }
 
+#ifndef TINYGLTF_USE_CUSTOM_JSON
 namespace detail {
 bool GetInt(const detail::json &o, int &val) {
 #ifdef TINYGLTF_USE_RAPIDJSON
@@ -3660,6 +3669,7 @@ std::string JsonToString(const detail::json &o, int spacing = -1) {
 }
 
 }  // namespace detail
+#endif  // !TINYGLTF_USE_CUSTOM_JSON
 
 static bool ParseJsonAsValue(Value *ret, const detail::json &o) {
   Value val{};
@@ -4352,7 +4362,7 @@ static bool ParseImage(Image *image, const int image_idx, std::string *err,
     // Just only save some information here. Loading actual image data from
     // bufferView is done after this `ParseImage` function.
     image->bufferView = bufferView;
-    image->mimeType = mime_type;
+    image->mimeType = std::move( mime_type );
     image->width = width;
     image->height = height;
 
@@ -5251,7 +5261,7 @@ static bool ParseNode(Node *node, std::string *err, const detail::json &o,
   if (node->extensions.count("MSFT_lod") != 0) {
     auto const &msft_lod_ext = node->extensions["MSFT_lod"];
     if (msft_lod_ext.Has("ids")) {
-      auto idsArr = msft_lod_ext.Get("ids");
+      const auto &idsArr = msft_lod_ext.Get("ids");
       for (size_t i = 0; i < idsArr.ArrayLen(); ++i) {
         node->lods.emplace_back(idsArr.Get(i).GetNumberAsInt());
       }
@@ -5280,7 +5290,7 @@ static bool ParseScene(Scene *scene, std::string *err, const detail::json &o,
   if (scene->extensions.count("KHR_audio") != 0) {
     auto const &audio_ext = scene->extensions["KHR_audio"];
     if (audio_ext.Has("emitters")) {
-      auto emittersArr = audio_ext.Get("emitters");
+      const auto &emittersArr = audio_ext.Get("emitters");
       for (size_t i = 0; i < emittersArr.ArrayLen(); ++i) {
         scene->audioEmitters.emplace_back(emittersArr.Get(i).GetNumberAsInt());
       }
@@ -5316,7 +5326,7 @@ static bool ParsePbrMetallicRoughness(
       }
       return false;
     }
-    pbr->baseColorFactor = baseColorFactor;
+    pbr->baseColorFactor = std::move( baseColorFactor );
   }
 
   {
@@ -5468,7 +5478,7 @@ static bool ParseMaterial(Material *material, std::string *err, std::string *war
   if (material->extensions.count("MSFT_lod") != 0) {
     auto const &msft_lod_ext = material->extensions["MSFT_lod"];
     if (msft_lod_ext.Has("ids")) {
-      auto idsArr = msft_lod_ext.Get("ids");
+      const auto &idsArr = msft_lod_ext.Get("ids");
       for (size_t i = 0; i < idsArr.ArrayLen(); ++i) {
         material->lods.emplace_back(idsArr.Get(i).GetNumberAsInt());
       }
@@ -6963,6 +6973,7 @@ bool TinyGLTF::LoadBinaryFromFile(Model *model, std::string *err,
 ///////////////////////
 // GLTF Serialization
 ///////////////////////
+#ifndef TINYGLTF_USE_CUSTOM_JSON
 namespace detail {
 detail::json JsonFromString(const char *s) {
 #ifdef TINYGLTF_USE_RAPIDJSON
@@ -7035,6 +7046,7 @@ void JsonReserveArray(detail::json &o, size_t s) {
   (void)(s);
 }
 }  // namespace detail
+#endif  // !TINYGLTF_USE_CUSTOM_JSON
 
 // typedef std::pair<std::string, detail::json> json_object_pair;
 

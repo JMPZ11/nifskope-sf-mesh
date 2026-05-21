@@ -198,7 +198,12 @@ QModelIndex BSShape::vertexAt( int idx ) const
 		blk = iSkinPart;
 	}
 
-	return nif->getIndex( nif->getIndex( nif->getIndex( blk, "Vertex Data" ), idx ), "Vertex" );
+	// Preserve attribute selection if another vertex of the same shape was already selected
+	auto iVertex = nif->getIndex( nif->getIndex( blk, "Vertex Data" ), idx );
+	if ( scene->currentIndex.isValid() && scene->currentIndex.parent().parent() == iVertex.parent() )
+		return nif->getIndex( iVertex, scene->currentIndex.row() );
+	// otherwise default to selecting vertex position
+	return nif->getIndex( iVertex, "Vertex" );
 }
 
 QModelIndex BSShape::triangleAt( int idx ) const
@@ -319,14 +324,18 @@ void BSShape::drawVerts() const
 			selected |= ( iSkinPart == scene->currentBlock );
 			selected |= isDynamic;
 		}
-		if ( selected ) {
+		if ( selected && scene->nifModel ) {
 			// Highlight selected vertex
 			auto idx = scene->currentIndex;
-			auto n = idx.data( NifSkopeDisplayRole ).toString();
-			if ( n == "Vertex" )
-				vertexSelected = idx.parent().row();
-			else if ( ( n == "Vertex Data" || n == "Vertices" ) && !scene->nifModel->isArray( idx ) )
-				vertexSelected = idx.row();
+			auto p = idx.parent();
+			if ( auto i = scene->nifModel->getItem( p, false );
+					i && ( i->hasStrType( "BSVertexData" ) || i->hasStrType( "BSVertexDataSSE" ) ) ) {
+				vertexSelected = p.row();
+			} else {
+				auto n = idx.data( NifSkopeDisplayRole ).toString();
+				if ( ( n == "Vertex Data" || n == "Vertices" ) && !scene->nifModel->isArray( idx ) )
+					vertexSelected = idx.row();
+			}
 		}
 	}
 

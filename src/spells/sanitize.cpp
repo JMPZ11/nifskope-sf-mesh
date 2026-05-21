@@ -295,6 +295,12 @@ QModelIndex spSanitizeBlockOrder::cast( NifModel * nif, const QModelIndex & )
 	return QModelIndex();
 }
 
+QModelIndex spSanitizeBlockOrder::cast_Static( NifModel * nif, const QModelIndex & index )
+{
+	spSanitizeBlockOrder	sp;
+	return sp.cast( nif, index );
+}
+
 REGISTER_SPELL( spSanitizeBlockOrder )
 
 //! Checks that links are correct

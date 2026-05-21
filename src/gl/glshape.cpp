@@ -378,7 +378,7 @@ void Shape::drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) co
 	scene->setGLColor( color );
 	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
 	scene->loadModelViewMatrix( viewTrans() );
-	scene->drawSphereSimple( sph.center, sph.radius, 72, 4 );
+	scene->drawSphereSimple( sph.center, sph.radius, int( scene->boundSphereQuality ) * 18, scene->boundSphereQuality );
 }
 
 void Shape::drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const
@@ -459,7 +459,8 @@ void Shape::boneSphere( const NifModel * nif, const QModelIndex & index ) const
 			}
 			scene->loadModelViewMatrix( m );
 		}
-		scene->drawSphereSimple( bSphere.center, bSphere.radius, 36 );
+		int q = std::max< int >( scene->boundSphereQuality >> 1, 2 );
+		scene->drawSphereSimple( bSphere.center, bSphere.radius, q * 18, q );
 	}
 }
 

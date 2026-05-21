@@ -64,7 +64,7 @@ Adding the **debug=1** option to the qmake command enables compiling a debug bui
 
 ##### Building from source code (Qt 5)
 
-Compiling with Qt 5 is needed on Windows versions older than 10. The steps are similar to above, but **qt6** is replaced with **qt5** in all package names, and **qmake** should be run instead of **qmake6**.
+Compiling with Qt 5 is needed on Windows versions older than 10. The steps are similar to above, but **qt6** is replaced with **qt5** in all package names, and **qmake-qt5** should be run instead of **qmake6**.
 
 ### Issues
 

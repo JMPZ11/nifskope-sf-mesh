@@ -647,18 +647,39 @@ QModelIndex Mesh::vertexAt( int idx ) const
 	if ( !nif )
 		return QModelIndex();
 
-	auto iVertexData = nif->getIndex( iData, "Vertices" );
-	auto iVertex = nif->getIndex( iVertexData, idx );
-
-	return iVertex;
+	// Preserve attribute selection, or default to selecting vertex position
+	if ( scene->currentIndex.isValid() ) {
+		auto p = scene->currentIndex.parent();
+		auto pp = p.parent();
+		auto n = scene->currentIndex.data( NifSkopeDisplayRole ).toString();
+		if ( ( pp == iData
+				&& ( n == "Vertices" || n == "Normals" || n == "Tangents" || n == "Bitangents"
+					|| n == "Vertex Colors" ) )
+			|| ( pp.parent() == iData && n == "UV Sets" ) ) {
+			return nif->getIndex( nif->getIndex( pp, p.row() ), idx );
+		}
+	}
+	return nif->getIndex( nif->getIndex( iData, "Vertices" ), idx );
 }
 
 QModelIndex Mesh::triangleAt( int idx ) const
 {
 	auto nif = scene->nifModel;
 	if ( nif && iData.isValid() && idx >= 0 && idx < triangles.size() ) {
-		// TODO: implement support for skin partitions
-		if ( !tristripOffsets.isEmpty() ) {
+		if ( iSkinPart.isValid() && !partitions.isEmpty() && !partitions.at( 0 ).triangles.isEmpty() ) {
+			// Triangles are on NiSkinPartition
+			for ( int i = 0; i < partitions.size(); i++ ) {
+				int n = int( partitions.at( i ).triangles.size() );
+				if ( idx < n ) {
+					auto iPart = nif->getIndex( nif->getIndex( iSkinPart, "Partitions" ), i );
+					return nif->getIndex( nif->getIndex( iPart, "Triangles" ), idx );
+				}
+				idx -= n;
+			}
+		} else if ( auto iTriangleData = nif->getIndex( iData, "Triangles" );
+					iTriangleData.isValid() && idx < nif->rowCount( iTriangleData ) ) {
+			return nif->getIndex( iTriangleData, idx );
+		} else if ( !tristripOffsets.isEmpty() ) {
 			for ( qsizetype i = 0; i < tristripOffsets.size(); i++ ) {
 				qsizetype	j = idx - tristripOffsets.at( i ).first;
 				if ( j >= 0 && j < tristripOffsets.at( i ).second ) {
@@ -684,10 +705,6 @@ QModelIndex Mesh::triangleAt( int idx ) const
 					break;
 				}
 			}
-		} else {
-			auto iTriangleData = nif->getIndex( iData, "Triangles" );
-			if ( iTriangleData.isValid() && nif->isArray( iTriangleData ) )
-				return nif->getIndex( iTriangleData, idx );
 		}
 	}
 	return QModelIndex();
@@ -801,8 +818,14 @@ void Mesh::drawVerts() const
 	// Highlight selected vertex
 	if ( !scene->selecting && iData == scene->currentBlock ) {
 		auto idx = scene->currentIndex;
-		if ( idx.data( NifSkopeDisplayRole ).toString() == "Vertices" )
+		auto n = idx.data( NifSkopeDisplayRole ).toString();
+		auto p = idx.parent().parent();
+		if ( ( p == iData
+				&& ( n == "Vertices" || n == "Normals" || n == "Tangents" || n == "Bitangents"
+					|| n == "Vertex Colors" ) )
+			|| ( p.parent() == iData && n == "UV Sets" ) ) {
 			vertexSelected = idx.row();
+		}
 	}
 
 	Shape::drawVerts( GLView::Settings::vertexSelectPointSize, vertexSelected );
@@ -866,6 +889,8 @@ void Mesh::drawSelection() const
 		if ( iParent.isValid() && iParent != iData ) {
 			n = iParent.data( NifSkopeDisplayRole ).toString();
 			i = idx.row();
+			if ( blk == iSkinPart && n == "Strips" && !nif->isArray( idx ) )
+				n = "Points";
 		}
 	} else if ( blk == iTangentData ) {
 		n = "TSpace";
@@ -888,9 +913,8 @@ void Mesh::drawSelection() const
 	}
 
 	if ( n == "Points" ) {
-		QModelIndex points = nif->getIndex( iData, "Points" );
-
-		if ( points.isValid() ) {
+		if ( QModelIndex points = ( blk == iSkinPart ? idx.parent().parent() : nif->getIndex( iData, "Points" ) );
+				points.isValid() ) {
 			scene->setGLColor( scene->wireframeColor );
 			scene->setGLPointSize( GLView::Settings::vertexPointSize );
 			setUniforms( scene->setupProgram( "selection.prog", GL_POINTS ) );
@@ -919,6 +943,15 @@ void Mesh::drawSelection() const
 					setGLColor( scene->highlightColor );
 
 					qsizetype	k = nif->get<quint16>( iPoints, i );
+					if ( blk == iSkinPart ) {
+						if ( auto iPart = idx.parent().parent().parent();
+								iPart.isValid() && nif->get<bool>( iPart, "Has Vertex Map" ) ) {
+							auto iVertMap = nif->getIndex( iPart, "Vertex Map" );
+							if ( !( iVertMap.isValid() && k < nif->rowCount( iVertMap ) ) )
+								continue;
+							k = nif->get<quint16>( iVertMap, k );
+						}
+					}
 					if ( k < verts.size() )
 						context->fn->glDrawArrays( GL_POINTS, GLint( k ), 1 );
 				}

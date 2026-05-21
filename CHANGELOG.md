@@ -1,11 +1,37 @@
  == CHANGELOG ==
 
+* Improved the performance of Combine Properties when a large number of texture sets is merged.
+* The Update Bounds spell can now use a faster algorithm that gives somewhat worse results than Miniball, this is configured in the general settings under NIF. The radius of calculated bounding spheres can also be scaled by a factor between 1.0 and 2.0.
+* New render setting for the quality of bounding spheres.
+* The resource manager ignores errors on opening folders.
+
+#### NifSkope-2.0.dev11-20251230
+
+* Improvements to the Havok/Create Convex Shape spell: it can be used on nodes, and the input can be optionally simplified with [meshoptimizer](https://github.com/zeux/meshoptimizer), and/or decomposed to multiple convex shapes with [CoACD](https://github.com/SarahWeiii/CoACD).
+* Simplify All Shapes and Reorder Blocks have been added as new options for processing multiple NIF files.
+* Nodes and shapes can be transformed by mouse dragging while I (scale), O (translate XY in screen space), J (rotate XY) or K (rotate Z) is held down. Skinned meshes and undo are not supported by this feature.
+* Implemented triangle selection (Shift-clicking on faces) for skinned meshes in older games that use NiTriShape with skin partitions.
+* Added a new spell for selecting a different attribute of the same vertex in geometry data that uses separate arrays for each attribute.
+* The Update MOPP Code spell has been reworked to use an external [NifMopp](https://github.com/fo76utils/NifMopp) tool. This allows for using the spell with 64-bit Windows builds of NifSkope and on Linux (if Wine is installed), but [NifMopp.dll](https://github.com/hexabits/nifskope/blob/develop/dep/NifMopp.dll) needs to be downloaded separately.
+* Selecting vertices within a single shape now preserves the attribute selection.
+* Fixed vertices not being highlighted in vertex selection mode when a vertex attribute other than the position is selected.
+* Fixed the Motor vectors of bhkRagdollConstraint not being calculated by Havok/A -> B.
+* Fixed highlighting sub-shapes of hkPackedNiTriStripsData.
+* Fixed warning on importing OBJ as collision to Skyrim and newer games, and setting the material CRC.
+* Fixed rendering point selection from triangle strips on a skin partition.
+* Renamed some of the fields of bhkCMSChunk to be more consistent with Havok documentation.
+
+#### NifSkope-2.0.dev11-20251031
+
 * The bone list in NiSkinData and BSSkin::BoneData now shows the bone names. The block should have one parent, and the bone nodes should exist in the NIF.
 * File dialogs for OBJ and 3DS import and export set the default file name from the NIF path, similarly to glTF.
 * The material CRC in NiTriShapeData and NiTriStripsData is shown as Skyrim Havok material, and is set on importing OBJ as collision.
 * Implemented rendering the selected skin partition in BSDismemberSkinInstance and for Skyrim Special Edition.
+* Havok material enumerations are sorted by name instead of numeric value.
+* Transform/Copy and Transform/Paste can be used with quaternion format rotations.
 * Fixed issues with closing the UV editor window due to the OpenGL context not being set correctly.
 * Fixed errors on opening Fallout 4 models with a BS version greater than 130.
+* Fixed the vertex position data being lost on converting a BSDynamicTriShape block to BSTriShape.
 * Fixed warning on importing OBJ as collision to Oblivion and Fallout 3/New Vegas.
 
 #### NifSkope-2.0.dev11-20250824

@@ -1515,7 +1515,7 @@ void Scene::drawCMS( const NifModel * nif, const QModelIndex & iShape, bool soli
 	QModelIndex iChunkArr = nif->getIndex( iData, "Chunks" );
 	for ( int r = 0; r < nif->rowCount( iChunkArr ); r++ ) {
 		auto iChunk = nif->index(r, 0, iChunkArr);
-		Vector4 chunkOrigin = nif->get<Vector4>( iChunk, "Translation" );
+		Vector4 chunkOrigin = nif->get<Vector4>( iChunk, "Offset" );
 
 		quint32 transformIndex = nif->get<quint32>( iChunk, "Transform Index" );
 		QModelIndex chunkTransform = nif->getIndex( iChunkTrans, transformIndex );
@@ -1525,11 +1525,11 @@ void Scene::drawCMS( const NifModel * nif, const QModelIndex & iShape, bool soli
 #if 0
 		quint32 numOffsets = nif->get<quint32>( iChunk, "Num Vertices" ) / 3;
 		quint32 numIndices = nif->get<quint32>( iChunk, "Num Indices" );
-		quint32 numStrips = nif->get<quint32>( iChunk, "Num Strips" );
+		quint32 numStrips = nif->get<quint32>( iChunk, "Num Strip Lengths" );
 #endif
 		QVector<Vector3> vertices = nif->getArray<Vector3>( iChunk, "Vertices" );
 		QVector<quint16> indices = nif->getArray<quint16>( iChunk, "Indices" );
-		QVector<quint16> strips = nif->getArray<quint16>( iChunk, "Strips" );
+		QVector<quint16> strips = nif->getArray<quint16>( iChunk, "Strip Lengths" );
 
 		if ( vertices.size() < 2 || indices.size() < 3 )
 			continue;

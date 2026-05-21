@@ -1,18 +1,27 @@
 #include "spellbook.h"
 
+#include "gl/glshape.h"
 #include "gl/gltools.h"
+#include "glview.h"
+#include "nifskope.h"
 #include "spells/blocks.h"
 
+#include "lib/coacd.h"
 #include "lib/nvtristripwrapper.h"
 #include "lib/qhull.h"
+#include "meshoptimizer/src/meshoptimizer.h"
 
+#include <QBoxLayout>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QLabel>
-#include <QLayout>
 #include <QMap>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSettings>
+#include <QSpinBox>
 
 #include <algorithm> // std::sort
 
@@ -24,247 +33,588 @@
  */
 
 //! For Havok coordinate transforms
-static const float havokConst = 7.0;
+static const float havokConst = 7.0f;
 
 //! Creates a convex hull using Qhull
 class spCreateCVS final : public Spell
 {
 public:
-	QString name() const override final { return Spell::tr( "Create Convex Shape" ); }
+	QString name() const override final { return Spell::tr( "Create Convex Shapes" ); }
 	QString page() const override final { return Spell::tr( "Havok" ); }
+
+	static bool hasGeometryData( const Node * node )
+	{
+		if ( !node )
+			return false;
+		if ( const Shape * s = dynamic_cast< const Shape * >( node ); s )
+			return !( s->verts.isEmpty() || s->triangles.isEmpty() );
+		const auto &	c = node->getChildren().list();
+		for ( auto n : c ) {
+			if ( hasGeometryData( n ) )
+				return true;
+		}
+		return false;
+	}
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
-		if ( !(nif->blockInherits( index, "NiTriBasedGeom" ) || nif->blockInherits( index, "BSTriShape" ))
-			 || !nif->getBSVersion() )
+		if ( !( nif && nif->getBSVersion() > 0 && index.isValid() ) )
 			return false;
-
-		QModelIndex iData = nif->getBlockIndex( nif->getLink( index, "Data" ) );
-		if ( !iData.isValid() && nif->getIndex( index, "Vertex Data" ).isValid() )
-			iData = index;
-
-		return iData.isValid() && nif->get<int>( iData, "Num Vertices" ) > 0;
+		if ( !nif->blockInherits( index, { "BSGeometry", "BSTriShape", "NiNode", "NiTriBasedGeom" } ) )
+			return false;
+		Scene * scene = nullptr;
+		if ( NifSkope * w = dynamic_cast< NifSkope * >( const_cast< NifModel * >( nif )->getWindow() ); w ) {
+			if ( GLView * ogl = w->getGLView(); ogl )
+				scene = ogl->getScene();
+		}
+		if ( !scene && scene->renderer )
+			return false;
+		QModelIndex iBlock = nif->getBlockIndex( index );
+		if ( auto node = scene->getNode( nif, iBlock ); node )
+			return hasGeometryData( node );
+		return false;
 	}
+
+	struct MeshData {
+		QVector<Vector3> verts;
+		QVector<unsigned int> indices;
+		void removeDuplicateVertices();
+	};
+
+	static float getHavokScale( const NifModel * nif );
+	static void getShapeData( QVector<MeshData> & meshes, NifModel * nif, const Node * node, int rootNode );
+	static void createConvexShapes( QVector<MeshData> & meshes, CoACD & coacd );
+	static void addLabel( QBoxLayout * parent, const QString & l );
+	static QDoubleSpinBox * addSpinBox( QBoxLayout * parent, const QString & l,
+										double v, double minVal, double maxVal, int nDigits );
+	static QSpinBox * addSpinBox( QBoxLayout * parent, const QString & l, int v, int minVal, int maxVal );
+	static QCheckBox * addCheckBox( QBoxLayout * parent, const QString & l, bool v );
+	static QComboBox * addComboBox( QBoxLayout * parent, const QString & l, int v, const QStringList & itemList );
+	static bool settingsDialog( CoACD & coacd, float & precision, float & radius, float & simplifyMaxError,
+								bool & replaceShape, bool & enableCoACD );
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
-		QModelIndex iData = nif->getBlockIndex( nif->getLink( index, "Data" ) );
-		if ( !iData.isValid() )
-			iData = nif->getIndex( index, "Vertex Data" );
-
-		if ( !iData.isValid() )
+		QModelIndex	iBlock = nif->getBlockIndex( index );
+		QModelIndex	iParent = iBlock;
+		if ( !nif->blockInherits( iParent, "NiNode" ) ) {
+			iParent = nif->getBlockIndex( nif->getParent( iBlock ) );
+			if ( !( iParent.isValid() && nif->blockInherits( iParent, "NiNode" ) ) )
+				return index;
+		}
+		QVector<MeshData>	meshes;
+		{
+			Scene * scene = nullptr;
+			if ( NifSkope * w = dynamic_cast< NifSkope * >( nif->getWindow() ); w ) {
+				if ( GLView * ogl = w->getGLView(); ogl )
+					scene = ogl->getScene();
+			}
+			if ( !scene && scene->renderer )
+				return index;
+			if ( auto node = scene->getNode( nif, iBlock ); node )
+				getShapeData( meshes, nif, node, nif->getBlockNumber( iParent ) );
+		}
+		if ( meshes.isEmpty() )
+			return index;
+		meshes.first().removeDuplicateVertices();
+		if ( meshes.constFirst().verts.isEmpty() || meshes.constFirst().indices.isEmpty() )
 			return index;
 
-		float havokScale = (nif->checkVersion( 0x14020007, 0x14020007 ) && nif->getUserVersion() >= 12) ? 10.0f : 1.0f;
-
-		havokScale *= havokConst;
-
-		/* those will be filled with the CVS data */
-		QVector<Vector4> convex_verts, convex_norms;
-
-		/* get the verts of our mesh */
-		QVector<Vector3> verts = nif->getArray<Vector3>( iData, "Vertices" );
-		QVector<Vector3> vertsTrans;
-
-		if ( nif->getBSVersion() < 100 ) {
-			verts = nif->getArray<Vector3>( iData, "Vertices" );
-		} else {
-			int numVerts = nif->get<int>( index, "Num Vertices" );
-			verts.reserve( numVerts );
-			for ( int i = 0; i < numVerts; i++ )
-				verts += nif->get<Vector3>( nif->index( i, 0, iData ), "Vertex" );
-		}
-
-		// Offset by translation of NiTriShape
-		Vector3 trans = nif->get<Vector3>( index, "Translation" );
-		Matrix rot = nif->get<Matrix>( index, "Rotation" );
-		float scale = nif->get<float>( index, "Scale" );
-		Transform transform;
-		transform.translation = trans;
-		transform.rotation = rot;
-		transform.scale = scale;
-
-		for ( auto v : verts ) {
-			vertsTrans.append( transform * v );
-		}
-
-		// to store results
-		QVector<Vector4> hullVerts, hullNorms;
-
-		// ask for precision
-		QDialog dlg;
-		QVBoxLayout * vbox = new QVBoxLayout;
-		dlg.setLayout( vbox );
-
-		vbox->addWidget( new QLabel( Spell::tr( "Enter the maximum roundoff error to use" ) ) );
-		vbox->addWidget( new QLabel( Spell::tr( "Larger values will give a less precise but better performing hull" ) ) );
-
-		QDoubleSpinBox * precSpin = new QDoubleSpinBox;
-		precSpin->setRange( 0, 5 );
-		precSpin->setDecimals( 3 );
-		precSpin->setSingleStep( 0.01 );
-		precSpin->setValue( 0.25 );
-		vbox->addWidget( precSpin );
-
-		vbox->addWidget( new QLabel( Spell::tr( "Collision Radius" ) ) );
-
-		QDoubleSpinBox * spnRadius = new QDoubleSpinBox;
-		spnRadius->setRange( 0, 0.5 );
-		spnRadius->setDecimals( 4 );
-		spnRadius->setSingleStep( 0.001 );
-		spnRadius->setValue( 0.05 );
-		vbox->addWidget( spnRadius );
-
-		QHBoxLayout * hbox = new QHBoxLayout;
-		vbox->addLayout( hbox );
-
-		QPushButton * ok = new QPushButton;
-		ok->setText( Spell::tr( "Ok" ) );
-		hbox->addWidget( ok );
-
-		QPushButton * cancel = new QPushButton;
-		cancel->setText( Spell::tr( "Cancel" ) );
-		hbox->addWidget( cancel );
-
-		QObject::connect( ok, &QPushButton::clicked, &dlg, &QDialog::accept );
-		QObject::connect( cancel, &QPushButton::clicked, &dlg, &QDialog::reject );
-
-		if ( dlg.exec() != QDialog::Accepted ) {
+		CoACD	coacd;
+		float	precision = 0.25f;
+		float	radius = 0.05f;
+		float	simplifyMaxError = 0.0f;
+		bool	replaceShape = false;
+		bool	enableCoACD = false;
+		if ( !settingsDialog( coacd, precision, radius, simplifyMaxError, replaceShape, enableCoACD ) )
 			return index;
+
+		if ( simplifyMaxError >= 0.00005f ) {
+			auto &	m = meshes.first();
+			QVector<unsigned int>	newIndices;
+			newIndices.resize( m.indices.size() );
+			size_t	n = meshopt_simplify( newIndices.data(), m.indices.constData(), size_t( m.indices.size() ),
+											&( m.verts.constFirst()[0] ), size_t( m.verts.size() ), sizeof( Vector3 ),
+											12, simplifyMaxError, meshopt_SimplifyLockBorder, nullptr );
+			newIndices.resize( qsizetype( n ) );
+			m.indices = newIndices;
+			m.removeDuplicateVertices();
 		}
 
-		/* make a convex hull from it */
-		compute_convex_hull( vertsTrans, hullVerts, hullNorms, (float)precSpin->value() );
+		if ( enableCoACD )
+			createConvexShapes( meshes, coacd );
 
-		// sort and remove duplicate vertices
-		QList<Vector4> sortedVerts;
-		for ( Vector4 vert : hullVerts ) {
-			vert /= havokScale;
+		if ( meshes.size() > 1 )
+			nif->setState( BaseModel::Processing );
+		QModelIndex	rigidBody = index;
+		// For each shape: make a convex hull or box shape from it
+		for ( const MeshData & m : meshes ) {
+			QModelIndex	iCVS;
+			qsizetype	cvsVertCount = 0;
+			qsizetype	cvsNormCount = 0;
+			if ( enableCoACD && coacd.apxMode == 1 && m.verts.size() == 8 ) {	// CoACD approximation mode = box
+				FloatVector4	boundsMin = FloatVector4( m.verts.constFirst() );
+				FloatVector4	boundsMax = boundsMin;
+				for ( qsizetype i = 1; i < 8; i++ ) {
+					FloatVector4	v = FloatVector4( m.verts.at( i ) );
+					boundsMin.minValues( v );
+					boundsMax.maxValues( v );
+				}
+				FloatVector4	boundsCenter( ( boundsMin + boundsMax ) * 0.5f );
+				FloatVector4	boundsDims( ( boundsMax - boundsMin ) * 0.5f );
+				iCVS = nif->insertNiBlock( "bhkBoxShape" );
+				nif->set<Vector3>( iCVS, "Dimensions", Vector3( boundsDims ) );
+				// radius is always 0.1?
+				// TODO: Figure out if radius is not arbitrarily set in vanilla NIFs
+				nif->set<float>( iCVS, "Radius", radius );
+				{
+					QModelIndex	i = nif->insertNiBlock( "bhkTransformShape" );
+					nif->setLink( i, "Shape", nif->getBlockNumber( iCVS ) );
+					iCVS = i;
+				}
+				nif->set<Matrix4>( iCVS, "Transform", Transform( Vector3( boundsCenter ), 1.0f ).toMatrix4() );
 
-			if ( !sortedVerts.contains( vert ) ) {
-				sortedVerts.append( vert );
-			}
-		}
-		std::sort( sortedVerts.begin(), sortedVerts.end(), Vector4::lexLessThan );
-		QListIterator<Vector4> vertIter( sortedVerts );
+			} else {									// CoACD disabled or approximation mode = convex hull
+				/* those will be filled with the CVS data */
+				QVector<Vector4> convex_verts, convex_norms;
 
-		while ( vertIter.hasNext() ) {
-			Vector4 sorted = vertIter.next();
-			convex_verts.append( sorted );
-		}
+				// to store results
+				QVector<Vector4> hullVerts, hullNorms;
 
-		// sort and remove duplicate normals
-		QList<Vector4> sortedNorms;
-		for ( Vector4 norm : hullNorms ) {
-			norm = Vector4( Vector3( norm ), norm[3] / havokScale );
+				compute_convex_hull( m.verts, hullVerts, hullNorms, precision / getHavokScale( nif ) );
 
-			if ( !sortedNorms.contains( norm ) ) {
-				sortedNorms.append( norm );
-			}
-		}
-		std::sort( sortedNorms.begin(), sortedNorms.end(), Vector4::lexLessThan );
-		QListIterator<Vector4> normIter( sortedNorms );
+				// sort and remove duplicate vertices
+				{
+					QMap<Vector4, bool>	sortedVerts;
+					for ( Vector4 vert : hullVerts )
+						sortedVerts.insert( vert, false );
+					for ( auto i = sortedVerts.constBegin(); i != sortedVerts.constEnd(); i++ )
+						convex_verts.append( i.key() );
+				}
+				if ( cvsVertCount = convex_verts.size(); cvsVertCount < 4 )
+					continue;
 
-		while ( normIter.hasNext() ) {
-			Vector4 sorted = normIter.next();
-			convex_norms.append( sorted );
-		}
+				// sort and remove duplicate normals
+				{
+					QMap<Vector4, bool>	sortedNorms;
+					for ( Vector4 norm : hullNorms )
+						sortedNorms.insert( norm, false );
+					for ( auto i = sortedNorms.constBegin(); i != sortedNorms.constEnd(); i++ )
+						convex_norms.append( i.key() );
+				}
+				cvsNormCount = convex_norms.size();
 
-		/* create the CVS block */
-		QModelIndex iCVS = nif->insertNiBlock( "bhkConvexVerticesShape" );
+				/* create the CVS block */
+				iCVS = nif->insertNiBlock( "bhkConvexVerticesShape" );
 
-		/* set CVS verts */
-		nif->set<uint>( iCVS, "Num Vertices", convex_verts.count() );
-		nif->updateArraySize( iCVS, "Vertices" );
-		nif->setArray<Vector4>( iCVS, "Vertices", convex_verts );
+				/* set CVS verts */
+				nif->set<uint>( iCVS, "Num Vertices", convex_verts.count() );
+				nif->updateArraySize( iCVS, "Vertices" );
+				nif->setArray<Vector4>( iCVS, "Vertices", convex_verts );
 
-		/* set CVS norms */
-		nif->set<uint>( iCVS, "Num Normals", convex_norms.count() );
-		nif->updateArraySize( iCVS, "Normals" );
-		nif->setArray<Vector4>( iCVS, "Normals", convex_norms );
-
-		// radius is always 0.1?
-		// TODO: Figure out if radius is not arbitrarily set in vanilla NIFs
-		nif->set<float>( iCVS, "Radius", spnRadius->value() );
-
-		QModelIndex iParent = nif->getBlockIndex( nif->getParent( nif->getBlockNumber( index ) ) );
-		QModelIndex collisionLink = nif->getIndex( iParent, "Collision Object" );
-		QModelIndex collisionObject = nif->getBlockIndex( nif->getLink( collisionLink ) );
-
-		// create bhkCollisionObject
-		if ( !collisionObject.isValid() ) {
-			collisionObject = nif->insertNiBlock( "bhkCollisionObject" );
-
-			nif->setLink( collisionLink, nif->getBlockNumber( collisionObject ) );
-			nif->setLink( collisionObject, "Target", nif->getBlockNumber( iParent ) );
-		}
-
-		QModelIndex rigidBodyLink = nif->getIndex( collisionObject, "Body" );
-		QModelIndex rigidBody = nif->getBlockIndex( nif->getLink( rigidBodyLink ) );
-
-		// create bhkRigidBody
-		if ( !rigidBody.isValid() ) {
-			rigidBody = nif->insertNiBlock( "bhkRigidBody" );
-
-			nif->setLink( rigidBodyLink, nif->getBlockNumber( rigidBody ) );
-		}
-
-		QPersistentModelIndex shapeLink = nif->getIndex( rigidBody, "Shape" );
-		QPersistentModelIndex shape = nif->getBlockIndex( nif->getLink( shapeLink ) );
-
-		QVector<qint32> shapeLinks;
-		bool replace = true;
-		if ( shape.isValid() ) {
-			shapeLinks = { nif->getBlockNumber( shape ) };
-
-			QString questionTitle = tr( "Create List Shape" );
-			QString questionBody = tr( "This collision object already has a shape. Combine into a list shape? 'No' will replace the shape." );
-
-			bool isListShape = false;
-			if ( nif->blockInherits( shape, "bhkListShape" ) ) {
-				isListShape = true;
-				questionTitle = tr( "Add to List Shape" );
-				questionBody = tr( "This collision object already has a list shape. Add to list shape? 'No' will replace the list shape." );
-				shapeLinks = nif->getLinkArray( shape, "Sub Shapes" );
+				/* set CVS norms */
+				nif->set<uint>( iCVS, "Num Normals", convex_norms.count() );
+				nif->updateArraySize( iCVS, "Normals" );
+				nif->setArray<Vector4>( iCVS, "Normals", convex_norms );
 			}
 
-			int response = QMessageBox::question( nullptr, questionTitle, questionBody,	QMessageBox::Yes, QMessageBox::No );
-			if ( response == QMessageBox::Yes ) {
-				QModelIndex iListShape = shape;
-				if ( !isListShape ) {
-					iListShape = nif->insertNiBlock( "bhkListShape" );
-					nif->setLink( shapeLink, nif->getBlockNumber( iListShape ) );
+			// radius is always 0.1?
+			// TODO: Figure out if radius is not arbitrarily set in vanilla NIFs
+			nif->set<float>( iCVS, "Radius", radius );
+
+			QModelIndex collisionLink = nif->getIndex( iParent, "Collision Object" );
+			QModelIndex collisionObject = nif->getBlockIndex( nif->getLink( collisionLink ) );
+
+			// create bhkCollisionObject
+			if ( !collisionObject.isValid() ) {
+				collisionObject = nif->insertNiBlock( "bhkCollisionObject" );
+
+				nif->setLink( collisionLink, nif->getBlockNumber( collisionObject ) );
+				nif->setLink( collisionObject, "Target", nif->getBlockNumber( iParent ) );
+			}
+
+			QModelIndex rigidBodyLink = nif->getIndex( collisionObject, "Body" );
+			rigidBody = nif->getBlockIndex( nif->getLink( rigidBodyLink ) );
+
+			// create bhkRigidBody
+			if ( !rigidBody.isValid() ) {
+				rigidBody = nif->insertNiBlock( "bhkRigidBody" );
+
+				nif->setLink( rigidBodyLink, nif->getBlockNumber( rigidBody ) );
+			}
+
+			QPersistentModelIndex shapeLink = nif->getIndex( rigidBody, "Shape" );
+			QPersistentModelIndex shape = nif->getBlockIndex( nif->getLink( shapeLink ) );
+
+			if ( replaceShape && shape.isValid() ) {
+				replaceShape = false;
+				nif->setLink( shapeLink, -1 );
+				// Remove all old shapes
+				spRemoveBranch().castIfApplicable( nif, shape );
+				shape = QModelIndex();
+			}
+
+			QVector<qint32> shapeLinks;
+			bool replace = true;
+			if ( shape.isValid() ) {
+				shapeLinks = { nif->getBlockNumber( shape ) };
+
+				QString questionTitle = tr( "Create List Shape" );
+				QString questionBody = tr( "This collision object already has a shape. Combine into a list shape? 'No' will replace the shape." );
+
+				bool isListShape = false;
+				if ( nif->blockInherits( shape, "bhkListShape" ) ) {
+					isListShape = true;
+					questionTitle = tr( "Add to List Shape" );
+					questionBody = tr( "This collision object already has a list shape. Add to list shape? 'No' will replace the list shape." );
+					shapeLinks = nif->getLinkArray( shape, "Sub Shapes" );
 				}
 
-				shapeLinks << nif->getBlockNumber( iCVS );
-				nif->set<uint>( iListShape, "Num Sub Shapes", shapeLinks.size() );
-				nif->updateArraySize( iListShape, "Sub Shapes" );
-				nif->setLinkArray( iListShape, "Sub Shapes", shapeLinks );
-				nif->set<uint>( iListShape, "Num Filters", shapeLinks.size() );
-				nif->updateArraySize( iListShape, "Filters" );
-				replace = false;
+				int response = QMessageBox::Yes;
+				if ( meshes.size() < 2 ) {
+					response = QMessageBox::question( nullptr, questionTitle, questionBody,
+														QMessageBox::Yes, QMessageBox::No );
+				}
+				if ( response == QMessageBox::Yes ) {
+					QModelIndex iListShape = shape;
+					if ( !isListShape ) {
+						iListShape = nif->insertNiBlock( "bhkListShape" );
+						nif->setLink( shapeLink, nif->getBlockNumber( iListShape ) );
+					}
+
+					shapeLinks << nif->getBlockNumber( iCVS );
+					nif->set<uint>( iListShape, "Num Sub Shapes", shapeLinks.size() );
+					nif->updateArraySize( iListShape, "Sub Shapes" );
+					nif->setLinkArray( iListShape, "Sub Shapes", shapeLinks );
+					nif->set<uint>( iListShape, "Num Filters", shapeLinks.size() );
+					nif->updateArraySize( iListShape, "Filters" );
+					replace = false;
+				}
+			}
+
+			if ( replace ) {
+				// Replace link
+				nif->setLink( shapeLink, nif->getBlockNumber( iCVS ) );
+				// Remove all old shapes
+				spRemoveBranch().castIfApplicable( nif, shape );
+			}
+
+			if ( cvsVertCount > 0 ) {
+				Message::append( nullptr, Spell::tr( "Create Convex Shapes" ),
+									Spell::tr( "Created hull with %1 vertices, %2 normals" )
+									.arg( cvsVertCount ).arg( cvsNormCount ), QMessageBox::Information );
 			}
 		}
 
-		if ( replace ) {
-			// Replace link
-			nif->setLink( shapeLink, nif->getBlockNumber( iCVS ) );
-			// Remove all old shapes
-			spRemoveBranch rm;
-			rm.castIfApplicable( nif, shape );
-		}
+		if ( meshes.size() > 1 )
+			nif->restoreState();
 
-		Message::info( nullptr,
-					   Spell::tr( "Created hull with %1 vertices, %2 normals" )
-						.arg( convex_verts.count() )
-						.arg( convex_norms.count() )
-		);
-
-		return (iCVS.isValid()) ? iCVS : rigidBody;
+		return rigidBody;
 	}
 };
 
+void spCreateCVS::MeshData::removeDuplicateVertices()
+{
+	QMap<Vector3, unsigned int>	vertSet;
+	QVector<unsigned int>	vertMap;
+	vertMap.resize( verts.size() );
+	unsigned int	n = 0;
+	for ( const Vector3 & v : verts ) {
+		qsizetype	j = qsizetype( &v - &(verts.constFirst()) );
+		if ( auto i = vertSet.constFind( v ); i != vertSet.constEnd() ) {
+			vertMap[j] = i.value();
+			continue;
+		}
+		vertSet.insert( v, n );
+		vertMap[j] = n;
+		verts[n] = v;
+		n++;
+	}
+	verts.resize( qsizetype( n ) );
+	QVector<unsigned int>	newIndices;
+	newIndices.reserve( indices.size() );
+	for ( qsizetype i = 0; ( i + 3 ) <= indices.size(); i = i + 3 ) {
+		unsigned int	v0 = indices.at( i );
+		unsigned int	v1 = indices.at( i + 1 );
+		unsigned int	v2 = indices.at( i + 2 );
+		if ( qsizetype( std::max( std::max( v0, v1 ), v2 ) ) >= vertMap.size() )
+			continue;
+		v0 = vertMap.at( v0 );
+		v1 = vertMap.at( v1 );
+		v2 = vertMap.at( v2 );
+		if ( v0 == v1 || v0 == v2 || v1 == v2 )
+			continue;
+		newIndices.append( v0 );
+		newIndices.append( v1 );
+		newIndices.append( v2 );
+	}
+	indices = newIndices;
+}
+
+float spCreateCVS::getHavokScale( const NifModel * nif )
+{
+	if ( nif->getBSVersion() >= 170 )
+		return 1.0f;
+	if ( nif->checkVersion( 0x14020007, 0x14020007 ) && nif->getUserVersion() >= 12 )
+		return havokConst * 10.0f;
+	return havokConst;
+}
+
+void spCreateCVS::getShapeData( QVector<MeshData> & meshes, NifModel * nif, const Node * node, int rootNode )
+{
+	if ( !node )
+		return;
+	const Shape *	s = dynamic_cast< const Shape * >( node );
+	if ( !s ) {
+		const auto &	c = node->getChildren().list();
+		for ( auto n : c )
+			getShapeData( meshes, nif, n, rootNode );
+		return;
+	}
+
+	if ( s->verts.isEmpty() || s->triangles.isEmpty() )
+		return;
+
+	if ( meshes.isEmpty() )
+		meshes.resize( 1 );
+	MeshData &	m = meshes.last();
+	qsizetype	vertexOffs = m.verts.size();
+	qsizetype	indicesOffs = m.indices.size();
+	m.verts.resize( vertexOffs + s->verts.size() );
+	const Transform &	trans = s->localTrans( rootNode );
+	Vector3 *	vp = m.verts.data() + vertexOffs;
+	float	havokScale = getHavokScale( nif );
+	for ( const Vector3 & v : s->verts ) {
+		*vp = trans * v / havokScale;
+		vp++;
+	}
+	m.indices.resize( indicesOffs + ( s->triangles.size() * 3 ) );
+	unsigned int *	tp = m.indices.data() + indicesOffs;
+	for ( const Triangle & t : s->triangles ) {
+		tp[0] = (unsigned int) vertexOffs + t[0];
+		tp[1] = (unsigned int) vertexOffs + t[1];
+		tp[2] = (unsigned int) vertexOffs + t[2];
+		tp = tp + 3;
+	}
+}
+
+void spCreateCVS::createConvexShapes( QVector<MeshData> & meshes, CoACD & coacd )
+{
+	if ( meshes.isEmpty() )
+		return;
+	const MeshData &	m = meshes.constFirst();
+	if ( m.verts.isEmpty() || m.indices.isEmpty() )
+		return;
+
+	CoACD::Mesh	coacdInput;
+	qsizetype	numVerts = m.verts.size();
+	qsizetype	numIndices = m.indices.size();
+	qsizetype	numTriangles = numIndices / 3;
+	coacdInput.vertices.resize( size_t( numVerts ) );
+	coacdInput.indices.resize( size_t( numTriangles ) );
+	for ( qsizetype i = 0; i < numVerts; i++ ) {
+		coacdInput.vertices[i][0] = m.verts.at( i )[0];
+		coacdInput.vertices[i][1] = m.verts.at( i )[1];
+		coacdInput.vertices[i][2] = m.verts.at( i )[2];
+	}
+	for ( qsizetype i = 0; i < numTriangles; i++ ) {
+		coacdInput.indices[i][0] = int( m.indices.at( i * 3 ) );
+		coacdInput.indices[i][1] = int( m.indices.at( i * 3 + 1 ) );
+		coacdInput.indices[i][2] = int( m.indices.at( i * 3 + 2 ) );
+	}
+
+	std::vector< CoACD::Mesh >	coacdOutput = coacd.processMesh( coacdInput );
+	if ( coacdOutput.empty() )
+		return;
+
+	meshes.clear();
+	meshes.resize( qsizetype( coacdOutput.size() ) );
+	for ( size_t j = 0; j < coacdOutput.size(); j++ ) {
+		const CoACD::Mesh &	o = coacdOutput[j];
+		MeshData &	p = meshes[j];
+		numVerts = qsizetype( o.vertices.size() );
+		numTriangles = qsizetype( o.indices.size() );
+		numIndices = numTriangles * 3;
+		p.verts.resize( numVerts );
+		p.indices.resize( numIndices );
+		Vector3 *	vp = p.verts.data();
+		for ( qsizetype i = 0; i < numVerts; i++ ) {
+			*vp = Vector3( float( o.vertices[i][0] ), float( o.vertices[i][1] ), float( o.vertices[i][2] ) );
+			vp++;
+		}
+		unsigned int *	tp = p.indices.data();
+		for ( qsizetype i = 0; i < numTriangles; i++ ) {
+			tp[0] = (unsigned int) o.indices[i][0];
+			tp[1] = (unsigned int) o.indices[i][1];
+			tp[2] = (unsigned int) o.indices[i][2];
+			tp = tp + 3;
+		}
+	}
+}
+
+void spCreateCVS::addLabel( QBoxLayout * parent, const QString & l )
+{
+	parent->addWidget( new QLabel( l ) );
+}
+
+QDoubleSpinBox * spCreateCVS::addSpinBox( QBoxLayout * parent, const QString & l,
+											double v, double minVal, double maxVal, int nDigits )
+{
+	QHBoxLayout *	hbox = new QHBoxLayout;
+	parent->addLayout( hbox );
+	QDoubleSpinBox *	o = new QDoubleSpinBox;
+	o->setAccelerated( true );
+	o->setRange( minVal, maxVal );
+	o->setDecimals( nDigits );
+	o->setSingleStep( std::pow( 10.0, double( 1 - nDigits ) ) );
+	o->setValue( v );
+	hbox->addWidget( new QLabel( l ) );
+	hbox->addWidget( o );
+	return o;
+}
+
+QSpinBox * spCreateCVS::addSpinBox( QBoxLayout * parent, const QString & l, int v, int minVal, int maxVal )
+{
+	QHBoxLayout *	hbox = new QHBoxLayout;
+	parent->addLayout( hbox );
+	QSpinBox *	o = new QSpinBox;
+	o->setAccelerated( true );
+	o->setRange( minVal, maxVal );
+	o->setSingleStep( 1 );
+	o->setValue( v );
+	hbox->addWidget( new QLabel( l ) );
+	hbox->addWidget( o );
+	return o;
+}
+
+QCheckBox * spCreateCVS::addCheckBox( QBoxLayout * parent, const QString & l, bool v )
+{
+	QCheckBox *	o = new QCheckBox( l );
+	o->setChecked( v );
+	parent->addWidget( o );
+	return o;
+}
+
+QComboBox * spCreateCVS::addComboBox( QBoxLayout * parent, const QString & l, int v, const QStringList & itemList )
+{
+	QHBoxLayout *	hbox = new QHBoxLayout;
+	parent->addLayout( hbox );
+	QComboBox *	o = new QComboBox;
+	o->addItems( itemList );
+	o->setCurrentIndex( v );
+	hbox->addWidget( new QLabel( l ) );
+	hbox->addWidget( o );
+	return o;
+}
+
+bool spCreateCVS::settingsDialog( CoACD & coacd, float & precision, float & radius, float & simplifyMaxError,
+									bool & replaceShape, bool & enableCoACD )
+{
+	{
+		QSettings	settings;
+		settings.beginGroup( "Spells/Havok/Create Convex Shapes" );
+		precision = settings.value( "Precision", 0.25f ).toFloat();
+		radius = settings.value( "Radius", 0.05f ).toFloat();
+		simplifyMaxError = settings.value( "Simplify Max Error", 0.0f ).toFloat();
+		replaceShape = settings.value( "Replace Shape", false ).toBool();
+		enableCoACD = settings.value( "Enable CoACD", false ).toBool();
+		coacd.loadSettings( settings );
+		settings.endGroup();
+	}
+
+	// ask for precision
+	QDialog dlg;
+	QVBoxLayout * vbox = new QVBoxLayout;
+	dlg.setLayout( vbox );
+
+	addLabel( vbox, Spell::tr( "Enter the maximum Qhull roundoff error to use (in NIF units)" ) );
+	addLabel( vbox, Spell::tr( "Larger values will give a less precise but better performing hull" ) );
+	auto precSpin = addSpinBox( vbox, QString(), precision, 0.0, 5.0, 3 );
+	auto spnSimplifyMaxError = addSpinBox( vbox, Spell::tr( "Pre-Simplify Max Error (relative to mesh size)" ),
+											simplifyMaxError, 0.0, 0.5, 4 );
+	auto chkReplaceShape = addCheckBox( vbox, Spell::tr( "Replace Existing Collision Shapes" ), replaceShape );
+	auto spnRadius = addSpinBox( vbox, Spell::tr( "Collision Radius (in Havok units)" ), radius, 0.0, 0.5, 4 );
+
+	addLabel( vbox, QString() );
+
+	auto chkEnableCoACD = addCheckBox( vbox, Spell::tr( "Enable CoACD" ), enableCoACD );
+
+	auto spnThreshold = addSpinBox( vbox, Spell::tr( "Threshold" ), coacd.threshold, 0.01, 1.0, 3 );
+	auto spnMaxConvexHull = addSpinBox( vbox, Spell::tr( "Max Convex Hull" ), coacd.maxConvexHull, -1, 256 );
+	auto chkPreprocessMode = addComboBox( vbox, Spell::tr( "Preprocess Mode" ), coacd.preprocessMode,
+											{ Spell::tr( "Auto" ), Spell::tr( "On" ), Spell::tr( "Off" ) } );
+	auto spnPrepResolution = addSpinBox( vbox, Spell::tr( "Preprocess Resolution" ), coacd.prepResolution, 10, 1000 );
+	auto spnSampleResolution = addSpinBox( vbox, Spell::tr( "Sample Resolution" ), coacd.sampleResolution, 100, 20000 );
+	auto spnMCTSNodes = addSpinBox( vbox, Spell::tr( "MCTS Nodes" ), coacd.mctsNodes, 5, 100 );
+	auto spnMCTSIteration = addSpinBox( vbox, Spell::tr( "MCTS Iteration" ), coacd.mctsIteration, 10, 1000 );
+	auto spnMCTSMaxDepth = addSpinBox( vbox, Spell::tr( "MCTS Max Depth" ), coacd.mctsMaxDepth, 1, 5 );
+	auto chkPCA = addCheckBox( vbox, Spell::tr( "Use PCA" ), coacd.pca );
+	auto spnMaxCHVertex = addSpinBox( vbox, Spell::tr( "Max Convex Hull Vertex" ), coacd.maxCHVertex, -1, 4096 );
+	auto spnExtrudeMargin = addSpinBox( vbox, Spell::tr( "Extrude Margin (in Havok units)" ), coacd.extrudeMargin,
+										0.0, 1.0, 4 );
+	auto chkApxMode = addComboBox( vbox, Spell::tr( "Approximation Mode" ), coacd.apxMode,
+									{ Spell::tr( "Convex Hull" ), Spell::tr( "Box" ) } );
+	auto spnSeed = addSpinBox( vbox, Spell::tr( "Random Seed" ), coacd.seed, 0, 0x7FFFFFFF );
+
+	addLabel( vbox, QString() );
+
+	QHBoxLayout * hbox = new QHBoxLayout;
+	vbox->addLayout( hbox );
+
+	QPushButton * ok = new QPushButton;
+	ok->setText( Spell::tr( "Ok" ) );
+	hbox->addWidget( ok );
+
+	QPushButton * cancel = new QPushButton;
+	cancel->setText( Spell::tr( "Cancel" ) );
+	hbox->addWidget( cancel );
+
+	QObject::connect( ok, &QPushButton::clicked, &dlg, &QDialog::accept );
+	QObject::connect( cancel, &QPushButton::clicked, &dlg, &QDialog::reject );
+
+	if ( dlg.exec() != QDialog::Accepted ) {
+		return false;
+	}
+
+	precision = float( precSpin->value() );
+	radius = float( spnRadius->value() );
+	simplifyMaxError = float( spnSimplifyMaxError->value() );
+	replaceShape = chkReplaceShape->isChecked();
+	enableCoACD = chkEnableCoACD->isChecked();
+
+	QSettings	settings;
+	settings.beginGroup( "Spells/Havok/Create Convex Shapes" );
+	settings.setValue( "Precision", QVariant( precision ) );
+	settings.setValue( "Radius", QVariant( radius ) );
+	settings.setValue( "Simplify Max Error", QVariant( simplifyMaxError ) );
+	settings.setValue( "Replace Shape", QVariant( replaceShape ) );
+	settings.setValue( "Enable CoACD", QVariant( enableCoACD ) );
+	if ( enableCoACD ) {
+		coacd.threshold = float( spnThreshold->value() );
+		coacd.maxConvexHull = spnMaxConvexHull->value();
+		coacd.preprocessMode = chkPreprocessMode->currentIndex();
+		coacd.prepResolution = spnPrepResolution->value();
+		coacd.sampleResolution = spnSampleResolution->value();
+		coacd.mctsNodes = spnMCTSNodes->value();
+		coacd.mctsIteration = spnMCTSIteration->value();
+		coacd.mctsMaxDepth = spnMCTSMaxDepth->value();
+		coacd.pca = chkPCA->isChecked();
+		coacd.merge = ( coacd.maxConvexHull > 0 );
+		coacd.maxCHVertex = spnMaxCHVertex->value();
+		coacd.decimate = ( coacd.maxCHVertex > 0 );
+		coacd.extrudeMargin = float( spnExtrudeMargin->value() );
+		coacd.extrude = ( coacd.extrudeMargin >= 0.00005f );
+		coacd.apxMode = chkApxMode->currentIndex();
+		coacd.seed = spnSeed->value();
+		coacd.saveSettings( settings );
+	}
+	settings.endGroup();
+
+	return true;
+}
+
 REGISTER_SPELL( spCreateCVS )
+
 
 //! Transforms Havok constraints
 class spConstraintHelper final : public Spell
@@ -330,13 +680,17 @@ public:
 		if ( !iConstraintData.isValid() )
 			return index;
 
+		Matrix r1 = transA.rotation;
+		Matrix r2 = transB.rotation.inverted();
+
 		Vector3 pivot = Vector3( nif->get<Vector4>( iConstraintData, "Pivot A" ) );
 		pivot = transA * pivot;
-		pivot = transB.rotation.inverted() * ( pivot - transB.translation ) / transB.scale;
-		nif->set<Vector4>( iConstraintData, "Pivot B", { pivot[0], pivot[1], pivot[2], 0 } );
+		pivot = r2 * ( pivot - transB.translation ) / transB.scale;
+		nif->set<Vector4>( iConstraintData, "Pivot B", Vector4( pivot ) );
 
-		QString axisA, axisB, twistA, twistB, twistA2, twistB2;
-		if ( name.endsWith( "HingeConstraint" ) ) {
+		const char * axisA = nullptr, * axisB = nullptr, * twistA = nullptr, * twistB = nullptr;
+		const char * twistA2 = nullptr, * twistB2 = nullptr, * motorA = nullptr, * motorB = nullptr;
+		if ( name.endsWith( QLatin1StringView("HingeConstraint") ) ) {
 			axisA = "Axis A";
 			axisB = "Axis B";
 			twistA = "Perp Axis In A1";
@@ -348,26 +702,31 @@ public:
 			axisB = "Plane B";
 			twistA = "Twist A";
 			twistB = "Twist B";
+			motorA = "Motor A";
+			motorB = "Motor B";
 		}
 
-		if ( axisA.isEmpty() || axisB.isEmpty() || twistA.isEmpty() || twistB.isEmpty() )
+		if ( !( axisA && axisB && twistA && twistB ) )
 			return index;
 
-		Vector3 axis = Vector3( nif->get<Vector4>( iConstraintData, axisA ) );
-		axis = transA.rotation * axis;
-		axis = transB.rotation.inverted() * axis;
-		nif->set<Vector4>( iConstraintData, axisB, { axis[0], axis[1], axis[2], 0 } );
+		auto axis = FloatVector4( nif->get<Vector4>( iConstraintData, axisA ) );
+		auto twist = FloatVector4( nif->get<Vector4>( iConstraintData, twistA ) );
 
-		axis = Vector3( nif->get<Vector4>( iConstraintData, twistA ) );
-		axis = transA.rotation * axis;
-		axis = transB.rotation.inverted() * axis;
-		nif->set<Vector4>( iConstraintData, twistB, { axis[0], axis[1], axis[2], 0 } );
+		if ( motorA )
+			nif->set<Vector4>( iConstraintData, motorA, Vector4( twist.crossProduct3( axis ) ) );
 
-		if ( !twistA2.isEmpty() && !twistB2.isEmpty() ) {
-			axis = Vector3( nif->get<Vector4>( iConstraintData, twistA2 ) );
-			axis = transA.rotation * axis;
-			axis = transB.rotation.inverted() * axis;
-			nif->set<Vector4>( iConstraintData, twistB2, { axis[0], axis[1], axis[2], 0 } );
+		axis = FloatVector4( r2 * ( r1 * Vector3( axis ) ) );
+		nif->set<Vector4>( iConstraintData, axisB, Vector4( axis ) );
+
+		twist = FloatVector4( r2 * ( r1 * Vector3( twist ) ) );
+		nif->set<Vector4>( iConstraintData, twistB, Vector4( twist ) );
+
+		if ( motorB )
+			nif->set<Vector4>( iConstraintData, motorB, Vector4( twist.crossProduct3( axis ) ) );
+
+		if ( twistA2 && twistB2 ) {
+			twist = FloatVector4( r2 * ( r1 * Vector3( nif->get<Vector4>( iConstraintData, twistA2 ) ) ) );
+			nif->set<Vector4>( iConstraintData, twistB2, Vector4( twist ) );
 		}
 
 		return index;

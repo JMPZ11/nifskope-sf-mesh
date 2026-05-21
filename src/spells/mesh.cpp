@@ -1798,6 +1798,34 @@ REGISTER_SPELL( spUpdateCenterRadius )
 
 //! spUpdateBounds: updates Bounds of BSTriShape or BSGeometry
 
+static BoundSphere calculateBoundingSphere( const Vector3 * verts, qsizetype numVerts )
+{
+	QSettings	settings;
+	BoundSphere	tmp;
+	if ( numVerts > 0 && !settings.value( "Settings/Nif/Use Miniball", true ).toBool() ) {
+		FloatVector4	bndMin = FloatVector4::convertVector3( &( verts[0][0] ) );
+		FloatVector4	bndMax = bndMin;
+		for ( qsizetype i = 1; i < numVerts; i++ ) {
+			FloatVector4	v = FloatVector4::convertVector3( &( verts[i][0] ) );
+			bndMin.minValues( v );
+			bndMax.maxValues( v );
+		}
+		FloatVector4	bndCenter = ( bndMin + bndMax ) * 0.5f;
+		float	bndRadius2 = 0.0f;
+		for ( qsizetype i = 0; i < numVerts; i++ ) {
+			FloatVector4	d = FloatVector4::convertVector3( &( verts[i][0] ) );
+			d -= bndCenter;
+			bndRadius2 = std::max( bndRadius2, d.dotProduct3( d ) );
+		}
+		tmp.center = Vector3( bndCenter );
+		tmp.radius = float( std::sqrt( bndRadius2 ) );
+	} else {
+		tmp = BoundSphere( verts, numVerts, true );
+	}
+	tmp.radius *= settings.value( "Settings/Nif/Bound Sphere Scale", 1.0f ).toFloat();
+	return tmp;
+}
+
 bool spUpdateBounds::calculateBoneBounds(
 	NifModel * nif, const QPersistentModelIndex & iBlock, const MeshFile * meshFile )
 {
@@ -1885,7 +1913,7 @@ bool spUpdateBounds::calculateBoneBounds(
 			bounds.center = Vector3( 0.0f, 0.0f, 0.0f );
 			bounds.radius = 0.0f;
 		} else {
-			bounds = BoundSphere( vertices.data(), qsizetype(vertices.size()), true );
+			bounds = calculateBoundingSphere( vertices.data(), qsizetype(vertices.size()) );
 		}
 		bounds.update( nif, iBone );
 	}
@@ -1969,7 +1997,7 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 				bndDims = FloatVector4( float(FLT_MAX) );
 			} else {
 				// Creating a bounding sphere and bounding box from the verts
-				bounds = BoundSphere( meshFile.positions, true );
+				bounds = calculateBoundingSphere( meshFile.positions.constData(), meshFile.positions.size() );
 				calculateBoundingBox( bndCenter, bndDims, meshFile.positions );
 			}
 			boundsCalculated = true;
@@ -2018,7 +2046,7 @@ QModelIndex spUpdateBounds::cast( NifModel * nif, const QModelIndex & index )
 		}
 
 		// Creating a bounding sphere from the verts
-		bounds = BoundSphere( verts, true );
+		bounds = calculateBoundingSphere( verts.constData(), verts.size() );
 
 		if ( nif->getBSVersion() >= 151 ) {
 			// Fallout 76: update bounding box

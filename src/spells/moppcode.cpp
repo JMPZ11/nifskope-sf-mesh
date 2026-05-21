@@ -1,5 +1,10 @@
 #include "spellbook.h"
 
+#include <QCoreApplication>
+#include <QDataStream>
+#include <QDir>
+#include <QProcess>
+#include <QTemporaryFile>
 
 // Brief description is deliberately not autolinked to class Spell
 /*! \file moppcode.cpp
@@ -11,119 +16,78 @@
  * Most classes here inherit from the Spell class.
  */
 
-// Need to include headers before testing this
-#ifdef Q_OS_WIN32
-
-// This code is only intended to be run with Win32 platform.
-
-extern "C" void * __stdcall SetDllDirectoryA( const char * lpPathName );
-extern "C" void * __stdcall LoadLibraryA( const char * lpModuleName );
-extern "C" void * __stdcall GetProcAddress ( void * hModule, const char * lpProcName );
-extern "C" void __stdcall FreeLibrary( void * lpModule );
-
-//! Interface to the external MOPP library
-class HavokMoppCode
+struct HavokMoppCode
 {
-private:
-	typedef int (__stdcall * fnGenerateMoppCode)( int nVerts, Vector3 const * verts, int nTris, Triangle const * tris );
-	typedef int (__stdcall * fnGenerateMoppCodeWithSubshapes)( int nShapes, int const * shapes, int nVerts, Vector3 const * verts, int nTris, Triangle const * tris );
-	typedef int (__stdcall * fnRetrieveMoppCode)( int nBuffer, char * buffer );
-	typedef int (__stdcall * fnRetrieveMoppScale)( float * value );
-	typedef int (__stdcall * fnRetrieveMoppOrigin)( Vector3 * value );
+	Vector3 origin;
+	float scale = 1.0f;
+	QByteArray data;
 
-	void * hMoppLib;
-	fnGenerateMoppCode GenerateMoppCode;
-	fnRetrieveMoppCode RetrieveMoppCode;
-	fnRetrieveMoppScale RetrieveMoppScale;
-	fnRetrieveMoppOrigin RetrieveMoppOrigin;
-	fnGenerateMoppCodeWithSubshapes GenerateMoppCodeWithSubshapes;
+	bool CalculateMoppCode( const QVector<int> & subshapeVerts, const QVector<Vector3> & verts,
+							const QVector<Triangle> & triangles );
+};
 
-public:
-	HavokMoppCode() : hMoppLib( 0 ), GenerateMoppCode( 0 ), RetrieveMoppCode( 0 ), RetrieveMoppScale( 0 ),
-		  RetrieveMoppOrigin( 0 ), GenerateMoppCodeWithSubshapes( 0 )
+bool HavokMoppCode::CalculateMoppCode(
+	const QVector<int> & subshapeVerts, const QVector<Vector3> & verts, const QVector<Triangle> & triangles )
+{
+	QTemporaryFile f;
+	if ( !f.open() )
+		return false;
+
 	{
-	}
+		QDataStream s( &f );
+		s.setByteOrder( QDataStream::LittleEndian );
+		s.setFloatingPointPrecision( QDataStream::SinglePrecision );
 
-	~HavokMoppCode()
-	{
-		if ( hMoppLib )
-			FreeLibrary( hMoppLib );
-	}
-
-	bool Initialize()
-	{
-		if ( !hMoppLib ) {
-			SetDllDirectoryA( QCoreApplication::applicationDirPath().toLocal8Bit().constData() );
-			hMoppLib = LoadLibraryA( "NifMopp.dll" );
-			GenerateMoppCode   = (fnGenerateMoppCode)GetProcAddress( hMoppLib, "GenerateMoppCode" );
-			RetrieveMoppCode   = (fnRetrieveMoppCode)GetProcAddress( hMoppLib, "RetrieveMoppCode" );
-			RetrieveMoppScale  = (fnRetrieveMoppScale)GetProcAddress( hMoppLib, "RetrieveMoppScale" );
-			RetrieveMoppOrigin = (fnRetrieveMoppOrigin)GetProcAddress( hMoppLib, "RetrieveMoppOrigin" );
-			GenerateMoppCodeWithSubshapes = (fnGenerateMoppCodeWithSubshapes)GetProcAddress( hMoppLib, "GenerateMoppCodeWithSubshapes" );
+		s << quint32( 0x4853454D );		// "MESH"
+		s << quint32( subshapeVerts.size() );
+		for ( auto i : subshapeVerts )
+			s << quint32( i );
+		s << quint32( verts.size() );
+		for ( const Vector3 & v : verts ) {
+			s << float( v[0] );
+			s << float( v[1] );
+			s << float( v[2] );
 		}
-
-		return (GenerateMoppCode && RetrieveMoppCode && RetrieveMoppScale && RetrieveMoppOrigin);
+		s << quint32( triangles.size() );
+		for ( const Triangle & t : triangles ) {
+			s << quint16( t[0] );
+			s << quint16( t[1] );
+			s << quint16( t[2] );
+		}
 	}
+	f.close();
 
-	QByteArray CalculateMoppCode( QVector<Vector3> const & verts, QVector<Triangle> const & tris, Vector3 * origin, float * scale )
-	{
-		QByteArray code;
+	QString nifMoppPath = QDir( QCoreApplication::applicationDirPath() ).filePath( "NifMopp.exe" );
+#ifdef Q_OS_WIN32
+	int r = QProcess::execute( nifMoppPath, QStringList( f.fileName() ) );
+#else
+	int r = QProcess::execute( QString( "wine" ), QStringList( { nifMoppPath, f.fileName() } ) );
+#endif
+	if ( r != 0 || !f.open() )
+		return false;
 
-		if ( Initialize() ) {
-			int len = GenerateMoppCode( verts.size(), &verts[0], tris.size(), &tris[0] );
+	if ( f.size() >= 25 ) {
+		QDataStream s( &f );
+		s.setByteOrder( QDataStream::LittleEndian );
+		s.setFloatingPointPrecision( QDataStream::SinglePrecision );
 
-			if ( len > 0 ) {
-				code.resize( len );
-
-				if ( 0 != RetrieveMoppCode( len, code.data() ) ) {
-					if ( scale )
-						RetrieveMoppScale( scale );
-
-					if ( origin )
-						RetrieveMoppOrigin( origin );
-				} else {
-					code.clear();
-				}
+		quint32 tmp;
+		if ( s >> tmp; tmp == 0x50504F4D ) {	// "MOPP"
+			s >> origin[0];
+			s >> origin[1];
+			s >> origin[2];
+			s >> scale;
+			s >> tmp;
+			if ( f.size() == ( qint64( tmp ) + 24 ) ) {
+				data.resize( qsizetype( tmp ) );
+				s.readRawData( data.data(), tmp );
 			}
 		}
-
-		return code;
 	}
+	f.close();
 
-	QByteArray CalculateMoppCode( QVector<int> const & subShapesVerts,
-	                              QVector<Vector3> const & verts,
-	                              QVector<Triangle> const & tris,
-	                              Vector3 * origin, float * scale )
-	{
-		QByteArray code;
-
-		if ( Initialize() ) {
-			int len;
-
-			if ( GenerateMoppCodeWithSubshapes )
-				len = GenerateMoppCodeWithSubshapes( subShapesVerts.size(), &subShapesVerts[0], verts.size(), &verts[0], tris.size(), &tris[0] );
-			else
-				len = GenerateMoppCode( verts.size(), &verts[0], tris.size(), &tris[0] );
-
-			if ( len > 0 ) {
-				code.resize( len );
-
-				if ( 0 != RetrieveMoppCode( len, code.data() ) ) {
-					if ( scale )
-						RetrieveMoppScale( scale );
-
-					if ( origin )
-						RetrieveMoppOrigin( origin );
-				} else {
-					code.clear();
-				}
-			}
-		}
-
-		return code;
-	}
+	return !data.isEmpty();
 }
-TheHavokCode;
 
 //! Update Havok MOPP for a given shape
 class spMoppCode final : public Spell
@@ -134,15 +98,10 @@ public:
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
-		if ( nif->getUserVersion() != 10 && nif->getUserVersion() != 11 )
-			return false;
-
-		if ( TheHavokCode.Initialize() ) {
-			//QModelIndex iData = nif->getBlockIndex( nif->getLink( index, "Data" ) );
-
+		if ( auto v = nif->getUserVersion(); v == 10 || v == 11 ) {
 			if ( nif->isNiBlock( index, "bhkMoppBvTreeShape" ) ) {
 				return ( nif->checkVersion( 0x14000004, 0x14000005 )
-				         || nif->checkVersion( 0x14020007, 0x14020007 ) );
+						|| nif->checkVersion( 0x14020007, 0x14020007 ) );
 			}
 		}
 
@@ -151,11 +110,6 @@ public:
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & iBlock ) override final
 	{
-		if ( !TheHavokCode.Initialize() ) {
-			Message::critical( nullptr, Spell::tr( "Unable to locate NifMopp.dll" ) );
-			return iBlock;
-		}
-
 		QPersistentModelIndex ibhkMoppBvTreeShape = iBlock;
 
 		QModelIndex ibhkPackedNiTriStripsShape = nif->getBlockIndex( nif->getLink( ibhkMoppBvTreeShape, "Shape" ) );
@@ -208,25 +162,20 @@ public:
 			return iBlock;
 		}
 
-		Vector3 origin;
-		float scale;
-		QByteArray moppcode = TheHavokCode.CalculateMoppCode( subshapeVerts, verts, triangles, &origin, &scale );
-
-		if ( moppcode.size() == 0 ) {
-			Message::critical( nullptr, Spell::tr( "Failed to generate MOPP code" ) );
-		} else {
+		if ( HavokMoppCode moppcode; moppcode.CalculateMoppCode( subshapeVerts, verts, triangles ) ) {
 			auto iMoppCode = nif->getIndex( ibhkMoppBvTreeShape, "MOPP Code" );
 
-			nif->set<Vector4>( nif->getIndex( iMoppCode, "Offset" ), Vector4(origin, scale) );
+			nif->set<Vector4>( nif->getIndex( iMoppCode, "Offset" ), Vector4( moppcode.origin, moppcode.scale ) );
 
 			QModelIndex iCodeSize = nif->getIndex( iMoppCode, "Data Size" );
 			QModelIndex iCode = nif->getIndex( nif->getIndex( iMoppCode, "Data" ), 0 );
 
 			if ( iCodeSize.isValid() && iCode.isValid() ) {
-				nif->set<int>( iCodeSize, moppcode.size() );
-				nif->updateArraySize( iCode );
-				nif->set<QByteArray>( iCode, moppcode );
+				nif->set<int>( iCodeSize, moppcode.data.size() );
+				nif->set<QByteArray>( iCode, moppcode.data );
 			}
+		} else {
+			Message::critical( nullptr, Spell::tr( "Failed to generate MOPP code" ) );
 		}
 
 		return iBlock;
@@ -244,14 +193,12 @@ public:
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & idx ) override final
 	{
-		if ( nif && nif->getUserVersion() != 10 && nif->getUserVersion() != 11 )
+		if ( !nif || idx.isValid() )
 			return false;
 
-		if ( TheHavokCode.Initialize() ) {
-			if ( nif && !idx.isValid() ) {
-				return ( nif->checkVersion( 0x14000004, 0x14000005 )
-				         || nif->checkVersion( 0x14020007, 0x14020007 ) );
-			}
+		if ( auto v = nif->getUserVersion(); v == 10 || v == 11 ) {
+			return ( nif->checkVersion( 0x14000004, 0x14000005 )
+					|| nif->checkVersion( 0x14020007, 0x14020007 ) );
 		}
 
 		return false;
@@ -279,6 +226,4 @@ public:
 };
 
 REGISTER_SPELL( spAllMoppCodes )
-
-#endif // Q_OS_WIN32
 

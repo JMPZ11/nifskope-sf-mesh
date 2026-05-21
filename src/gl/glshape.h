@@ -97,14 +97,15 @@ protected:
 	//! Does the data need updating?
 	bool needUpdateData = false;
 
+	void resetSkinning();
+
+public:
 	//! Skin instance
 	QPersistentModelIndex iSkin;
 	//! Skin data
 	QPersistentModelIndex iSkinData;
 	//! Skin partition
 	QPersistentModelIndex iSkinPart;
-
-	void resetSkinning();
 
 	//! Vertices
 	QVector<Vector3> verts;
@@ -120,6 +121,7 @@ protected:
 	QVector<TexCoords> coords;
 	//! Triangles
 	QVector<Triangle> triangles;
+protected:
 	//! Number of triangles to render at the current level of detail
 	qsizetype lodTriangleCount = 0;
 	//! Offsets and lengths of converted triangle strips in triangles

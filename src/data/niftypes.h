@@ -171,12 +171,12 @@ public:
 	}
 
 	//! Comparison function for lexicographic sorting
-	static bool lexLessThan( const Vector2 & v1, const Vector2 & v2 )
+	bool operator<( const Vector2 & v2 ) const
 	{
-		if ( v1[0] != v2[0] ) {
-			return v1[0] < v2[0];
+		if ( xy[0] != v2[0] ) {
+			return xy[0] < v2[0];
 		} else {
-			return v1[1] < v2[1];
+			return xy[1] < v2[1];
 		}
 	}
 
@@ -421,15 +421,15 @@ public:
 	}
 
 	//! Comparison function for lexicographic sorting
-	static bool lexLessThan( const Vector3 & v1, const Vector3 & v2 )
+	bool operator<( const Vector3 & v2 ) const
 	{
-		if ( v1[0] != v2[0] ) {
-			return v1[0] < v2[0];
+		if ( xyz[0] != v2[0] ) {
+			return xyz[0] < v2[0];
 		} else {
-			if ( v1[1] != v2[1] ) {
-				return v1[1] < v2[1];
+			if ( xyz[1] != v2[1] ) {
+				return xyz[1] < v2[1];
 			} else {
-				return v1[2] < v2[2];
+				return xyz[2] < v2[2];
 			}
 		}
 	}
@@ -740,18 +740,18 @@ public:
 	}
 
 	//! Comparison function for lexicographic sorting
-	static bool lexLessThan( const Vector4 & v1, const Vector4 & v2 )
+	bool operator<( const Vector4 & v2 ) const
 	{
-		if ( v1[0] != v2[0] ) {
-			return v1[0] < v2[0];
+		if ( xyzw[0] != v2[0] ) {
+			return xyzw[0] < v2[0];
 		} else {
-			if ( v1[1] != v2[1] ) {
-				return v1[1] < v2[1];
+			if ( xyzw[1] != v2[1] ) {
+				return xyzw[1] < v2[1];
 			} else {
-				if ( v1[2] != v2[2] ) {
-					return v1[2] < v2[2];
+				if ( xyzw[2] != v2[2] ) {
+					return xyzw[2] < v2[2];
 				} else {
-					return v1[3] < v2[3];
+					return xyzw[3] < v2[3];
 				}
 			}
 		}

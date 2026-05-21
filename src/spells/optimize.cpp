@@ -94,10 +94,10 @@ public:
 
 			if ( !map.isEmpty() ) {
 				numRemoved += map.count();
-				nif->mapLinks( map );
 				QList<qint32> l = map.keys();
 				std::sort( l.begin(), l.end(), std::greater<qint32>() );
 				nif->setState( BaseModel::Loading );
+				nif->mapLinks( map );
 				for ( const auto b : l ) {
 					nif->removeNiBlock( b );
 				}

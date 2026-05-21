@@ -263,6 +263,9 @@ public slots:
 
 protected:
 	mutable bool sceneBoundsValid, timeBoundsValid;
+public:
+	unsigned char boundSphereQuality = 4;
+protected:
 	mutable BoundSphere bndSphere;
 	mutable float tMin = 0, tMax = 0;
 
